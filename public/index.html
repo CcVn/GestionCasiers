@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HADO - Casiers zone départ</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="loginPage" class="login-container active">
+        <div class="login-box">
+            <h1>HADO - Casiers zone départ</h1>
+            <p style="color: #666; margin-bottom: 30px;">Sélectionnez un mode d'accès</p>
+            <form id="loginForm">
+                <div class="form-group" id="userNameGroup" style="display: none;">
+                    <input type="text" id="userName" placeholder="Votre nom ou initiales" autocomplete="off">
+                </div>
+                <div class="form-group">
+                    <input type="password" id="loginPassword" placeholder="Mot de passe (optionnel)" autocomplete="off">
+                </div>
+                <button type="submit" class="btn-primary" style="width: 100%;">Se connecter</button>
+                <button type="button" class="btn-secondary" style="width: 100%; margin-top: 10px;" onclick="loginAsGuest()">Consultation uniquement</button>
+            </form>
+        </div>
+    </div>
+
+    <div class="container" id="appContainer" style="display: none;">
+        <header>
+            <div class="header-info">
+                <div>
+                    <h1>HADO - Casiers zone départ</h1>
+                    <div id="authStatus" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+                </div>
+                <div style="display: flex; gap: 15px; align-items: center;">
+                    <div id="serverStatus" class="server-status offline">⚪ Vérification...</div>
+                    <button class="btn-secondary btn-small" onclick="logout()">Déconnexion</button>
+                </div>
+            </div>
+            <div class="search-bar">
+                <input type="text" id="globalSearch" placeholder="Rechercher par nom...">
+                <button class="btn-secondary" onclick="importClients()">⬆️ Importer Clients</button>
+                <button class="btn-secondary" onclick="importCSV()">⬆️ Importer CSV</button>
+                <button class="btn-secondary" onclick="exportData('json')">⬇ JSON</button>
+                <button class="btn-secondary" onclick="exportData('csv')">⬇ CSV</button>
+                <button class="btn-secondary admin-only" onclick="createBackup()" title="Créer un backup manuel de la base de données">💾 Backup</button>
+            </div>
+        </header>
+
+        <div class="tabs">
+            <button class="tab-button active" data-zone="NORD">Zone NORD</button>
+            <button class="tab-button" data-zone="SUD">Zone SUD</button>
+            <button class="tab-button" data-zone="PCA">Zone PCA</button>
+        </div>
+
+        <div id="content-NORD" class="content-section active">
+            <div class="section-header">
+                <h2 style="font-size: 18px; font-weight: 600;">
+                    Zone NORD (N01 à N75)
+                    <span id="counter-NORD" class="zone-counter">0/75</span>
+                </h2>
+                <div class="controls">
+                    <button class="btn-primary" onclick="openModal('NORD')">+ Attribuer</button>
+                    <select onchange="filterTable('NORD', this.value)" id="filter-NORD">
+                        <option value="all">Tous</option>
+                        <option value="occupied">Occupés</option>
+                        <option value="empty">Vides</option>
+                        <option value="recoverable" class="admin-only">Récupérables</option>
+                    </select>
+                    <select onchange="sortTable('NORD', this.value)">
+                        <option value="number">Trier par numéro</option>
+                        <option value="name">Trier par nom</option>
+                    </select>
+                    <button class="btn-secondary" onclick="printTable()">🖨️ Imprimer</button>
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="table-NORD">
+                    <thead id="thead-NORD">
+                        <tr>
+                            <th>N° Casier</th>
+                            <th>Nom</th>
+                            <th class="hide-mobile">Prénom</th>
+                            <th class="hide-mobile">N°IPP</th>
+                            <th>DDN</th>
+                            <th class="admin-only">Statut</th>
+                            <th class="hide-mobile admin-only">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-NORD"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="content-SUD" class="content-section">
+            <div class="section-header">
+                <h2 style="font-size: 18px; font-weight: 600;">
+                    Zone SUD (S01 à S75)
+                    <span id="counter-SUD" class="zone-counter">0/75</span>
+                </h2>
+                <div class="controls">
+                    <button class="btn-primary" onclick="openModal('SUD')">+ Attribuer</button>
+                    <select onchange="filterTable('SUD', this.value)" id="filter-SUD">
+                        <option value="all">Tous</option>
+                        <option value="occupied">Occupés</option>
+                        <option value="empty">Vides</option>
+                        <option value="recoverable" class="admin-only">Récupérables</option>
+                    </select>
+                    <select onchange="sortTable('SUD', this.value)">
+                        <option value="number">Trier par numéro</option>
+                        <option value="name">Trier par nom</option>
+                    </select>
+                    <button class="btn-secondary" onclick="printTable()">🖨️ Imprimer</button>
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="table-SUD">
+                    <thead id="thead-SUD">
+                        <tr>
+                            <th>N° Casier</th>
+                            <th>Nom</th>
+                            <th class="hide-mobile">Prénom</th>
+                            <th class="hide-mobile">N°IPP</th>
+                            <th>DDN</th>
+                            <th class="admin-only">Statut</th>
+                            <th class="hide-mobile admin-only">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-SUD"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div id="content-PCA" class="content-section">
+            <div class="section-header">
+                <h2 style="font-size: 18px; font-weight: 600;">
+                    Zone PCA (PCA01 à PCA40)
+                    <span id="counter-PCA" class="zone-counter">0/40</span>
+                </h2>
+                <div class="controls">
+                    <button class="btn-primary" onclick="openModal('PCA')">+ Attribuer</button>
+                    <select onchange="filterTable('PCA', this.value)" id="filter-PCA">
+                        <option value="all">Tous</option>
+                        <option value="occupied">Occupés</option>
+                        <option value="empty">Vides</option>
+                        <option value="recoverable" class="admin-only">Récupérables</option>
+                    </select>
+                    <select onchange="sortTable('PCA', this.value)">
+                        <option value="number">Trier par numéro</option>
+                        <option value="name">Trier par nom</option>
+                    </select>
+                    <button class="btn-secondary" onclick="printTable()">🖨️ Imprimer</button>
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="table-PCA">
+                    <thead id="thead-PCA">
+                        <tr>
+                            <th>N° Casier</th>
+                            <th>Nom</th>
+                            <th class="hide-mobile">Prénom</th>
+                            <th class="hide-mobile">N°IPP</th>
+                            <th>DDN</th>
+                            <th class="admin-only">Statut</th>
+                            <th class="hide-mobile admin-only">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-PCA"></tbody>
+                </table>
+            </div>
+        </div>
+
+        <div class="sync-indicator" id="syncIndicator">✓ À jour</div>
+        
+        <footer class="app-footer">
+            <p>© 2025, C.Vinson + Claude.ai</p>
+        </footer>
+    </div>
+
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header" id="modalTitle">Attribuer un casier</div>
+            <div id="statusMessage"></div>
+            <form id="lockerForm">
+                <div class="form-group">
+                    <label for="zone">Zone</label>
+                    <select id="zone" required>
+                        <option value="NORD">NORD</option>
+                        <option value="SUD">SUD</option>
+                        <option value="PCA">PCA</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="lockerNumber">N° Casier</label>
+                    <select id="lockerNumber" required></select>
+                </div>
+                <div class="form-group">
+                    <label for="lastName">Nom</label>
+                    <input type="text" id="lastName" required>
+                </div>
+                <div class="form-group">
+                    <label for="firstName">Prénom</label>
+                    <input type="text" id="firstName" required>
+                </div>
+                <div class="form-group">
+                    <label for="code">N°IPP</label>
+                    <div style="display: flex; gap: 5px; align-items: center;">
+                        <input type="text" id="code" required style="flex: 1; margin: 0;">
+                        <button type="button" class="btn-secondary" onclick="searchClient()" style="white-space: nowrap; flex-shrink: 0; padding: 10px 12px;">🔍 Rechercher</button>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="birthDate">DDN</label>
+                    <input type="date" id="birthDate" required>
+                </div>
+                <div class="form-group">
+                    <label for="comment">Commentaire (optionnel)</label>
+                    <textarea id="comment" rows="2" placeholder="Notes, remarques..."></textarea>
+                </div>
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="recoverable" style="margin-right: 8px; width: auto;">
+                        <span>Récupérable (libérable en cas de pénurie)</span>
+                    </label>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="closeModal()">Annuler</button>
+                    <button type="submit" class="btn-primary">Enregistrer</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="app.js"></script>
+</body>
+</html>

@@ -16,33 +16,35 @@ const crypto = require('crypto');
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const ANONYMIZE_GUEST = process.env.ANONYMIZE_GUEST === 'true';
 const ANONYMIZE_ADMIN = process.env.ANONYMIZE_ADMIN === 'true';
+const DARK_MODE = process.env.DARK_MODE || 'system';
+const CLIENT_IMPORT_WARNING_DAYS = parseInt(process.env.CLIENT_IMPORT_WARNING_DAYS) || 4;
+const BACKUP_FREQUENCY_HOURS = parseInt(process.env.BACKUP_FREQUENCY_HOURS) || 24;
+const BACKUP_RETENTION_COUNT = parseInt(process.env.BACKUP_RETENTION_COUNT) || 7;
 
 console.log('🔐 Mot de passe admin configuré');
 console.log('👁️ Anonymisation guest:', ANONYMIZE_GUEST);
 console.log('🔓 Anonymisation admin:', ANONYMIZE_ADMIN);
+console.log('🌓 Mode sombre:', DARK_MODE);
 
 // Gestion des sessions en mémoire
 const sessions = new Map();
 
 // Fonction pour enregistrer une connexion dans les stats
 async function recordConnection(role) {
-  const today = new Date().toISOString().split('T')[0]; // Format YYYY-MM-DD
+  const today = new Date().toISOString().split('T')[0];
   
   try {
-    // Vérifier si une entrée existe déjà pour aujourd'hui
     const existing = await dbGet(
       'SELECT * FROM connection_stats WHERE date = ? AND role = ?',
       [today, role]
     );
     
     if (existing) {
-      // Incrémenter le compteur
       await dbRun(
         'UPDATE connection_stats SET count = count + 1 WHERE date = ? AND role = ?',
         [today, role]
       );
     } else {
-      // Créer une nouvelle entrée
       await dbRun(
         'INSERT INTO connection_stats (date, role, count) VALUES (?, ?, 1)',
         [today, role]
@@ -75,7 +77,6 @@ function getLocalIP() {
   const interfaces = os.networkInterfaces();
   for (const name of Object.keys(interfaces)) {
     for (const iface of interfaces[name]) {
-      // IPv4 et pas localhost
       if (iface.family === 'IPv4' && !iface.internal) {
         return iface.address;
       }
@@ -93,7 +94,7 @@ app.use(express.json());
 // Vérifier que le dossier public existe
 const publicPath = path.join(__dirname, 'public');
 if (!fs.existsSync(publicPath)) {
-  console.warn('⚠️  ATTENTION: Dossier "public" introuvable à:', publicPath);
+  console.warn('⚠️  ATTENTION: Dossier "public" introuvable à :', publicPath);
   console.warn('   Créez le dossier "public" et y mettre le fichier index.html');
 } else {
   console.log('✓ Dossier public trouvé:', publicPath);
@@ -152,7 +153,7 @@ const dbAll = (sql, params = []) => {
 // Initialiser la base de données
 function initializeDatabase() {
   db.serialize(() => {
-    // Créer la table lockers si elle n'existe pas
+    // Créer la table lockers
     db.run(`
       CREATE TABLE IF NOT EXISTS lockers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -172,14 +173,12 @@ function initializeDatabase() {
     `, (err) => {
       if (err) console.error('Erreur création table lockers:', err);
       else {
-        // Ajouter la colonne comment si elle n'existe pas
         db.run(`ALTER TABLE lockers ADD COLUMN comment TEXT DEFAULT ''`, () => {});
-        // Ajouter la colonne updatedBy si elle n'existe pas
         db.run(`ALTER TABLE lockers ADD COLUMN updatedBy TEXT DEFAULT ''`, () => {});
       }
     });
 
-    // Créer la table clients si elle n'existe pas
+    // Créer la table clients
     db.run(`
       CREATE TABLE IF NOT EXISTS clients (
         ipp INTEGER PRIMARY KEY,
@@ -196,7 +195,7 @@ function initializeDatabase() {
       else console.log('✓ Table clients créée/vérifiée');
     });
 
-    // Créer la table d'historique des modifications
+    // Créer la table d'historique
     db.run(`
       CREATE TABLE IF NOT EXISTS locker_history (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -241,6 +240,19 @@ function initializeDatabase() {
       else console.log('✓ Table export_logs créée/vérifiée');
     });
 
+    // Créer la table des imports clients
+    db.run(`
+      CREATE TABLE IF NOT EXISTS client_imports (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        importDate DATETIME DEFAULT CURRENT_TIMESTAMP,
+        recordCount INTEGER,
+        userName TEXT
+      )
+    `, (err) => {
+      if (err) console.error('Erreur création table client_imports:', err);
+      else console.log('✓ Table client_imports créée/vérifiée');
+    });
+
     // Initialiser les casiers si la table est vide
     db.get('SELECT COUNT(*) as count FROM lockers', async (err, row) => {
       if (err) {
@@ -249,17 +261,14 @@ function initializeDatabase() {
         console.log('Initialisation des casiers...');
         const lockers = [];
 
-        // NORD (75 casiers)
         for (let i = 1; i <= 75; i++) {
           lockers.push(['N' + String(i).padStart(2, '0'), 'NORD']);
         }
 
-        // SUD (75 casiers)
         for (let i = 1; i <= 75; i++) {
           lockers.push(['S' + String(i).padStart(2, '0'), 'SUD']);
         }
 
-        // PCA (40 casiers)
         for (let i = 1; i <= 40; i++) {
           lockers.push(['PCA' + String(i).padStart(2, '0'), 'PCA']);
         }
@@ -280,7 +289,6 @@ function initializeDatabase() {
 
 // ============ MIDDLEWARE D'AUTHENTIFICATION ============
 
-// Middleware de vérification d'authentification
 function requireAuth(req, res, next) {
   const token = req.headers['authorization']?.replace('Bearer ', '');
   
@@ -288,7 +296,6 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Non authentifié' });
   }
   
-  // Vérifier que la session n'a pas expiré (24h)
   const session = sessions.get(token);
   const now = Date.now();
   if (now - session.createdAt > 24 * 60 * 60 * 1000) {
@@ -308,7 +315,6 @@ app.post('/api/login', async (req, res) => {
   const { password, userName } = req.body;
   
   if (password === ADMIN_PASSWORD) {
-    // Vérifier que le nom d'utilisateur est fourni en mode admin
     if (!userName || userName.trim() === '') {
       return res.status(400).json({ error: 'Nom/initiales requis en mode modification' });
     }
@@ -320,7 +326,6 @@ app.post('/api/login', async (req, res) => {
       userName: userName.trim()
     });
     
-    // Enregistrer la connexion
     await recordConnection('admin');
     
     res.json({
@@ -328,10 +333,10 @@ app.post('/api/login', async (req, res) => {
       token: token,
       role: 'admin',
       userName: userName.trim(),
-      anonymize: ANONYMIZE_ADMIN
+      anonymize: ANONYMIZE_ADMIN,
+      darkMode: DARK_MODE
     });
   } else if (!password || password === '') {
-    // Mode consultation sans mot de passe
     const token = generateToken();
     sessions.set(token, {
       createdAt: Date.now(),
@@ -339,14 +344,14 @@ app.post('/api/login', async (req, res) => {
       userName: 'guest'
     });
     
-    // Enregistrer la connexion guest
     await recordConnection('guest');
     
     res.json({
       success: true,
       token: token,
       role: 'guest',
-      anonymize: ANONYMIZE_GUEST
+      anonymize: ANONYMIZE_GUEST,
+      darkMode: DARK_MODE
     });
   } else {
     res.status(401).json({ error: 'Mot de passe incorrect' });
@@ -377,7 +382,8 @@ app.get('/api/auth/check', (req, res) => {
     authenticated: true,
     role: isAdmin ? 'admin' : 'guest',
     userName: session.userName || '',
-    anonymize: isAdmin ? ANONYMIZE_ADMIN : ANONYMIZE_GUEST
+    anonymize: isAdmin ? ANONYMIZE_ADMIN : ANONYMIZE_GUEST,
+    darkMode: DARK_MODE
   });
 });
 
@@ -437,12 +443,10 @@ app.post('/api/lockers', requireAuth, async (req, res) => {
       return res.status(400).json({ error: 'Numéro et zone requis' });
     }
 
-    // Récupérer l'utilisateur depuis la session
     const token = req.headers['authorization']?.replace('Bearer ', '');
     const session = sessions.get(token);
     const userName = session?.userName || 'Inconnu';
 
-    // Vérifier que le casier existe
     const existingLocker = await dbGet(
       'SELECT * FROM lockers WHERE number = ?',
       [number]
@@ -452,22 +456,19 @@ app.post('/api/lockers', requireAuth, async (req, res) => {
       return res.status(404).json({ error: 'Casier non trouvé' });
     }
 
-    // Vérifier si l'IPP existe dans la base clients
     let isRecoverable = recoverable ? 1 : 0;
     let ippValid = true;
     if (code) {
       const client = await dbGet('SELECT * FROM clients WHERE ipp = ?', [code]);
       if (!client) {
-        isRecoverable = 1; // IPP invalide → automatiquement récupérable
+        isRecoverable = 1;
         ippValid = false;
       }
     }
 
-    // Déterminer l'action pour l'historique
     const action = existingLocker.occupied ? 'MODIFICATION' : 'ATTRIBUTION';
     const details = `${name} ${firstName} (IPP: ${code})`;
 
-    // Mettre à jour
     await dbRun(
       `UPDATE lockers 
        SET zone = ?, occupied = 1, recoverable = ?, name = ?, firstName = ?, code = ?, birthDate = ?, comment = ?,
@@ -476,7 +477,6 @@ app.post('/api/lockers', requireAuth, async (req, res) => {
       [zone, isRecoverable, name, firstName, code, birthDate, comment || '', userName, number]
     );
 
-    // Enregistrer dans l'historique
     await recordHistory(number, action, userName, 'admin', details);
 
     const updatedLocker = await dbGet(
@@ -496,7 +496,6 @@ app.post('/api/lockers', requireAuth, async (req, res) => {
 // DELETE libérer un casier
 app.delete('/api/lockers/:number', requireAuth, async (req, res) => {
   try {
-    // Récupérer l'utilisateur depuis la session
     const token = req.headers['authorization']?.replace('Bearer ', '');
     const session = sessions.get(token);
     const userName = session?.userName || 'Inconnu';
@@ -520,7 +519,6 @@ app.delete('/api/lockers/:number', requireAuth, async (req, res) => {
       [userName, req.params.number]
     );
 
-    // Enregistrer dans l'historique
     await recordHistory(req.params.number, 'LIBÉRATION', userName, 'admin', details);
 
     const updatedLocker = await dbGet(
@@ -647,24 +645,6 @@ app.get('/api/exports/history', async (req, res) => {
   }
 });
 
-// Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'OK', timestamp: new Date(), database: 'SQLite' });
-});
-
-// Config - retourne l'URL du serveur pour le frontend
-app.get('/api/config', (req, res) => {
-  const localIP = getLocalIP();
-  const port = process.env.PORT || 5000;
-  const apiUrl = `http://${localIP}:${port}/api`;
-  
-  res.json({
-    apiUrl: apiUrl,
-    localIP: localIP,
-    port: port
-  });
-});
-
 // POST import CSV casiers
 app.post('/api/import', requireAuth, async (req, res) => {
   try {
@@ -682,21 +662,18 @@ app.post('/api/import', requireAuth, async (req, res) => {
       try {
         const { number, zone, name, firstName, code, birthDate, recoverable } = row;
         
-        // Vérifier que le casier existe
         const locker = await dbGet('SELECT * FROM lockers WHERE number = ?', [number]);
         
         if (locker) {
-          // Vérifier si l'IPP existe dans la base clients
           let isRecoverable = recoverable ? 1 : 0;
           if (code) {
             const client = await dbGet('SELECT * FROM clients WHERE ipp = ?', [code]);
             if (!client) {
-              isRecoverable = 1; // IPP invalide → automatiquement récupérable
+              isRecoverable = 1;
               invalidIPP++;
             }
           }
           
-          // Mettre à jour le casier
           await dbRun(
             `UPDATE lockers 
              SET zone = ?, occupied = 1, recoverable = ?, name = ?, firstName = ?, code = ?, birthDate = ?,
@@ -746,6 +723,39 @@ app.get('/api/clients/:ipp', async (req, res) => {
   }
 });
 
+// GET statut import clients (NOUVELLE ROUTE)
+app.get('/api/clients/import-status', async (req, res) => {
+  try {
+    const lastImport = await dbGet(
+      'SELECT * FROM client_imports ORDER BY importDate DESC LIMIT 1'
+    );
+    
+    if (!lastImport) {
+      return res.json({
+        hasImport: false,
+        warning: true,
+        warningThreshold: CLIENT_IMPORT_WARNING_DAYS
+      });
+    }
+    
+    const importDate = new Date(lastImport.importDate);
+    const now = new Date();
+    const daysSince = Math.floor((now - importDate) / (1000 * 60 * 60 * 24));
+    
+    res.json({
+      hasImport: true,
+      lastImportDate: lastImport.importDate,
+      daysSinceImport: daysSince,
+      recordCount: lastImport.recordCount,
+      userName: lastImport.userName,
+      warning: daysSince > CLIENT_IMPORT_WARNING_DAYS,
+      warningThreshold: CLIENT_IMPORT_WARNING_DAYS
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST import clients depuis CSV
 app.post('/api/clients/import', requireAuth, async (req, res) => {
   try {
@@ -763,7 +773,6 @@ app.post('/api/clients/import', requireAuth, async (req, res) => {
     let imported = 0;
     let errors = 0;
 
-    // Insérer les nouveaux clients
     const stmt = db.prepare(`
       INSERT INTO clients (ipp, name, firstName, birthName, birthDate, sex, zone, entryDate)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?)
@@ -792,8 +801,19 @@ app.post('/api/clients/import', requireAuth, async (req, res) => {
       }
     }
 
-    stmt.finalize(() => {
+    stmt.finalize(async () => {
       console.log('Import terminé:', imported, 'clients importés,', errors, 'erreurs');
+      
+      // Enregistrer l'import
+      const token = req.headers['authorization']?.replace('Bearer ', '');
+      const session = sessions.get(token);
+      const userName = session?.userName || 'Inconnu';
+      
+      await dbRun(
+        'INSERT INTO client_imports (recordCount, userName) VALUES (?, ?)',
+        [imported, userName]
+      );
+      
       res.json({
         success: true,
         imported: imported,
@@ -807,10 +827,129 @@ app.post('/api/clients/import', requireAuth, async (req, res) => {
   }
 });
 
+// ============ BACKUP ============
+
+// POST créer un backup manuel (NOUVELLE ROUTE)
+app.post('/api/backup', requireAuth, async (req, res) => {
+  try {
+    const backupDir = path.join(__dirname, 'backups');
+    
+    // Créer le dossier backups s'il n'existe pas
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir);
+    }
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const backupPath = path.join(backupDir, `backup_${timestamp}.db`);
+    
+    // Copier la base de données
+    fs.copyFileSync(dbPath, backupPath);
+    
+    const stats = fs.statSync(backupPath);
+    
+    // Nettoyer les vieux backups
+    const files = fs.readdirSync(backupDir)
+      .filter(f => f.startsWith('backup_') && f.endsWith('.db'))
+      .map(f => ({
+        name: f,
+        path: path.join(backupDir, f),
+        time: fs.statSync(path.join(backupDir, f)).mtime.getTime()
+      }))
+      .sort((a, b) => b.time - a.time);
+    
+    // Supprimer les backups en trop
+    if (files.length > BACKUP_RETENTION_COUNT) {
+      files.slice(BACKUP_RETENTION_COUNT).forEach(f => {
+        fs.unlinkSync(f.path);
+        console.log('Backup supprimé:', f.name);
+      });
+    }
+    
+    res.json({
+      success: true,
+      filename: path.basename(backupPath),
+      size: stats.size,
+      path: backupPath
+    });
+  } catch (err) {
+    console.error('Erreur backup:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Backup automatique au démarrage et périodique
+function setupAutoBackup() {
+  if (BACKUP_FREQUENCY_HOURS === 0) {
+    console.log('⏭️  Backups automatiques désactivés');
+    return;
+  }
+  
+  const backupDir = path.join(__dirname, 'backups');
+  if (!fs.existsSync(backupDir)) {
+    fs.mkdirSync(backupDir);
+  }
+  
+  const createBackup = () => {
+    try {
+      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+      const backupPath = path.join(backupDir, `backup_auto_${timestamp}.db`);
+      
+      fs.copyFileSync(dbPath, backupPath);
+      console.log('✓ Backup automatique créé:', path.basename(backupPath));
+      
+      // Nettoyer les vieux backups
+      const files = fs.readdirSync(backupDir)
+        .filter(f => f.startsWith('backup_') && f.endsWith('.db'))
+        .map(f => ({
+          name: f,
+          path: path.join(backupDir, f),
+          time: fs.statSync(path.join(backupDir, f)).mtime.getTime()
+        }))
+        .sort((a, b) => b.time - a.time);
+      
+      if (files.length > BACKUP_RETENTION_COUNT) {
+        files.slice(BACKUP_RETENTION_COUNT).forEach(f => {
+          fs.unlinkSync(f.path);
+          console.log('Backup supprimé:', f.name);
+        });
+      }
+    } catch (err) {
+      console.error('Erreur backup automatique:', err);
+    }
+  };
+  
+  // Backup initial
+  createBackup();
+  
+  // Backup périodique
+  const intervalMs = BACKUP_FREQUENCY_HOURS * 60 * 60 * 1000;
+  setInterval(createBackup, intervalMs);
+  
+  console.log(`✓ Backups automatiques activés (toutes les ${BACKUP_FREQUENCY_HOURS}h, ${BACKUP_RETENTION_COUNT} fichiers conservés)`);
+}
+
+// Health check
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'OK', timestamp: new Date(), database: 'SQLite' });
+});
+
+// Config
+app.get('/api/config', (req, res) => {
+  const localIP = getLocalIP();
+  const port = process.env.PORT || 5000;
+  const apiUrl = `http://${localIP}:${port}/api`;
+  
+  res.json({
+    apiUrl: apiUrl,
+    localIP: localIP,
+    port: port
+  });
+});
+
 // Route par défaut pour servir index.html
 app.get('/', (req, res) => {
   const filePath = path.join(__dirname, 'public', 'index.html');
-  console.log('Tentative d\'accès à:', filePath);
+  console.log('Tentative d\'accès à :', filePath);
   console.log('Fichier existe?', fs.existsSync(filePath));
   
   if (fs.existsSync(filePath)) {
@@ -836,4 +975,7 @@ app.listen(PORT, '0.0.0.0', () => {
   console.log(`  - Réseau:   http://${LOCAL_IP}:${PORT}`);
   console.log(`✓ Base de données: ${dbPath}`);
   console.log(`✓ Prêt pour accès réseau`);
+  
+  // Configurer les backups automatiques
+  setupAutoBackup();
 });

@@ -1,0 +1,292 @@
+# Script d'installation automatique - Application Casiers (Windows)
+# Usage: powershell -ExecutionPolicy Bypass -File setup.ps1
+
+Write-Host "==================================" -ForegroundColor Cyan
+Write-Host "🏥 HADO - Gestion des Casiers" -ForegroundColor White
+Write-Host "    Installation automatique" -ForegroundColor White
+Write-Host "==================================" -ForegroundColor Cyan
+Write-Host ""
+
+# Fonction pour afficher les messages
+function Write-Success {
+    param($message)
+    Write-Host "✓ " -ForegroundColor Green -NoNewline
+    Write-Host $message
+}
+
+function Write-ErrorMsg {
+    param($message)
+    Write-Host "✗ " -ForegroundColor Red -NoNewline
+    Write-Host $message
+}
+
+function Write-WarningMsg {
+    param($message)
+    Write-Host "⚠ " -ForegroundColor Yellow -NoNewline
+    Write-Host $message
+}
+
+function Write-InfoMsg {
+    param($message)
+    Write-Host "ℹ " -ForegroundColor Blue -NoNewline
+    Write-Host $message
+}
+
+# Vérifier Node.js
+Write-Host "1️⃣  Vérification des prérequis..." -ForegroundColor Cyan
+Write-Host ""
+
+try {
+    $nodeVersion = node -v
+    Write-Success "Node.js installé: $nodeVersion"
+} catch {
+    Write-ErrorMsg "Node.js n'est pas installé"
+    Write-Host "   Téléchargez Node.js depuis: https://nodejs.org/" -ForegroundColor Yellow
+    exit 1
+}
+
+try {
+    $npmVersion = npm -v
+    Write-Success "npm installé: $npmVersion"
+} catch {
+    Write-ErrorMsg "npm n'est pas installé"
+    exit 1
+}
+Write-Host ""
+
+# Vérifier la structure
+Write-Host "2️⃣  Vérification de la structure du projet..." -ForegroundColor Cyan
+Write-Host ""
+
+if (-not (Test-Path "package.json")) {
+    Write-ErrorMsg "package.json introuvable"
+    Write-Host "   Êtes-vous dans le bon dossier ?" -ForegroundColor Yellow
+    exit 1
+}
+Write-Success "package.json trouvé"
+
+if (-not (Test-Path "server.js")) {
+    Write-ErrorMsg "server.js introuvable"
+    exit 1
+}
+Write-Success "server.js trouvé"
+
+# Créer le dossier public
+if (-not (Test-Path "public")) {
+    Write-WarningMsg "Dossier public/ manquant, création..."
+    New-Item -ItemType Directory -Path "public" | Out-Null
+}
+Write-Success "Dossier public/ vérifié"
+
+# Vérifier les fichiers frontend
+$missingFiles = 0
+$frontendFiles = @("index.html", "app.js", "styles.css")
+
+foreach ($file in $frontendFiles) {
+    if (-not (Test-Path "public\$file")) {
+        Write-ErrorMsg "public\$file manquant"
+        $missingFiles++
+    } else {
+        Write-Success "public\$file trouvé"
+    }
+}
+
+if ($missingFiles -gt 0) {
+    Write-Host ""
+    Write-WarningMsg "Copiez les fichiers manquants dans public\"
+    $continue = Read-Host "Voulez-vous continuer quand même ? (y/n)"
+    if ($continue -ne "y" -and $continue -ne "Y") {
+        exit 1
+    }
+}
+Write-Host ""
+
+# Installer les dépendances
+Write-Host "3️⃣  Installation des dépendances npm..." -ForegroundColor Cyan
+Write-Host ""
+
+if (Test-Path "node_modules") {
+    Write-InfoMsg "node_modules existe déjà"
+    $reinstall = Read-Host "Réinstaller les dépendances ? (y/n)"
+    if ($reinstall -eq "y" -or $reinstall -eq "Y") {
+        Remove-Item -Recurse -Force "node_modules", "package-lock.json" -ErrorAction SilentlyContinue
+        npm install
+    } else {
+        Write-Success "Dépendances déjà installées"
+    }
+} else {
+    npm install
+    if ($LASTEXITCODE -eq 0) {
+        Write-Success "Dépendances installées"
+    } else {
+        Write-ErrorMsg "Erreur lors de l'installation"
+        exit 1
+    }
+}
+Write-Host ""
+
+# Créer le fichier .env
+Write-Host "4️⃣  Configuration (.env)..." -ForegroundColor Cyan
+Write-Host ""
+
+$skipEnv = $false
+if (Test-Path ".env") {
+    Write-WarningMsg ".env existe déjà"
+    $recreate = Read-Host "Voulez-vous le recréer ? (y/n)"
+    if ($recreate -ne "y" -and $recreate -ne "Y") {
+        Write-Success "Configuration existante conservée"
+        $skipEnv = $true
+    }
+}
+
+if (-not $skipEnv) {
+    Write-Host "Configuration du serveur..." -ForegroundColor White
+    Write-Host ""
+    
+    # Port
+    $port = Read-Host "Port du serveur [5000]"
+    if ([string]::IsNullOrWhiteSpace($port)) { $port = "5000" }
+    
+    # Mot de passe admin
+    Write-Host ""
+    Write-WarningMsg "IMPORTANT: Définissez un mot de passe admin sécurisé"
+    $adminPass = Read-Host "Mot de passe admin [admin123]" -AsSecureString
+    $adminPassPlain = [Runtime.InteropServices.Marshal]::PtrToStringAuto(
+        [Runtime.InteropServices.Marshal]::SecureStringToBSTR($adminPass))
+    if ([string]::IsNullOrWhiteSpace($adminPassPlain)) { $adminPassPlain = "admin123" }
+    
+    if ($adminPassPlain -eq "admin123") {
+        Write-WarningMsg "Vous utilisez le mot de passe par défaut (non sécurisé)"
+    }
+    
+    # Anonymisation
+    Write-Host ""
+    $anonGuest = Read-Host "Activer l'anonymisation en mode Guest ? (y/n) [y]"
+    if ([string]::IsNullOrWhiteSpace($anonGuest)) { $anonGuest = "y" }
+    $anonGuest = if ($anonGuest -eq "y" -or $anonGuest -eq "Y") { "true" } else { "false" }
+    
+    $anonAdmin = Read-Host "Activer l'anonymisation en mode Admin ? (y/n) [n]"
+    if ([string]::IsNullOrWhiteSpace($anonAdmin)) { $anonAdmin = "n" }
+    $anonAdmin = if ($anonAdmin -eq "y" -or $anonAdmin -eq "Y") { "true" } else { "false" }
+    
+    # Mode sombre
+    Write-Host ""
+    Write-Host "Mode sombre:" -ForegroundColor White
+    Write-Host "  1) system  - Suit les préférences du système"
+    Write-Host "  2) active  - Toujours en mode sombre"
+    Write-Host "  3) inactive - Toujours en mode clair"
+    $darkChoice = Read-Host "Choix [1]"
+    if ([string]::IsNullOrWhiteSpace($darkChoice)) { $darkChoice = "1" }
+    
+    $darkMode = switch ($darkChoice) {
+        "1" { "system" }
+        "2" { "active" }
+        "3" { "inactive" }
+        default { "system" }
+    }
+    
+    # Backup
+    Write-Host ""
+    $backupFreq = Read-Host "Fréquence des backups automatiques (heures, 0=désactivé) [24]"
+    if ([string]::IsNullOrWhiteSpace($backupFreq)) { $backupFreq = "24" }
+    
+    $backupCount = Read-Host "Nombre de backups à conserver [7]"
+    if ([string]::IsNullOrWhiteSpace($backupCount)) { $backupCount = "7" }
+    
+    # Alerte import clients
+    Write-Host ""
+    $importWarning = Read-Host "Alerte si pas d'import clients depuis (jours) [4]"
+    if ([string]::IsNullOrWhiteSpace($importWarning)) { $importWarning = "4" }
+    
+    # Créer le fichier .env
+    $envContent = @"
+# Configuration du serveur
+PORT=$port
+NODE_ENV=development
+
+# Authentification
+# ⚠️ IMPORTANT : Changez ce mot de passe !
+ADMIN_PASSWORD=$adminPassPlain
+
+# Pseudo-anonymisation
+# Active l'anonymisation en mode consultation (guest)
+ANONYMIZE_GUEST=$anonGuest
+
+# Active l'anonymisation en mode modification (admin)
+ANONYMIZE_ADMIN=$anonAdmin
+
+# Mode sombre
+# Valeurs possibles: active, inactive, system
+DARK_MODE=$darkMode
+
+# Alerte import clients
+# Durée en jours après laquelle une alerte s'affiche si aucun import
+CLIENT_IMPORT_WARNING_DAYS=$importWarning
+
+# Backup automatique
+# Fréquence des backups automatiques en heures (0 = désactivé)
+BACKUP_FREQUENCY_HOURS=$backupFreq
+
+# Nombre de backups à conserver
+BACKUP_RETENTION_COUNT=$backupCount
+"@
+
+    $envContent | Out-File -FilePath ".env" -Encoding UTF8
+    Write-Success "Fichier .env créé"
+}
+Write-Host ""
+
+# Créer le dossier backups
+Write-Host "5️⃣  Création des dossiers nécessaires..." -ForegroundColor Cyan
+Write-Host ""
+
+if (-not (Test-Path "backups")) {
+    New-Item -ItemType Directory -Path "backups" | Out-Null
+    Write-Success "Dossier backups\ créé"
+} else {
+    Write-Success "Dossier backups\ existe"
+}
+Write-Host ""
+
+# Résumé
+Write-Host "==================================" -ForegroundColor Green
+Write-Host "✅ Installation terminée !" -ForegroundColor Green
+Write-Host "==================================" -ForegroundColor Green
+Write-Host ""
+Write-Host "📋 Résumé de la configuration:" -ForegroundColor White
+Write-Host "   • Port: $port"
+Write-Host "   • Anonymisation Guest: $anonGuest"
+Write-Host "   • Anonymisation Admin: $anonAdmin"
+Write-Host "   • Mode sombre: $darkMode"
+Write-Host "   • Backup automatique: ${backupFreq}h"
+Write-Host "   • Backups conservés: $backupCount"
+Write-Host ""
+
+# Obtenir l'IP locale
+$localIP = (Get-NetIPAddress -AddressFamily IPv4 | Where-Object {$_.InterfaceAlias -notlike "*Loopback*" -and $_.IPAddress -notlike "169.254.*"} | Select-Object -First 1).IPAddress
+if ([string]::IsNullOrWhiteSpace($localIP)) {
+    $localIP = "[IP_LOCAL]"
+}
+
+Write-Host "🚀 Pour démarrer l'application:" -ForegroundColor Cyan
+Write-Host ""
+Write-Host "   npm start        # Mode production"
+Write-Host "   npm run dev      # Mode développement (auto-reload)"
+Write-Host ""
+Write-Host "📱 Accès à l'application:" -ForegroundColor Cyan
+Write-Host "   Local:  http://localhost:$port"
+Write-Host "   Réseau: http://${localIP}:$port"
+Write-Host ""
+
+# Proposer de démarrer
+$startNow = Read-Host "Voulez-vous démarrer le serveur maintenant ? (y/n)"
+if ($startNow -eq "y" -or $startNow -eq "Y") {
+    Write-Host ""
+    Write-InfoMsg "Démarrage du serveur..."
+    Write-Host ""
+    npm start
+} else {
+    Write-Host ""
+    Write-Success "Installation terminée. Lancez 'npm start' quand vous êtes prêt."
+    Write-Host ""
+}

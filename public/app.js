@@ -48,13 +48,10 @@ function applyDarkMode(setting) {
     console.log('Application du mode sombre:', DARK_MODE_SETTING);
     
     if (DARK_MODE_SETTING === 'active') {
-        // Mode sombre forcé
         document.body.classList.add('dark-mode');
     } else if (DARK_MODE_SETTING === 'inactive') {
-        // Mode clair forcé
         document.body.classList.remove('dark-mode');
     } else if (DARK_MODE_SETTING === 'system') {
-        // Suivre les préférences système
         const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
         if (prefersDark) {
             document.body.classList.add('dark-mode');
@@ -62,7 +59,6 @@ function applyDarkMode(setting) {
             document.body.classList.remove('dark-mode');
         }
         
-        // Écouter les changements de préférences système
         window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
             if (DARK_MODE_SETTING === 'system') {
                 if (e.matches) {
@@ -86,7 +82,6 @@ function detectMobile() {
 document.addEventListener('DOMContentLoaded', function() {
     console.log('Page chargée');
     
-    // Configurer l'URL de l'API immédiatement
     const protocol = window.location.protocol;
     const host = window.location.host;
     API_URL = `${protocol}//${host}/api`;
@@ -94,11 +89,9 @@ document.addEventListener('DOMContentLoaded', function() {
     
     detectMobile();
     
-    // Vérifier s'il y a déjà un token valide
     const existingToken = getAuthToken();
     if (existingToken) {
         console.log('Token existant trouvé');
-        // Vérifier la validité du token
         fetch(`${API_URL}/auth/check`, {
             headers: { 'Authorization': `Bearer ${existingToken}` }
         })
@@ -110,7 +103,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 IS_GUEST = data.role === 'guest';
                 ANONYMIZE_ENABLED = data.anonymize || false;
                 USER_NAME = data.userName || '';
-                applyDarkMode(data.darkMode);
+                applyDarkMode(data.darkMode || 'system');
                 console.log('Anonymisation activée:', ANONYMIZE_ENABLED);
                 console.log('Utilisateur:', USER_NAME);
                 showLoginPage(false);
@@ -118,14 +111,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 setupApp();
             } else {
                 console.log('Token invalide');
-                // Token invalide, afficher le login
                 clearAuthToken();
                 setupLoginPage();
             }
         })
         .catch(err => {
             console.error('Erreur vérification token:', err);
-            // Erreur, afficher le login
             clearAuthToken();
             setupLoginPage();
         });
@@ -136,7 +127,6 @@ document.addEventListener('DOMContentLoaded', function() {
     
     CURRENT_ZONE = 'NORD';
     
-    // Re-détecter lors du resize
     window.addEventListener('resize', () => {
         detectMobile();
         if (DATA.length > 0) {
@@ -151,7 +141,6 @@ function setupLoginPage() {
     const passwordInput = document.getElementById('loginPassword');
     const userNameGroup = document.getElementById('userNameGroup');
     
-    // Afficher le champ nom/initiales quand on tape un mot de passe
     if (passwordInput) {
         passwordInput.addEventListener('input', function() {
             if (this.value.length > 0) {
@@ -172,7 +161,6 @@ function handleLogin(e) {
     const password = document.getElementById('loginPassword').value;
     const userName = document.getElementById('userName').value;
     
-    // Appel API pour authentification
     fetch(`${API_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -200,7 +188,7 @@ function handleLogin(e) {
         }
         
         ANONYMIZE_ENABLED = data.anonymize || false;
-        applyDarkMode(data.darkMode);
+        applyDarkMode(data.darkMode || 'system');
         console.log('Anonymisation activée:', ANONYMIZE_ENABLED);
         console.log('Utilisateur:', USER_NAME);
         
@@ -217,7 +205,6 @@ function handleLogin(e) {
 }
 
 function loginAsGuest() {
-    // Connexion sans mot de passe (mode guest)
     fetch(`${API_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -229,7 +216,7 @@ function loginAsGuest() {
         IS_AUTHENTICATED = false;
         IS_GUEST = true;
         ANONYMIZE_ENABLED = data.anonymize || false;
-        applyDarkMode(data.darkMode);
+        applyDarkMode(data.darkMode || 'system');
         console.log('Anonymisation activée:', ANONYMIZE_ENABLED);
         showLoginPage(false);
         updateAuthStatus();
@@ -241,7 +228,6 @@ function loginAsGuest() {
 }
 
 function logout() {
-    // Appeler l'API de déconnexion
     const token = getAuthToken();
     if (token) {
         fetch(`${API_URL}/logout`, {
@@ -268,7 +254,6 @@ function showLoginPage(show) {
     if (appContainer) {
         appContainer.style.display = show ? 'none' : 'block';
         
-        // Ajouter/retirer la classe guest-mode sur le container
         if (!show) {
             if (IS_GUEST) {
                 appContainer.classList.add('guest-mode');
@@ -291,12 +276,10 @@ function updateAuthStatus() {
         }
     }
     
-    // Masquer/griser les boutons d'import/export en mode guest
     updateImportExportButtons();
 }
 
 function updateImportExportButtons() {
-    // Désactiver les boutons d'import/export dans le header
     const importExportButtons = document.querySelectorAll('.search-bar button');
     console.log('Mise à jour des boutons header, IS_GUEST:', IS_GUEST);
     
@@ -304,7 +287,7 @@ function updateImportExportButtons() {
         const text = btn.textContent.toLowerCase();
         console.log('Bouton:', text);
         
-        if (text.includes('importer') || text.includes('json') || text.includes('csv') || text.includes('backup')) {
+        if (text.includes('importer') || text.includes('backup')) {
             if (IS_GUEST) {
                 btn.disabled = true;
                 btn.style.opacity = '0.4';
@@ -321,7 +304,6 @@ function updateImportExportButtons() {
         }
     });
     
-    // Désactiver les boutons "Attribuer" dans chaque zone
     const newLockerButtons = document.querySelectorAll('.controls .btn-primary');
     console.log('Mise à jour des boutons "Attribuer", trouvés:', newLockerButtons.length);
     
@@ -359,7 +341,6 @@ function setupApp() {
     console.log('API_URL actuelle:', API_URL);
     console.log('Token présent:', !!getAuthToken());
     
-    // Événements des onglets
     document.querySelectorAll('.tab-button').forEach(btn => {
         btn.addEventListener('click', function() {
             switchTab(this.dataset.zone);
@@ -367,7 +348,6 @@ function setupApp() {
         });
     });
 
-    // Recherche
     document.getElementById('globalSearch').addEventListener('input', function(e) {
         if (e.target.value.trim()) {
             searchLockers(e.target.value);
@@ -376,24 +356,15 @@ function setupApp() {
         }
     });
 
-    // Formulaire
     document.getElementById('lockerForm').addEventListener('submit', handleFormSubmit);
 
-    // Charger les données
     loadData();
     checkServerStatus();
     
-    // Vérifier le statut de l'import clients (uniquement en mode admin)
-    if (IS_AUTHENTICATED) {
-        checkClientImportStatus();
-    }
-    
-    // Appliquer les filtres par défaut en mode consultation
     if (IS_GUEST) {
         applyGuestDefaults();
     }
     
-    // Rafraîchir automatiquement toutes les 60 secondes
     setInterval(() => {
         console.log('Rafraîchissement automatique...');
         loadData();
@@ -401,12 +372,9 @@ function setupApp() {
     }, 60000);
 }
 
-// Appliquer les paramètres par défaut en mode consultation
 function applyGuestDefaults() {
-    // Filtrer sur "occupés" par défaut
     CURRENT_FILTER = { NORD: 'occupied', SUD: 'occupied', PCA: 'occupied' };
     
-    // Mettre à jour et désactiver les dropdowns de filtre en mode guest
     ['NORD', 'SUD', 'PCA'].forEach(zone => {
         const filterSelect = document.getElementById(`filter-${zone}`);
         if (filterSelect) {
@@ -417,61 +385,33 @@ function applyGuestDefaults() {
         }
     });
     
-    // Mettre à jour les dropdowns de tri sur "name"
     document.querySelectorAll('select[onchange^="sortTable"]').forEach(select => {
         select.value = 'name';
     });
 }
 
-// ============ VÉRIFICATION IMPORT CLIENTS ============
-function checkClientImportStatus() {
-    fetch(`${API_URL}/clients/import-status`)
-        .then(res => res.json())
-        .then(data => {
-            console.log('Statut import clients:', data);
-            
-            if (data.warning) {
-                // Afficher une alerte
-                const message = data.hasImport 
-                    ? `⚠️ ATTENTION : Le dernier import de la base clients date de ${data.daysSinceImport} jours.\n\nIl est recommandé de mettre à jour la base régulièrement (tous les ${data.warningThreshold} jours).\n\nVoulez-vous importer maintenant ?`
-                    : `⚠️ ATTENTION : Aucun import de clients trouvé.\n\nLa base clients est vide. Voulez-vous importer maintenant ?`;
-                
-                // Afficher l'alerte après un court délai pour ne pas bloquer le chargement
-                setTimeout(() => {
-                    if (confirm(message)) {
-                        importClients();
-                    }
-                }, 1000);
-                
-                // Colorer le bouton d'import en orange
-                highlightImportButton(true);
-            } else {
-                // Bouton normal
-                highlightImportButton(false);
-            }
-        })
-        .catch(err => {
-            console.error('Erreur vérification import:', err);
-        });
-}
-
-function highlightImportButton(warning) {
-    // Trouver tous les boutons "Importer Clients"
-    const buttons = Array.from(document.querySelectorAll('.search-bar button'))
-        .filter(btn => btn.textContent.includes('Importer Clients'));
+// ============ BACKUP ============
+function createBackup() {
+    if (!isEditAllowed()) return;
     
-    buttons.forEach(btn => {
-        if (warning) {
-            btn.style.background = '#ff9800';
-            btn.style.color = 'white';
-            btn.title = '⚠️ Base clients obsolète - Mise à jour recommandée';
-            btn.classList.add('pulse-warning');
-        } else {
-            btn.style.background = '';
-            btn.style.color = '';
-            btn.title = '';
-            btn.classList.remove('pulse-warning');
-        }
+    if (!confirm('Créer un backup de la base de données maintenant ?')) return;
+    
+    const token = getAuthToken();
+    
+    fetch(`${API_URL}/backup`, {
+        method: 'POST',
+        headers: { 'Authorization': `Bearer ${token}` }
+    })
+    .then(res => {
+        if (!res.ok) throw new Error('Erreur ' + res.status);
+        return res.json();
+    })
+    .then(data => {
+        alert(`✓ Backup créé avec succès !\n\nFichier : ${data.filename}\nTaille : ${(data.size / 1024).toFixed(2)} KB`);
+    })
+    .catch(err => {
+        alert('Erreur lors du backup : ' + err.message);
+        console.error('Erreur backup:', err);
     });
 }
 
@@ -531,7 +471,6 @@ function updateCounters() {
             const { occupied, total } = zones[zone];
             counter.textContent = `${occupied}/${total}`;
             
-            // Appliquer des classes CSS selon le taux d'occupation
             counter.classList.remove('full', 'warning');
             if (occupied === total) {
                 counter.classList.add('full');
@@ -572,7 +511,6 @@ function renderTable(zone) {
         lockers = lockers.filter(l => l.occupied && (l.recoverable == 1 || l.recoverable === true));
     }
     
-    // Tri par nom en mode consultation
     if (IS_GUEST) {
         lockers.sort((a, b) => {
             const nameA = (a.name || '').toLowerCase();
@@ -581,7 +519,6 @@ function renderTable(zone) {
         });
     }
     
-    // Fonction pour déterminer le statut
     const getStatus = (locker) => {
         if (!locker.occupied) {
             return '<span class="status-empty" title="Libre"></span>';
@@ -592,9 +529,7 @@ function renderTable(zone) {
         }
     };
     
-    // Affichage différent selon le mode
     if (IS_GUEST) {
-        // Mode consultation : colonnes simplifiées
         tbody.innerHTML = lockers.map(locker => `
             <tr>
                 <td><strong>${locker.number}</strong></td>
@@ -605,7 +540,6 @@ function renderTable(zone) {
             </tr>
         `).join('');
     } else {
-        // Mode admin : toutes les colonnes
         tbody.innerHTML = lockers.map(locker => `
             <tr>
                 <td><strong>${locker.number}</strong></td>
@@ -656,7 +590,6 @@ function searchLockers(query) {
         
         const tbody = document.getElementById(`tbody-${zone}`);
         
-        // Fonction pour déterminer le statut
         const getStatus = (locker) => {
             if (!locker.occupied) {
                 return '<span class="status-empty" title="Libre"></span>';
@@ -667,7 +600,6 @@ function searchLockers(query) {
             }
         };
         
-        // Affichage différent selon le mode
         if (IS_GUEST) {
             tbody.innerHTML = results.map(locker => `
                 <tr>
@@ -718,7 +650,6 @@ function openModal(zone) {
     
     populateLockerSelect(zone);
     
-    // Ajouter un écouteur pour mettre à jour la liste des casiers quand la zone change
     const zoneSelect = document.getElementById('zone');
     zoneSelect.onchange = function() {
         populateLockerSelect(this.value);
@@ -746,7 +677,6 @@ function openModalEdit(lockerNumber) {
     
     populateLockerSelect(locker.zone, lockerNumber);
     
-    // Ajouter un écouteur pour mettre à jour la liste des casiers quand la zone change
     const zoneSelect = document.getElementById('zone');
     zoneSelect.onchange = function() {
         populateLockerSelect(this.value, lockerNumber);
@@ -808,7 +738,6 @@ function handleFormSubmit(e) {
         closeModal();
         loadData();
         
-        // Afficher un message si IPP invalide
         if (data.ippValid === false) {
             showStatus('⚠️ Casier enregistré mais N°IPP non trouvé dans la base clients (marqué récupérable)', 'error');
         } else {
@@ -831,14 +760,14 @@ function releaseLocker(lockerNumber) {
         method: 'DELETE',
         headers: { 'Authorization': `Bearer ${token}` }
     })
-        .then(res => {
-            if (!res.ok) throw new Error('Erreur ' + res.status);
-            loadData();
-            showStatus('Casier libéré', 'success');
-        })
-        .catch(err => {
-            showStatus('Erreur: ' + err.message, 'error');
-        });
+    .then(res => {
+        if (!res.ok) throw new Error('Erreur ' + res.status);
+        loadData();
+        showStatus('Casier libéré', 'success');
+    })
+    .catch(err => {
+        showStatus('Erreur: ' + err.message, 'error');
+    });
 }
 
 function showStatus(msg, type) {
@@ -854,7 +783,6 @@ function showStatus(msg, type) {
 function exportData(format) {
     const occupied = DATA.filter(l => l.occupied);
     
-    // Créer un horodatage
     const now = new Date();
     const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
     const readableDate = now.toLocaleString('fr-FR', { 
@@ -886,11 +814,9 @@ function exportData(format) {
         downloadFile(csv, `casiers_${readableDate}_${userName}.csv`, 'text/csv');
     }
     
-    // Enregistrer l'export dans l'historique
     logExport(format, occupied.length, userName, role);
 }
 
-// Fonction pour enregistrer l'export
 async function logExport(format, count, userName, role) {
     try {
         const token = getAuthToken();
@@ -958,11 +884,9 @@ function importCSV() {
             const text = await file.text();
             const lines = text.split('\n').filter(line => line.trim());
             
-            // Ignorer la première ligne (en-têtes)
             const dataLines = lines.slice(1);
             
             const data = dataLines.map(line => {
-                // Parser CSV en gérant les guillemets
                 const values = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g);
                 if (!values || values.length < 6) return null;
                 
@@ -982,12 +906,10 @@ function importCSV() {
                 return;
             }
             
-            // Confirmer l'import
             if (!confirm(`Importer ${data.length} casiers ?\n\nCeci va remplacer les données existantes pour ces casiers.`)) {
                 return;
             }
             
-            // Envoyer au serveur
             const token = getAuthToken();
             const res = await fetch(`${API_URL}/import`, {
                 method: 'POST',
@@ -1041,11 +963,9 @@ function importClients() {
             
             console.log('Nombre de lignes:', lines.length);
             
-            // Ignorer la première ligne (en-têtes)
             const dataLines = lines.slice(1);
             
             const data = dataLines.map(line => {
-                // Parser CSV en gérant les guillemets
                 const values = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g);
                 if (!values || values.length < 8) return null;
                 
@@ -1069,12 +989,10 @@ function importClients() {
                 return;
             }
             
-            // Confirmer l'import
             if (!confirm(`Importer ${data.length} clients ?\n\n⚠️ ATTENTION : Ceci va REMPLACER COMPLÈTEMENT la base de données clients.`)) {
                 return;
             }
             
-            // Envoyer au serveur
             const token = getAuthToken();
             const importUrl = `${API_URL}/clients/import`;
             console.log('Envoi au serveur avec token:', !!token);
@@ -1127,7 +1045,6 @@ async function searchClient() {
         if (res.ok) {
             const client = await res.json();
             
-            // Remplir automatiquement les champs
             document.getElementById('lastName').value = client.name || '';
             document.getElementById('firstName').value = client.firstName || '';
             document.getElementById('birthDate').value = client.birthDate || '';

@@ -158,6 +158,7 @@ function setupLoginPage() {
 
 function handleLogin(e) {
     e.preventDefault();
+    document.body.classList.remove('guest-mode');
     const password = document.getElementById('loginPassword').value;
     const userName = document.getElementById('userName').value;
     
@@ -240,6 +241,7 @@ function logout() {
     IS_AUTHENTICATED = false;
     IS_GUEST = false;
     ANONYMIZE_ENABLED = false;
+
     showLoginPage(true);
     document.getElementById('loginPassword').value = '';
 }
@@ -363,7 +365,9 @@ function setupApp() {
     
     if (IS_GUEST) {
         applyGuestDefaults();
-    }
+    } else {
+        applyAdminDefaults();
+    };
     
     setInterval(() => {
         console.log('Rafraîchissement automatique...');
@@ -389,6 +393,26 @@ function applyGuestDefaults() {
         select.value = 'name';
     });
 }
+
+function applyAdminDefaults() {
+    CURRENT_FILTER = { NORD: 'all', SUD: 'all', PCA: 'all' };
+    
+    ['NORD', 'SUD', 'PCA'].forEach(zone => {
+        const filterSelect = document.getElementById(`filter-${zone}`);
+        if (filterSelect) {
+            filterSelect.value = 'occupied';
+            filterSelect.disabled = false;
+            filterSelect.style.opacity = '1.0';
+            filterSelect.style.cursor = 'pointer';
+        }
+    });
+    
+    document.querySelectorAll('select[onchange^="sortTable"]').forEach(select => {
+        select.value = 'name';
+    });
+}
+
+
 
 // ============ BACKUP ============
 function createBackup() {

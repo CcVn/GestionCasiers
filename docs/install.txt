@@ -33,6 +33,7 @@ Créez un fichier package.json à la racine avec ce contenu :
 
 B. Fichier server.js
 Créez un fichier server.js avec le contenu du backend (voir l'artifact "server.js - Backend Node.js avec Express et SQLite")
+
 C. Fichier .env
 Créez un fichier .env avec ce contenu :
 
@@ -41,6 +42,7 @@ NODE_ENV=development
 
 D. Fichier public/index.html
 Créez un dossier public et dedans un fichier index.html avec le contenu du frontend (voir l'artifact "Gestion des Casiers")
+
 4. Installer les dépendances
 
 bash

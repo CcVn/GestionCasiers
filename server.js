@@ -538,8 +538,8 @@ app.get('/api/search/:query', async (req, res) => {
     const query = '%' + req.params.query + '%';
     const lockers = await dbAll(
       `SELECT * FROM lockers 
-       WHERE name LIKE ? OR firstName LIKE ?
-       ORDER BY number ASC`,
+       WHERE name LIKE ? OR firstName LIKE ? OR CAST(code AS TEXT) LIKE ?
+       ORDER BY name ASC`,
       [query, query]
     );
     res.json(lockers);

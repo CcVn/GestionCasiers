@@ -1,6 +1,7 @@
 // Configuration
 let API_URL = 'http://localhost:5000/api';
 let DATA = [];
+let ZONES_CONFIG = []; // Variable globale pour stocker la config des zones
 let CURRENT_FILTER = { NORD: 'all', SUD: 'all', PCA: 'all' };
 let CURRENT_ZONE = 'NORD';
 let IS_AUTHENTICATED = false;
@@ -9,7 +10,11 @@ let IS_MOBILE = false;
 let AUTH_TOKEN = null;
 let ANONYMIZE_ENABLED = false;
 let USER_NAME = '';
-let DARK_MODE_SETTING = 'system';
+let DARK_MODE_SETTING = 'inactive'; //'system'
+let ADVANCED_RESEARCH = true;
+let EDITING_LOCKER_NUMBER = null; // Mémoriser le casier en cours d'édition
+
+// ============ TOKENS ============
 
 // Fonction pour récupérer le token
 function getAuthToken() {
@@ -31,7 +36,126 @@ function clearAuthToken() {
     sessionStorage.removeItem('auth_token');
 }
 
+// ============ CONFIG DES ZONES ============
+
+// Fonction pour charger la configuration des zones
+async function loadZonesConfig() {
+    try {
+        const response = await fetch(`${API_URL}/config/zones`);
+        const data = await response.json();
+        ZONES_CONFIG = data.zones;
+        
+        console.log('📋 Configuration des zones chargée:', ZONES_CONFIG);
+        return ZONES_CONFIG;
+    } catch (err) {
+        console.error('Erreur chargement config zones:', err);
+        // Fallback sur la config par défaut
+        ZONES_CONFIG = [
+            { name: 'NORD', count: 75, prefix: 'N' },
+            { name: 'SUD', count: 75, prefix: 'S' },
+            { name: 'PCA', count: 40, prefix: 'P' }
+        ];
+        return ZONES_CONFIG;
+    }
+}
+
+// Fonction pour générer les onglets dynamiquement
+function generateTabs() {
+    const tabsContainer = document.querySelector('.tabs');
+    if (!tabsContainer) return;
+    //const colors = (process.env.ZONE_COLORS || '#3b82f6,#10b981,#f59e0b,#ef4444').split(',');
+    //ajouter ça dans le button: style="--zone-color: ${colors[index] || '#667eea'}
+
+    tabsContainer.innerHTML = ZONES_CONFIG.map((zone, index) => `
+        <button class="tab-button ${index === 0 ? 'active' : ''}" data-zone="${zone.name}">
+            Zone ${zone.name}
+        </button>
+    `).join('');
+    
+    // Ajouter les event listeners
+    document.querySelectorAll('.tab-button').forEach(btn => {
+        btn.addEventListener('click', function() {
+            switchTab(this.dataset.zone);
+            loadData();
+        });
+    });
+}
+
+// Fonction pour générer les sections de contenu
+function generateContentSections() {
+    const container = document.getElementById('appContainer');
+    if (!container) return;
+    
+    // Trouver l'emplacement après les onglets
+    const tabsElement = container.querySelector('.tabs');
+    const footerElement = container.querySelector('.app-footer');
+    
+    // Supprimer les anciennes sections
+    const oldSections = container.querySelectorAll('.content-section');
+    oldSections.forEach(section => section.remove());
+    
+    // Générer les nouvelles sections
+    ZONES_CONFIG.forEach((zone, index) => {
+        const section = document.createElement('div');
+        section.id = `content-${zone.name}`;
+        section.className = `content-section ${index === 0 ? 'active' : ''}`;
+        
+        const firstNumber = `${zone.prefix}01`;
+        const lastNumber = `${zone.prefix}${String(zone.count).padStart(2, '0')}`;
+        
+        section.innerHTML = `
+            <div class="section-header">
+                <h2 style="font-size: 18px; font-weight: 600;">
+                    Zone ${zone.name} (${firstNumber} à ${lastNumber})
+                    <span id="counter-${zone.name}" class="zone-counter">0/${zone.count}</span>
+                </h2>
+                <div class="controls">
+                    <button class="btn-primary admin-only" onclick="openModal('${zone.name}')">➕ Attribuer</button>
+                    <select class="admin-only" onchange="filterTable('${zone.name}', this.value)" id="filter-${zone.name}">
+                        <option value="all">Tous</option>
+                        <option value="occupied">Occupés</option>
+                        <option value="empty">Vides</option>
+                        <option value="recoverable" class="admin-only">Récupérables</option>
+                    </select>
+                    <select onchange="sortTable('${zone.name}', this.value)">
+                        <option value="number">Trier par numéro</option>
+                        <option value="name">Trier par nom</option>
+                    </select>
+                    <button class="btn-secondary admin-only" onclick="printTable()">🖨️ Imprimer</button>
+                </div>
+            </div>
+            <div class="table-container">
+                <table id="table-${zone.name}">
+                    <thead id="thead-${zone.name}">
+                        <tr>
+                            <th>N° Casier</th>
+                            <th>Nom</th>
+                            <th>Prénom</th>
+                            <th>N°IPP</th>
+                            <th class="hide-mobile">DDN</th>
+                            <th class="hide-mobile admin-only">Statut</th>
+                            <th class="hide-mobile admin-only">Commentaire</th>
+                            <th class="hide-mobile admin-only">Actions</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tbody-${zone.name}"></tbody>
+                </table>
+            </div>
+        `;
+        
+        // Insérer avant le footer
+        container.insertBefore(section, footerElement);
+    });
+    
+    // Initialiser les filtres par défaut
+    CURRENT_FILTER = {};
+    ZONES_CONFIG.forEach(zone => {
+        CURRENT_FILTER[zone.name] = 'all';
+    });
+}
+
 // ============ UTILITAIRES D'ANONYMISATION ============
+
 function anonymizeName(name) {
     if (!ANONYMIZE_ENABLED || !name) return name;
     return name.substring(0, 3).toUpperCase();
@@ -43,6 +167,7 @@ function anonymizeFirstName(firstName) {
 }
 
 // ============ MODE SOMBRE ============
+
 function applyDarkMode(setting) {
     DARK_MODE_SETTING = setting || 'system';
     console.log('Application du mode sombre:', DARK_MODE_SETTING);
@@ -182,10 +307,12 @@ function handleLogin(e) {
             IS_AUTHENTICATED = true;
             IS_GUEST = false;
             USER_NAME = data.userName || '';
+            showAdminElements();
         } else {
             IS_AUTHENTICATED = false;
             IS_GUEST = true;
             USER_NAME = '';
+            hideAdminElements();
         }
         
         ANONYMIZE_ENABLED = data.anonymize || false;
@@ -219,6 +346,8 @@ function loginAsGuest() {
         ANONYMIZE_ENABLED = data.anonymize || false;
         applyDarkMode(data.darkMode || 'system');
         console.log('Anonymisation activée:', ANONYMIZE_ENABLED);
+
+        hideAdminElements();
         showLoginPage(false);
         updateAuthStatus();
         setupApp();
@@ -237,6 +366,28 @@ function logout() {
         }).catch(err => console.error('Erreur logout:', err));
     }
     
+    // Réinitialisation des filtres avec zones dynamiques
+    if (ZONES_CONFIG && ZONES_CONFIG.length > 0) {
+        CURRENT_FILTER = {};
+        ZONES_CONFIG.forEach(zone => {
+            CURRENT_FILTER[zone.name] = 'all';
+        });
+        
+        // Réactivation des éléments SELECT du filtre
+        ZONES_CONFIG.forEach(zone => {
+            const filterSelect = document.getElementById(`filter-${zone.name}`);
+            if (filterSelect) {
+                filterSelect.disabled = false;
+                filterSelect.value = 'all';
+                filterSelect.style.opacity = '1';
+                filterSelect.style.cursor = 'pointer';
+            }
+        });
+    }
+    
+    // Réafficher tous les éléments admin
+    showAdminElements();
+
     clearAuthToken();
     IS_AUTHENTICATED = false;
     IS_GUEST = false;
@@ -278,7 +429,7 @@ function updateAuthStatus() {
         }
     }
     
-    updateImportExportButtons();
+    //updateImportExportButtons();
 }
 
 function updateImportExportButtons() {
@@ -289,14 +440,17 @@ function updateImportExportButtons() {
         const text = btn.textContent.toLowerCase();
         console.log('Bouton:', text);
         
-        if (text.includes('importer') || text.includes('backup')) {
+        if (text.includes('import') || text.includes('backup')|| 
+            text.includes('json') || text.includes('csv') ) {
             if (IS_GUEST) {
                 btn.disabled = true;
                 btn.style.opacity = '0.4';
                 btn.style.cursor = 'not-allowed';
                 btn.style.pointerEvents = 'none';
                 console.log('Bouton désactivé:', text);
+                //btn.style.display = 'none';
             } else {
+                //btn.style.display = '';
                 btn.disabled = false;
                 btn.style.opacity = '1';
                 btn.style.cursor = 'pointer';
@@ -307,23 +461,25 @@ function updateImportExportButtons() {
     });
     
     const newLockerButtons = document.querySelectorAll('.controls .btn-primary');
-    console.log('Mise à jour des boutons "Attribuer", trouvés:', newLockerButtons.length);
+    console.log('Mise à jour des boutons "Attribuer" et "Imprimés", trouvés:', newLockerButtons.length);
     
     newLockerButtons.forEach(btn => {
         const text = btn.textContent.toLowerCase();
-        if (text.includes('attribuer')) {
+        if (text.includes('attribuer') || text.includes('imprimer') ) {
             if (IS_GUEST) {
                 btn.disabled = true;
                 btn.style.opacity = '0.4';
                 btn.style.cursor = 'not-allowed';
                 btn.style.pointerEvents = 'none';
-                console.log('Bouton "Attribuer" désactivé');
+                console.log('Boutons "Attribuer & Imprimer" désactivé');
+                //btn.style.display = 'none';
             } else {
+                //btn.style.display = '';
                 btn.disabled = false;
                 btn.style.opacity = '1';
                 btn.style.cursor = 'pointer';
                 btn.style.pointerEvents = 'auto';
-                console.log('Bouton "Attribuer" activé');
+                console.log('Boutons "Attribuer & Imprimer" activé');
             }
         }
     });
@@ -337,50 +493,184 @@ function isEditAllowed() {
     return true;
 }
 
+// ============================================
+// Masquer tous les éléments admin
+// ============================================
+
+function hideAdminElements() {
+    console.log('🙈 Masquage des éléments admin en mode guest');
+    
+    // 1. Masquer tous les boutons d'import/export/backup
+    const headerButtons = document.querySelectorAll('.search-bar button');
+    headerButtons.forEach(btn => {
+        const text = btn.textContent.toLowerCase();
+        if ( text.includes('import') || text.includes('backup') || 
+            text.includes('json') || text.includes('csv') ) {
+            btn.style.display = 'none';
+        }
+    });
+    
+    // 2. Masquer tous les boutons "Attribuer"
+    const assignButtons = document.querySelectorAll('.controls .btn-primary');
+    assignButtons.forEach(btn => {
+        const text = btn.textContent.toLowerCase();
+        if (text.includes('attribuer') || text.includes('imprimer')) {
+            btn.style.display = 'none';
+        }
+    });
+    
+    // 3. Masquer tous les éléments avec la classe .admin-only
+    const adminOnlyElements = document.querySelectorAll('.admin-only');
+    console.log(`   Éléments .admin-only trouvés: ${adminOnlyElements.length}`);
+    adminOnlyElements.forEach(el => {
+        el.style.display = 'none';
+    });
+    
+    // 4. Masquer les options "Récupérables" dans les filtres
+    const filterSelects = document.querySelectorAll('[id^="filter-"]');
+    filterSelects.forEach(select => {
+        const recoverableOption = Array.from(select.options).find(
+            opt => opt.value === 'recoverable'
+        );
+        if (recoverableOption) {
+            recoverableOption.style.display = 'none';
+        }
+    });
+    
+    console.log('✓ Éléments admin masqués');
+}
+
+// ============================================
+// Réafficher les éléments admin
+// ============================================
+
+function showAdminElements() {
+    console.log('👁️ Affichage des éléments admin');
+    
+    // 1. Réafficher tous les boutons d'import/export/backup
+    const headerButtons = document.querySelectorAll('.search-bar button');
+    headerButtons.forEach(btn => {
+        btn.style.display = '';
+    });
+    
+    // 2. Réafficher tous les boutons "Attribuer"
+    const assignButtons = document.querySelectorAll('.controls .btn-primary');
+    assignButtons.forEach(btn => {
+        btn.style.display = '';
+    });
+    
+    // 3. Réafficher tous les éléments avec la classe .admin-only
+    const adminOnlyElements = document.querySelectorAll('.admin-only');
+    adminOnlyElements.forEach(el => {
+        el.style.display = '';
+    });
+    
+    // 4. Réafficher les options "Récupérables" dans les filtres
+    const filterSelects = document.querySelectorAll('[id^="filter-"]');
+    filterSelects.forEach(select => {
+        const recoverableOption = Array.from(select.options).find(
+            opt => opt.value === 'recoverable'
+        );
+        if (recoverableOption) {
+            recoverableOption.style.display = '';
+        }
+    });
+    
+    console.log('✓ Éléments admin réaffichés');
+}
+
 // ============ CONFIGURATION API ============
-function setupApp() {
-    console.log('Setup de l\'application...');
+
+async function setupApp() {
+    console.log('🚀 Setup de l\'application...');
     console.log('API_URL actuelle:', API_URL);
     console.log('Token présent:', !!getAuthToken());
     
-    document.querySelectorAll('.tab-button').forEach(btn => {
-        btn.addEventListener('click', function() {
-            switchTab(this.dataset.zone);
-            loadData();
+    try {
+        // 🔹 ÉTAPE 1 : Charger la configuration des zones
+        console.log('1️⃣ Chargement configuration zones...');
+        await loadZonesConfig();
+        console.log('✓ Config zones chargée:', ZONES_CONFIG);
+        
+        // 🔹 ÉTAPE 2 : Générer l'interface
+        console.log('2️⃣ Génération interface...');
+        generateTabs();
+        generateContentSections();
+        console.log('✓ Interface générée');
+        
+        // 🔹 ÉTAPE 3 : Initialiser les filtres
+        console.log('3️⃣ Initialisation filtres...');
+        CURRENT_FILTER = {};
+        ZONES_CONFIG.forEach(zone => {
+            CURRENT_FILTER[zone.name] = 'all';
         });
-    });
-
-    document.getElementById('globalSearch').addEventListener('input', function(e) {
-        if (e.target.value.trim()) {
-            searchLockers(e.target.value);
-        } else {
-            renderAllTables();
+        console.log('✓ Filtres initialisés:', CURRENT_FILTER);
+        
+        // 🔹 ÉTAPE 4 : Event listeners
+        console.log('4️⃣ Event listeners...');
+        
+        const searchInput = document.getElementById('globalSearch');
+        if (searchInput) {
+            searchInput.addEventListener('input', function(e) {
+                if (e.target.value.trim()) {
+                    searchLockers(e.target.value);
+                } else {
+                    renderAllTables();
+                }
+            });
         }
-    });
-
-    document.getElementById('lockerForm').addEventListener('submit', handleFormSubmit);
-
-    loadData();
-    checkServerStatus();
-    
-    if (IS_GUEST) {
-        applyGuestDefaults();
-    } else {
-        applyAdminDefaults();
-    };
-    
-    setInterval(() => {
-        console.log('Rafraîchissement automatique...');
+        
+        const form = document.getElementById('lockerForm');
+        if (form) {
+            form.addEventListener('submit', handleFormSubmit);
+        }
+        
+        console.log('✓ Event listeners installés');
+        
+        // 🔹 ÉTAPE 5 : Charger les données
+        console.log('5️⃣ Chargement données...');
         loadData();
+        
+        // 🔹 ÉTAPE 6 : Vérifier serveur
+        console.log('6️⃣ Vérification serveur...');
         checkServerStatus();
-    }, 60000);
+        
+        // 🔹 ÉTAPE 7 : Appliquer mode guest si nécessaire
+        if (IS_GUEST) {
+            console.log('7️⃣ Application mode guest...');
+            applyGuestDefaults();
+        }
+        
+        // 🔹 ÉTAPE 8 : Rafraîchissement automatique
+        console.log('8️⃣ Démarrage rafraîchissement auto...');
+        setInterval(() => {
+            console.log('⟳ Rafraîchissement automatique...');
+            loadData();
+            checkServerStatus();
+        }, 60000);
+        
+        console.log('✅ Application initialisée avec succès');
+        
+    } catch (err) {
+        console.error('❌ Erreur lors du setup:', err);
+        alert('Erreur lors de l\'initialisation de l\'application: ' + err.message);
+    }
 }
 
 function applyGuestDefaults() {
-    CURRENT_FILTER = { NORD: 'occupied', SUD: 'occupied', PCA: 'occupied' };
+    console.log('👁️ Application mode guest...');
     
-    ['NORD', 'SUD', 'PCA'].forEach(zone => {
-        const filterSelect = document.getElementById(`filter-${zone}`);
+    if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
+        console.warn('⚠️ ZONES_CONFIG non chargée');
+        return;
+    }
+    
+    // Désactiver les filtres et mettre sur "occupied"
+    CURRENT_FILTER = {};
+    ZONES_CONFIG.forEach(zone => {
+        CURRENT_FILTER[zone.name] = 'occupied';
+        
+        const filterSelect = document.getElementById(`filter-${zone.name}`);
         if (filterSelect) {
             filterSelect.value = 'occupied';
             filterSelect.disabled = true;
@@ -389,16 +679,31 @@ function applyGuestDefaults() {
         }
     });
     
+    // Tri par nom
     document.querySelectorAll('select[onchange^="sortTable"]').forEach(select => {
         select.value = 'name';
     });
+    
+    // Masquer les éléments admin
+    hideAdminElements();
+    
+    console.log('✓ Mode guest appliqué');
 }
 
 function applyAdminDefaults() {
-    CURRENT_FILTER = { NORD: 'all', SUD: 'all', PCA: 'all' };
+    console.log('👁️ Application mode guest...');
     
-    ['NORD', 'SUD', 'PCA'].forEach(zone => {
-        const filterSelect = document.getElementById(`filter-${zone}`);
+    if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
+        console.warn('⚠️ ZONES_CONFIG non chargée');
+        return;
+    }
+    
+    // Désactiver les filtres et mettre sur "occupied"
+    CURRENT_FILTER = {};
+    ZONES_CONFIG.forEach(zone => {
+        CURRENT_FILTER[zone.name] = 'all';
+        
+        const filterSelect = document.getElementById(`filter-${zone.name}`);
         if (filterSelect) {
             filterSelect.value = 'occupied';
             filterSelect.disabled = false;
@@ -407,14 +712,19 @@ function applyAdminDefaults() {
         }
     });
     
+    // Tri par nom
     document.querySelectorAll('select[onchange^="sortTable"]').forEach(select => {
         select.value = 'name';
     });
+    
+    // Démasquer les éléments d'administration
+    showAdminElements();
+    
+    console.log('✓ Mode guest appliqué');
 }
 
-
-
 // ============ BACKUP ============
+
 function createBackup() {
     if (!isEditAllowed()) return;
     
@@ -440,6 +750,7 @@ function createBackup() {
 }
 
 // ============ SERVEUR ============
+
 function checkServerStatus() {
     fetch(`${API_URL}/health`)
         .then(res => {
@@ -465,7 +776,9 @@ function loadData() {
         })
         .then(data => {
             DATA = data;
-            console.log('Données chargées:', DATA.length);
+            console.log('📦 Données chargées:', DATA.length);
+            console.log('📋 ZONES_CONFIG:', ZONES_CONFIG);
+            
             renderAllTables();
             updateCounters();
         })
@@ -476,23 +789,40 @@ function loadData() {
 }
 
 // ============ COMPTEURS ============
+
 function updateCounters() {
-    const zones = {
-        'NORD': { total: 75, occupied: 0 },
-        'SUD': { total: 75, occupied: 0 },
-        'PCA': { total: 40, occupied: 0 }
-    };
+    if (!DATA || DATA.length === 0) {
+        console.log('⚠️ Pas de données pour les compteurs');
+        return;
+    }
     
+    if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
+        console.log('⚠️ ZONES_CONFIG non chargée');
+        return;
+    }
+    
+    const zones = {};
+    
+    // Initialiser pour chaque zone configurée
+    ZONES_CONFIG.forEach(zoneConfig => {
+        zones[zoneConfig.name] = {
+            total: zoneConfig.count,
+            occupied: 0
+        };
+    });
+    
+    // Compter les occupés
     DATA.forEach(locker => {
         if (locker.occupied && zones[locker.zone]) {
             zones[locker.zone].occupied++;
         }
     });
     
-    Object.keys(zones).forEach(zone => {
-        const counter = document.getElementById(`counter-${zone}`);
+    // Mettre à jour l'affichage
+    Object.keys(zones).forEach(zoneName => {
+        const counter = document.getElementById(`counter-${zoneName}`);
         if (counter) {
-            const { occupied, total } = zones[zone];
+            const { occupied, total } = zones[zoneName];
             counter.textContent = `${occupied}/${total}`;
             
             counter.classList.remove('full', 'warning');
@@ -506,6 +836,7 @@ function updateCounters() {
 }
 
 // ============ NAVIGATION ============
+
 function switchTab(zone) {
     CURRENT_ZONE = zone;
     document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
@@ -516,10 +847,26 @@ function switchTab(zone) {
 }
 
 // ============ AFFICHAGE TABLEAU ============
+
 function renderAllTables() {
-    renderTable('NORD');
-    renderTable('SUD');
-    renderTable('PCA');
+    if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
+        console.log('⚠️ ZONES_CONFIG non chargée');
+        return;
+    }
+    
+    ZONES_CONFIG.forEach(zone => {
+        renderTable(zone.name);
+    });
+}
+
+// Modifier le modal pour supporter les zones dynamiques
+function populateZoneSelect() {
+    const zoneSelect = document.getElementById('zone');
+    if (!zoneSelect) return;
+    
+    zoneSelect.innerHTML = ZONES_CONFIG.map(zone => 
+        `<option value="${zone.name}">${zone.name}</option>`
+    ).join('');
 }
 
 function renderTable(zone) {
@@ -553,7 +900,19 @@ function renderTable(zone) {
         }
     };
     
+    // MODE GUEST - Sans commentaire
     if (IS_GUEST) {
+        tbody.innerHTML = lockers.map(locker => `
+            <tr>
+                <td><strong>${locker.number}</strong></td>
+                <td>${locker.occupied ? anonymizeName(locker.name) : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? anonymizeFirstName(locker.firstName) : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
+                <td class="hide-mobile">${locker.occupied ? locker.birthDate : '<span class="cell-empty">—</span>'}</td>
+            </tr>
+        `).join('');
+    } else {
+        // MODE ADMIN - Avec commentaire
         tbody.innerHTML = lockers.map(locker => `
             <tr>
                 <td><strong>${locker.number}</strong></td>
@@ -561,17 +920,8 @@ function renderTable(zone) {
                 <td>${locker.occupied ? anonymizeFirstName(locker.firstName) : '<span class="cell-empty">—</span>'}</td>
                 <td class="hide-mobile">${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
                 <td class="hide-mobile">${locker.occupied ? locker.birthDate : '<span class="cell-empty">—</span>'}</td>
-            </tr>
-        `).join('');
-    } else {
-        tbody.innerHTML = lockers.map(locker => `
-            <tr>
-                <td><strong>${locker.number}</strong></td>
-                <td>${locker.occupied ? anonymizeName(locker.name) : '<span class="cell-empty">—</span>'}</td>
-                <td class="hide-mobile">${locker.occupied ? anonymizeFirstName(locker.firstName) : '<span class="cell-empty">—</span>'}</td>
-                <td class="hide-mobile">${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
-                <td>${locker.occupied ? locker.birthDate : '<span class="cell-empty">—</span>'}</td>
-                <td style="text-align: center;">${getStatus(locker)}</td>
+                <td class="hide-mobile" style="text-align: center;">${getStatus(locker)}</td>
+                <td class="hide-mobile">${locker.comment || '<span class="cell-empty">—</span>'}</td>
                 <td class="hide-mobile">
                     <div class="menu-dot">
                         <button class="btn-secondary" onclick="toggleDropdown(event)">⋮</button>
@@ -604,15 +954,71 @@ function sortTable(zone, value) {
 }
 
 function searchLockers(query) {
-    const results = DATA.filter(l => 
-        (l.name + ' ' + l.firstName).toLowerCase().includes(query.toLowerCase())
-    );
+    if (!query || query.trim() === '') {
+        renderAllTables();
+        return;
+    }
     
-    if (results.length > 0) {
-        const zone = results[0].zone;
-        switchTab(zone);
+    if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
+        console.log('⚠️ ZONES_CONFIG non chargée');
+        return;
+    }
+    
+    const searchTerm = query.toLowerCase().trim();
+    
+    // Recherche dans nom, prénom, code IPP
+    const results = DATA.filter(l => {
+        const searchText = (l.name + ' ' + l.firstName + ' ' + l.code).toLowerCase();
+        return searchText.includes(searchTerm);
+    });
+    
+    console.log(`🔍 Recherche "${query}" : ${results.length} résultat(s)`);
+    
+    if (results.length === 0) {
+        // Afficher "Aucun résultat" dans toutes les zones
+        ZONES_CONFIG.forEach(zone => {
+            const tbody = document.getElementById(`tbody-${zone.name}`);
+            if (tbody) {
+                const colspan = IS_GUEST ? '5' : '8';
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="${colspan}" style="text-align: center; padding: 30px; color: var(--text-tertiary);">
+                            Aucun résultat pour "${query}"
+                        </td>
+                    </tr>
+                `;
+            }
+        });
+        return;
+    }
+    
+    // Grouper les résultats par zone
+    const byZone = {};
+    ZONES_CONFIG.forEach(zone => {
+        byZone[zone.name] = results.filter(l => l.zone === zone.name);
+    });
+    
+    // Afficher les résultats dans chaque zone
+    ZONES_CONFIG.forEach(zone => {
+        const tbody = document.getElementById(`tbody-${zone.name}`);
+        if (!tbody) {
+            console.warn(`tbody-${zone.name} non trouvé`);
+            return;
+        }
         
-        const tbody = document.getElementById(`tbody-${zone}`);
+        const zoneResults = byZone[zone.name];
+        const colspan = IS_GUEST ? '5' : '8';
+        
+        if (zoneResults.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="${colspan}" style="text-align: center; padding: 20px; color: var(--text-tertiary); font-style: italic;">
+                        Aucun résultat dans cette zone
+                    </td>
+                </tr>
+            `;
+            return;
+        }
         
         const getStatus = (locker) => {
             if (!locker.occupied) {
@@ -624,25 +1030,28 @@ function searchLockers(query) {
             }
         };
         
+        // MODE GUEST
         if (IS_GUEST) {
-            tbody.innerHTML = results.map(locker => `
+            tbody.innerHTML = zoneResults.map(locker => `
                 <tr>
                     <td><strong>${locker.number}</strong></td>
                     <td>${locker.occupied ? anonymizeName(locker.name) : '<span class="cell-empty">—</span>'}</td>
                     <td>${locker.occupied ? anonymizeFirstName(locker.firstName) : '<span class="cell-empty">—</span>'}</td>
-                    <td class="hide-mobile">${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
+                    <td>${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
                     <td class="hide-mobile">${locker.occupied ? locker.birthDate : '<span class="cell-empty">—</span>'}</td>
                 </tr>
             `).join('');
         } else {
-            tbody.innerHTML = results.map(locker => `
+            // MODE ADMIN
+            tbody.innerHTML = zoneResults.map(locker => `
                 <tr>
                     <td><strong>${locker.number}</strong></td>
                     <td>${locker.occupied ? anonymizeName(locker.name) : '<span class="cell-empty">—</span>'}</td>
-                    <td class="hide-mobile">${locker.occupied ? anonymizeFirstName(locker.firstName) : '<span class="cell-empty">—</span>'}</td>
-                    <td class="hide-mobile">${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
-                    <td>${locker.occupied ? locker.birthDate : '<span class="cell-empty">—</span>'}</td>
+                    <td>${locker.occupied ? anonymizeFirstName(locker.firstName) : '<span class="cell-empty">—</span>'}</td>
+                    <td>${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
+                    <td class="hide-mobile">${locker.occupied ? locker.birthDate : '<span class="cell-empty">—</span>'}</td>
                     <td style="text-align: center;">${getStatus(locker)}</td>
+                    <td class="hide-mobile">${locker.comment || '<span class="cell-empty">—</span>'}</td>
                     <td class="hide-mobile">
                         <div class="menu-dot">
                             <button class="btn-secondary" onclick="toggleDropdown(event)">⋮</button>
@@ -655,13 +1064,123 @@ function searchLockers(query) {
                 </tr>
             `).join('');
         }
+    });
+}
+
+// ============================================
+//   Recherche améliorée avec highlighting
+// ============================================
+
+function searchLockersAdvanced(query) {
+    if (!query || query.trim() === '') {
+        renderAllTables();
+        return;
+    }
+    
+    const searchTerm = query.toLowerCase().trim();
+    
+    // Recherche dans nom, prénom, code IPP
+    const results = DATA.filter(l => {
+        const searchText = (l.name + ' ' + l.firstName + ' ' + l.code).toLowerCase();
+        return searchText.includes(searchTerm);
+    });
+    
+    console.log(`🔍 Recherche "${query}" : ${results.length} résultat(s)`);
+    
+    if (results.length === 0) {
+        // Afficher "Aucun résultat" dans toutes les zones
+        ZONES_CONFIG.forEach(zone => {
+            const tbody = document.getElementById(`tbody-${zone}`);
+            const colspan = IS_GUEST ? '5' : '8';
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="${colspan}" style="text-align: center; padding: 30px; color: var(--text-tertiary);">
+                        Aucun résultat pour "${query}"<br><br>                                     
+                             ¯\\_(ツ)_/¯
+                    </td>
+                </tr>
+            `;
+        });
+        return;
+    }
+    
+    // Basculer sur la zone du PREMIER résultat (comme avant)
+    const firstZone = results[0].zone;
+    switchTab(firstZone);
+    
+    // Vider les autres zones
+    ZONES_CONFIG.forEach(zone => {
+        if (zone !== firstZone) {
+            const tbody = document.getElementById(`tbody-${zone}`);
+            tbody.innerHTML = '';
+        }
+    });
+    
+    // Afficher TOUS les résultats dans la première zone (table unifiée)
+    const tbody = document.getElementById(`tbody-${firstZone}`);
+    
+    // Fonction pour surligner le terme recherché
+    const highlight = (text, search) => {
+        if (!text || !search) return text;
+        const regex = new RegExp(`(${search})`, 'gi');
+        return text.replace(regex, '<mark style="background: #fef3c7; padding: 2px 4px; border-radius: 3px; font-weight: 600;">$1</mark>');
+    };
+    
+    const getStatus = (locker) => {
+        if (!locker.occupied) {
+            return '<span class="status-empty" title="Libre"></span>';
+        } else if (locker.recoverable == 1 || locker.recoverable === true) {
+            return '<span class="status-recoverable" title="Récupérable"></span>';
+        } else {
+            return '<span class="status-occupied" title="Occupé"></span>';
+        }
+    };
+    
+    // MODE GUEST
+    if (IS_GUEST) {
+        tbody.innerHTML = results.map(locker => `
+            <tr>
+                <td><strong>${locker.number}</strong></td>
+                <td>${locker.occupied ? highlight(anonymizeName(locker.name), searchTerm) : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? highlight(anonymizeFirstName(locker.firstName), searchTerm) : '<span class="cell-empty">—</span>'}</td>
+                <td class="hide-mobile">${locker.occupied ? highlight(locker.code, searchTerm) : '<span class="cell-empty">—</span>'}</td>
+                <td class="hide-mobile">${locker.occupied ? locker.birthDate : '<span class="cell-empty">—</span>'}</td>
+            </tr>
+        `).join('');
+    } else {
+        // MODE ADMIN
+        tbody.innerHTML = results.map(locker => `
+            <tr>
+                <td><strong>${locker.number}</strong></td>
+                <td>${locker.occupied ? highlight(anonymizeName(locker.name), searchTerm) : '<span class="cell-empty">—</span>'}</td>
+                <td class="hide-mobile">${locker.occupied ? highlight(anonymizeFirstName(locker.firstName), searchTerm) : '<span class="cell-empty">—</span>'}</td>
+                <td class="hide-mobile">${locker.occupied ? highlight(locker.code, searchTerm) : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? locker.birthDate : '<span class="cell-empty">—</span>'}</td>
+                <td style="text-align: center;">${getStatus(locker)}</td>
+                <td class="hide-mobile">${locker.comment ? highlight(locker.comment, searchTerm) : '<span class="cell-empty">—</span>'}</td>
+                <td class="hide-mobile">
+                    <div class="menu-dot">
+                        <button class="btn-secondary" onclick="toggleDropdown(event)">⋮</button>
+                        <div class="dropdown-menu">
+                            <button onclick="openModalEdit('${locker.number}')">Modifier</button>
+                            <button class="btn-delete" onclick="releaseLocker('${locker.number}')">Libérer</button>
+                        </div>
+                    </div>
+                </td>
+            </tr>
+        `).join('');
     }
 }
 
 // ============ MODAL ============
 function openModal(zone) {
     if (!isEditAllowed()) return;
+
+    // Réinitialiser (pas d'édition)
+    EDITING_LOCKER_NUMBER = null;
     
+    populateZoneSelect();
+
     document.getElementById('zone').value = zone;
     document.getElementById('modalTitle').textContent = 'Attribuer un casier';
     document.getElementById('lastName').value = '';
@@ -687,6 +1206,9 @@ function openModalEdit(lockerNumber) {
     
     const locker = DATA.find(l => l.number === lockerNumber);
     if (!locker) return;
+    
+    //Mémoriser le numéro original
+    EDITING_LOCKER_NUMBER = lockerNumber;
     
     document.getElementById('zone').value = locker.zone;
     document.getElementById('modalTitle').textContent = `Modifier ${locker.number}`;
@@ -728,49 +1250,85 @@ function closeModal() {
 }
 
 // ============ FORMULAIRE ============
-function handleFormSubmit(e) {
+
+async function handleFormSubmit(e) {
     e.preventDefault();
     
-    const lockerNumber = document.getElementById('lockerNumber').value;
+    const newLockerNumber = document.getElementById('lockerNumber').value;
     const zone = document.getElementById('zone').value;
     const recoverable = document.getElementById('recoverable').checked;
     const comment = document.getElementById('comment').value;
     const token = getAuthToken();
     
-    fetch(`${API_URL}/lockers`, {
-        method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
-        },
-        body: JSON.stringify({
-            number: lockerNumber,
-            zone: zone,
-            name: document.getElementById('lastName').value,
-            firstName: document.getElementById('firstName').value,
-            code: document.getElementById('code').value,
-            birthDate: document.getElementById('birthDate').value,
-            comment: comment,
-            recoverable: recoverable
-        })
-    })
-    .then(res => {
-        if (!res.ok) throw new Error('Erreur ' + res.status);
-        return res.json();
-    })
-    .then(data => {
-        closeModal();
-        loadData();
+    // 🔹 NOUVEAU : Détecter si le numéro de casier a changé
+    const isLockerChanged = EDITING_LOCKER_NUMBER && EDITING_LOCKER_NUMBER !== newLockerNumber;
+    
+    if (isLockerChanged) {
+        // Afficher une popup de confirmation
+        const oldNumber = EDITING_LOCKER_NUMBER;
+        const patientName = document.getElementById('lastName').value + ' ' + document.getElementById('firstName').value;
         
-        if (data.ippValid === false) {
-            showStatus('⚠️ Casier enregistré mais N°IPP non trouvé dans la base clients (marqué récupérable)', 'error');
+        const confirmMessage = `⚠️ CHANGEMENT DE CASIER\n\n` +
+            `Patient : ${patientName}\n` +
+            `Ancien casier : ${oldNumber}\n` +
+            `Nouveau casier : ${newLockerNumber}\n\n` +
+            `Voulez-vous libérer automatiquement l'ancien casier ${oldNumber} ?`;
+        
+        const shouldReleaseOld = confirm(confirmMessage);
+        
+        if (shouldReleaseOld) {
+            // Enregistrer le nouveau casier d'abord
+            try {
+                await saveLocker(newLockerNumber, zone, recoverable, comment, token);
+                
+                // Puis libérer l'ancien casier
+                await releaseLockerSilent(oldNumber, token);
+                
+                closeModal();
+                loadData();
+                showStatus(`✓ ${patientName} déplacé de ${oldNumber} vers ${newLockerNumber}`, 'success');
+            } catch (err) {
+                showStatus('Erreur lors du déplacement: ' + err.message, 'error');
+            }
         } else {
-            showStatus('✓ Casier enregistré', 'success');
+            // L'utilisateur ne veut pas libérer l'ancien, juste créer le nouveau
+            const confirmKeepOld = confirm(
+                `L'ancien casier ${oldNumber} restera occupé.\n` +
+                `Voulez-vous continuer ?`
+            );
+            
+            if (confirmKeepOld) {
+                try {
+                    await saveLocker(newLockerNumber, zone, recoverable, comment, token);
+                    closeModal();
+                    loadData();
+                    showStatus(`✓ Nouveau casier ${newLockerNumber} créé (${oldNumber} toujours occupé)`, 'success');
+                } catch (err) {
+                    showStatus('Erreur: ' + err.message, 'error');
+                }
+            }
+            // Sinon, on ne fait rien (l'utilisateur annule tout)
         }
-    })
-    .catch(err => {
-        showStatus('Erreur: ' + err.message, 'error');
-    });
+    } else {
+        // Pas de changement de numéro, comportement normal
+        try {
+            await saveLocker(newLockerNumber, zone, recoverable, comment, token);
+            closeModal();
+            loadData();
+            
+            // Vérifier si l'IPP était valide
+            const result = await fetch(`${API_URL}/lockers/${newLockerNumber}`);
+            const data = await result.json();
+            
+            if (data.ippValid === false) {
+                showStatus('⚠️ Casier enregistré mais N°IPP non trouvé dans la base clients (marqué récupérable)', 'error');
+            } else {
+                showStatus('✓ Casier enregistré', 'success');
+            }
+        } catch (err) {
+            showStatus('Erreur: ' + err.message, 'error');
+        }
+    }
 }
 
 function releaseLocker(lockerNumber) {
@@ -792,6 +1350,47 @@ function releaseLocker(lockerNumber) {
     .catch(err => {
         showStatus('Erreur: ' + err.message, 'error');
     });
+}
+
+// FONCTION HELPER : Enregistrer un casier (extraction du code existant)
+async function saveLocker(lockerNumber, zone, recoverable, comment, token) {
+    const response = await fetch(`${API_URL}/lockers`, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`
+        },
+        body: JSON.stringify({
+            number: lockerNumber,
+            zone: zone,
+            name: document.getElementById('lastName').value,
+            firstName: document.getElementById('firstName').value,
+            code: document.getElementById('code').value,
+            birthDate: document.getElementById('birthDate').value,
+            comment: comment,
+            recoverable: recoverable
+        })
+    });
+    
+    if (!response.ok) {
+        throw new Error('Erreur ' + response.status);
+    }
+    
+    return response.json();
+}
+
+// FONCTION HELPER : Libérer un casier sans message
+async function releaseLockerSilent(lockerNumber, token) {
+    const response = await fetch(`${API_URL}/lockers/${lockerNumber}`, { 
+        method: 'DELETE',
+        headers: { 'Authorization': `Bearer ${token}` }
+    });
+    
+    if (!response.ok) {
+        throw new Error('Erreur libération casier ' + lockerNumber);
+    }
+    
+    return response.json();
 }
 
 function showStatus(msg, type) {
@@ -981,69 +1580,48 @@ function importClients() {
         if (!file) return;
         
         try {
-            console.log('Lecture du fichier clients...');
+            console.log('📂 Lecture du fichier clients...');
             const text = await file.text();
-            const lines = text.split('\n').filter(line => line.trim());
             
-            console.log('Nombre de lignes:', lines.length);
+            // Récupérer le format
+            const configResponse = await fetch(`${API_URL}/config/import-format`);
+            const config = await configResponse.json();
+            const formatName = config.clientImportFormat || 'LEGACY';
             
-            const dataLines = lines.slice(1);
+            console.log(`📋 Format: ${formatName}`);
             
-            const data = dataLines.map(line => {
-                const values = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g);
-                if (!values || values.length < 8) return null;
-                
-                return {
-                    ipp: values[0].replace(/"/g, '').trim(),
-                    name: values[1].replace(/"/g, '').trim(),
-                    firstName: values[2].replace(/"/g, '').trim(),
-                    birthName: values[3].replace(/"/g, '').trim(),
-                    birthDate: values[4].replace(/"/g, '').trim(),
-                    sex: values[5].replace(/"/g, '').trim(),
-                    zone: values[6].replace(/"/g, '').trim(),
-                    entryDate: values[7].replace(/"/g, '').trim()
-                };
-            }).filter(item => item !== null && item.ipp);
-            
-            console.log('Clients à importer:', data.length);
-            console.log('Exemple premier client:', data[0]);
-            
-            if (data.length === 0) {
-                alert('Aucune donnée valide trouvée dans le fichier CSV');
-                return;
-            }
-            
-            if (!confirm(`Importer ${data.length} clients ?\n\n⚠️ ATTENTION : Ceci va REMPLACER COMPLÈTEMENT la base de données clients.`)) {
-                return;
-            }
-            
+            //  ENVOYER LE CONTENU BRUT au serveur
             const token = getAuthToken();
-            const importUrl = `${API_URL}/clients/import`;
-            console.log('Envoi au serveur avec token:', !!token);
-            console.log('URL complète:', importUrl);
-            
-            const res = await fetch(importUrl, {
+            const res = await fetch(`${API_URL}/clients/import`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${token}`
                 },
-                body: JSON.stringify({ data: data })
+                body: JSON.stringify({ 
+                    rawContent: text,  // Contenu brut
+                    format: formatName
+                })
             });
-            
-            console.log('Réponse serveur:', res.status);
             
             if (res.ok) {
                 const result = await res.json();
-                console.log('Résultat import:', result);
-                alert(`Import clients terminé !\n\n✓ Importés : ${result.imported}\n✗ Erreurs : ${result.errors}\nTotal : ${result.total}`);
+                let message = `Import clients terminé !\n\n`;
+                message += `✓ Importés : ${result.imported}\n`;
+                if (result.filtered > 0) {
+                    message += `🔍 Filtrés : ${result.filtered}\n`;
+                }
+                if (result.errors > 0) {
+                    message += `✗ Erreurs : ${result.errors}\n`;
+                }
+                message += `Total : ${result.total}`;
+                alert(message);
             } else if (res.status === 401) {
                 alert('Session expirée. Veuillez vous reconnecter.');
                 logout();
             } else {
-                const errorText = await res.text();
-                console.error('Erreur serveur:', errorText);
-                throw new Error('Erreur serveur: ' + res.status);
+                const errorData = await res.json();
+                throw new Error(errorData.error || 'Erreur serveur');
             }
         } catch (err) {
             alert('Erreur lors de l\'import clients : ' + err.message);
@@ -1086,6 +1664,19 @@ async function searchClient() {
 }
 
 // ============ UTILITAIRES ============
+// Fonction debounce pour éviter trop d'appels
+function debounce(func, wait) {
+    let timeout;
+    return function executedFunction(...args) {
+        const later = () => {
+            clearTimeout(timeout);
+            func(...args);
+        };
+        clearTimeout(timeout);
+        timeout = setTimeout(later, wait);
+    };
+}
+
 function printTable() {
     window.print();
 }
@@ -1102,3 +1693,32 @@ function toggleDropdown(e) {
 document.addEventListener('click', function() {
     document.querySelectorAll('.dropdown-menu.active').forEach(m => m.classList.remove('active'));
 });
+
+
+function debugAppState() {
+    console.log('🔍 État de l\'application:');
+    console.log('  ZONES_CONFIG:', ZONES_CONFIG);
+    console.log('  DATA:', DATA ? DATA.length + ' casiers' : 'non chargé');
+    console.log('  CURRENT_FILTER:', CURRENT_FILTER);
+    console.log('  IS_GUEST:', IS_GUEST);
+    console.log('  IS_AUTHENTICATED:', IS_AUTHENTICATED);
+    
+    console.log('\n📊 Compteurs:');
+    ZONES_CONFIG.forEach(zone => {
+        const counter = document.getElementById(`counter-${zone.name}`);
+        console.log(`  ${zone.name}:`, counter ? counter.textContent : 'NON TROUVÉ');
+    });
+    
+    console.log('\n📋 Tableaux:');
+    ZONES_CONFIG.forEach(zone => {
+        const tbody = document.getElementById(`tbody-${zone.name}`);
+        console.log(`  tbody-${zone.name}:`, tbody ? tbody.children.length + ' lignes' : 'NON TROUVÉ');
+    });
+    
+    console.log('\n🔘 Onglets:');
+    const tabs = document.querySelectorAll('.tab-button');
+    console.log(`  ${tabs.length} onglets générés`);
+    tabs.forEach(tab => {
+        console.log(`    - ${tab.textContent.trim()} (${tab.classList.contains('active') ? 'actif' : 'inactif'})`);
+    });
+}

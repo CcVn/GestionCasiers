@@ -4,13 +4,15 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HADO - Casiers zone départ</title>
-    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/mobile.css">
+    <link rel="stylesheet" href="css/print.css">
 </head>
 <body>
     <div id="loginPage" class="login-container active">
         <div class="login-box">
             <h1>HADO - Casiers zone départ</h1>
-            <p style="color: #666; margin-bottom: 30px;">Sélectionnez un mode d'accès</p>
+            <!-- <p style="color: #666; margin-bottom: 30px;">Sélectionnez un mode d'accès</p> -->
             <form id="loginForm">
                 <div class="form-group" id="userNameGroup" style="display: none;">
                     <input type="text" id="userName" placeholder="Votre nom ou initiales" autocomplete="off">
@@ -19,7 +21,7 @@
                     <input type="password" id="loginPassword" placeholder="Mot de passe (optionnel)" autocomplete="off">
                 </div>
                 <button type="submit" class="btn-primary" style="width: 100%;">Se connecter</button>
-                <button type="button" class="btn-secondary" style="width: 100%; margin-top: 10px;" onclick="loginAsGuest()">Consultation uniquement</button>
+                <button type="button" class="btn-secondary" style="width: 100%; margin-top: 10px;" onclick="loginAsGuest()">Visualiser les casiers</button>
             </form>
         </div>
     </div>
@@ -37,143 +39,25 @@
                 </div>
             </div>
             <div class="search-bar">
-                <input type="text" id="globalSearch" placeholder="Rechercher par nom...">
-                <button class="btn-secondary" onclick="importClients()">⬆️ Importer Clients</button>
-                <button class="btn-secondary" onclick="importCSV()">⬆️ Importer CSV</button>
-                <button class="btn-secondary" onclick="exportData('json')">⬇ JSON</button>
-                <button class="btn-secondary" onclick="exportData('csv')">⬇ CSV</button>
-                <button class="btn-secondary admin-only" onclick="createBackup()" title="Créer un backup manuel de la base de données">💾 Backup</button>
+                <input type="text" id="globalSearch" placeholder="Rechercher par nom, prénom ou IPP...">
+                <button class="btn-secondary admin-only" onclick="importClients()" title="Importer les admissions depuis un export MH">⬆️ Import présents</button>
+                <button class="btn-secondary admin-only" onclick="importCSV()" title="Importer des données casiers depuis un CSV">⬆️ Import casiers</button>
+                <button class="btn-secondary admin-only" onclick="exportData('json')" title="Exporter les casiers au format JSON">⬇ JSON</button>
+                <button class="btn-secondary admin-only" onclick="exportData('csv')" title="Exporter les casiers au format CSV">⬇ CSV</button>
+                <button class="btn-secondary admin-only" onclick="createBackup()" title="Créer un backup manuel de la base Sqlite">💾 Backup</button>
             </div>
         </header>
 
-        <div class="tabs">
-            <button class="tab-button active" data-zone="NORD">Zone NORD</button>
-            <button class="tab-button" data-zone="SUD">Zone SUD</button>
-            <button class="tab-button" data-zone="PCA">Zone PCA</button>
-        </div>
+        <!-- ONGLETS (seront générés dynamiquement) -->
+        <div class="tabs"></div>
 
-        <div id="content-NORD" class="content-section active">
-            <div class="section-header">
-                <h2 style="font-size: 18px; font-weight: 600;">
-                    Zone NORD (N01 à N75)
-                    <span id="counter-NORD" class="zone-counter">0/75</span>
-                </h2>
-                <div class="controls">
-                    <button class="btn-primary" onclick="openModal('NORD')">+ Attribuer</button>
-                    <select onchange="filterTable('NORD', this.value)" id="filter-NORD">
-                        <option value="all">Tous</option>
-                        <option value="occupied">Occupés</option>
-                        <option value="empty">Vides</option>
-                        <option value="recoverable" class="admin-only">Récupérables</option>
-                    </select>
-                    <select onchange="sortTable('NORD', this.value)">
-                        <option value="number">Trier par numéro</option>
-                        <option value="name">Trier par nom</option>
-                    </select>
-                    <button class="btn-secondary" onclick="printTable()">🖨️ Imprimer</button>
-                </div>
-            </div>
-            <div class="table-container">
-                <table id="table-NORD">
-                    <thead id="thead-NORD">
-                        <tr>
-                            <th>N° Casier</th>
-                            <th>Nom</th>
-                            <th class="hide-mobile">Prénom</th>
-                            <th class="hide-mobile">N°IPP</th>
-                            <th>DDN</th>
-                            <th class="admin-only">Statut</th>
-                            <th class="hide-mobile admin-only">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tbody-NORD"></tbody>
-                </table>
-            </div>
-        </div>
+        <!-- CONTENU (sera généré dynamiquement) -->
+        <div id="dynamicContent"></div>
 
-        <div id="content-SUD" class="content-section">
-            <div class="section-header">
-                <h2 style="font-size: 18px; font-weight: 600;">
-                    Zone SUD (S01 à S75)
-                    <span id="counter-SUD" class="zone-counter">0/75</span>
-                </h2>
-                <div class="controls">
-                    <button class="btn-primary" onclick="openModal('SUD')">+ Attribuer</button>
-                    <select onchange="filterTable('SUD', this.value)" id="filter-SUD">
-                        <option value="all">Tous</option>
-                        <option value="occupied">Occupés</option>
-                        <option value="empty">Vides</option>
-                        <option value="recoverable" class="admin-only">Récupérables</option>
-                    </select>
-                    <select onchange="sortTable('SUD', this.value)">
-                        <option value="number">Trier par numéro</option>
-                        <option value="name">Trier par nom</option>
-                    </select>
-                    <button class="btn-secondary" onclick="printTable()">🖨️ Imprimer</button>
-                </div>
-            </div>
-            <div class="table-container">
-                <table id="table-SUD">
-                    <thead id="thead-SUD">
-                        <tr>
-                            <th>N° Casier</th>
-                            <th>Nom</th>
-                            <th class="hide-mobile">Prénom</th>
-                            <th class="hide-mobile">N°IPP</th>
-                            <th>DDN</th>
-                            <th class="admin-only">Statut</th>
-                            <th class="hide-mobile admin-only">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tbody-SUD"></tbody>
-                </table>
-            </div>
-        </div>
-
-        <div id="content-PCA" class="content-section">
-            <div class="section-header">
-                <h2 style="font-size: 18px; font-weight: 600;">
-                    Zone PCA (PCA01 à PCA40)
-                    <span id="counter-PCA" class="zone-counter">0/40</span>
-                </h2>
-                <div class="controls">
-                    <button class="btn-primary" onclick="openModal('PCA')">+ Attribuer</button>
-                    <select onchange="filterTable('PCA', this.value)" id="filter-PCA">
-                        <option value="all">Tous</option>
-                        <option value="occupied">Occupés</option>
-                        <option value="empty">Vides</option>
-                        <option value="recoverable" class="admin-only">Récupérables</option>
-                    </select>
-                    <select onchange="sortTable('PCA', this.value)">
-                        <option value="number">Trier par numéro</option>
-                        <option value="name">Trier par nom</option>
-                    </select>
-                    <button class="btn-secondary" onclick="printTable()">🖨️ Imprimer</button>
-                </div>
-            </div>
-            <div class="table-container">
-                <table id="table-PCA">
-                    <thead id="thead-PCA">
-                        <tr>
-                            <th>N° Casier</th>
-                            <th>Nom</th>
-                            <th class="hide-mobile">Prénom</th>
-                            <th class="hide-mobile">N°IPP</th>
-                            <th>DDN</th>
-                            <th class="admin-only">Statut</th>
-                            <th class="hide-mobile admin-only">Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody id="tbody-PCA"></tbody>
-                </table>
-            </div>
-        </div>
-
-        <div class="sync-indicator" id="syncIndicator">✓ À jour</div>
-        
+        <!-- FOOTER -->
         <footer class="app-footer">
-            <p>© 2025, C.Vinson + Claude.ai</p>
-        </footer>
+            <p>© 2025, C.Vinson & Sonnet 4.5</p>
+        </footer>        
     </div>
 
     <div id="modal" class="modal">
@@ -219,7 +103,7 @@
                 <div class="form-group">
                     <label style="display: flex; align-items: center; cursor: pointer;">
                         <input type="checkbox" id="recoverable" style="margin-right: 8px; width: auto;">
-                        <span>Récupérable (libérable en cas de pénurie)</span>
+                        <span>Récupérable (en cas de pénurie)</span>
                     </label>
                 </div>
                 <div class="modal-footer">

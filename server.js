@@ -1,7 +1,34 @@
 // server.js - Backend Node.js avec Express et SQLite
 
-// ⚠️ CHARGEMENT DE .env EN PREMIER !
+// ⚠️ Charger les variables d'environnement DE .env EN PREMIER !
 require('dotenv').config();
+
+// Parser la configuration des zones
+function parseZonesConfig() {
+    const names = (process.env.ZONE_NAMES || 'NORD,SUD,PCA').split(',').map(s => s.trim());
+    const counts = (process.env.ZONE_COUNTS || '75,75,40').split(',').map(s => parseInt(s.trim()));
+    const prefixes = (process.env.ZONE_PREFIXES || 'N,S,P').split(',').map(s => s.trim());
+    
+    if (names.length !== counts.length || names.length !== prefixes.length) {
+        console.error('❌ ERREUR: Configuration des zones invalide');
+        console.error('   ZONE_NAMES, ZONE_COUNTS et ZONE_PREFIXES doivent avoir le même nombre d\'éléments');
+        process.exit(1);
+    }
+    
+    const zones = names.map((name, index) => ({
+        name: name,
+        count: counts[index],
+        prefix: prefixes[index]
+    }));
+    
+    console.log('📋 Configuration des zones:');
+    zones.forEach(z => {
+        console.log(`   - ${z.name}: ${z.count} casiers (${z.prefix}01-${z.prefix}${String(z.count).padStart(2, '0')})`);
+    });
+    
+    return zones;
+}
+const ZONES_CONFIG = parseZonesConfig();
 
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
@@ -153,12 +180,15 @@ const dbAll = (sql, params = []) => {
 // Initialiser la base de données
 function initializeDatabase() {
   db.serialize(() => {
+    // Créer la liste des zones valides pour la contrainte CHECK
+    const zonesList = ZONES_CONFIG.map(z => `'${z.name}'`).join(', ');
+
     // Créer la table lockers
     db.run(`
       CREATE TABLE IF NOT EXISTS lockers (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         number TEXT UNIQUE NOT NULL,
-        zone TEXT NOT NULL CHECK(zone IN ('NORD', 'SUD', 'PCA')),
+        zone TEXT NOT NULL CHECK(zone IN (${zonesList})),
         occupied BOOLEAN DEFAULT 0,
         recoverable BOOLEAN DEFAULT 0,
         name TEXT DEFAULT '',
@@ -166,15 +196,20 @@ function initializeDatabase() {
         code TEXT DEFAULT '',
         birthDate TEXT DEFAULT '',
         comment TEXT DEFAULT '',
+        Hospi BOOLEAN DEFAULT 0,
+        Stup BOOLEAN DEFAULT 0,
         updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
         updatedBy TEXT DEFAULT '',
         version INTEGER DEFAULT 0
       )
     `, (err) => {
-      if (err) console.error('Erreur création table lockers:', err);
+      if (err) console.error('Erreur création table casiers:', err);
       else {
         db.run(`ALTER TABLE lockers ADD COLUMN comment TEXT DEFAULT ''`, () => {});
         db.run(`ALTER TABLE lockers ADD COLUMN updatedBy TEXT DEFAULT ''`, () => {});
+        db.run(`ALTER TABLE lockers ADD COLUMN Hospi BOOLEAN DEFAULT ''`, () => {});
+        db.run(`ALTER TABLE lockers ADD COLUMN Stup BOOLEAN DEFAULT ''`, () => {});
+        console.log('✓ Table casiers créée/vérifiée');
       }
     });
 
@@ -255,34 +290,30 @@ function initializeDatabase() {
 
     // Initialiser les casiers si la table est vide
     db.get('SELECT COUNT(*) as count FROM lockers', async (err, row) => {
-      if (err) {
-        console.error('Erreur lecture table:', err);
-      } else if (row.count === 0) {
-        console.log('Initialisation des casiers...');
-        const lockers = [];
-
-        for (let i = 1; i <= 75; i++) {
-          lockers.push(['N' + String(i).padStart(2, '0'), 'NORD']);
+        if (err) {
+            console.error('Erreur lecture table:', err);
+        } else if (row.count === 0) {
+            console.log('🔧 Initialisation des casiers...');
+            const lockers = [];
+            
+            // Générer les casiers pour chaque zone
+            ZONES_CONFIG.forEach(zone => {
+                for (let i = 1; i <= zone.count; i++) {
+                    const number = `${zone.prefix}${String(i).padStart(2, '0')}`;
+                    lockers.push([number, zone.name]);
+                }
+            });
+            
+            const stmt = db.prepare('INSERT INTO lockers (number, zone) VALUES (?, ?)');
+            
+            lockers.forEach(([number, zone]) => {
+                stmt.run(number, zone);
+            });
+            
+            stmt.finalize(() => {
+                console.log(`✓ ${lockers.length} casiers initialisés`);
+            });
         }
-
-        for (let i = 1; i <= 75; i++) {
-          lockers.push(['S' + String(i).padStart(2, '0'), 'SUD']);
-        }
-
-        for (let i = 1; i <= 40; i++) {
-          lockers.push(['PCA' + String(i).padStart(2, '0'), 'PCA']);
-        }
-
-        const stmt = db.prepare('INSERT INTO lockers (number, zone) VALUES (?, ?)');
-        
-        lockers.forEach(([number, zone]) => {
-          stmt.run(number, zone);
-        });
-
-        stmt.finalize(() => {
-          console.log('✓ Casiers initialisés: ' + lockers.length);
-        });
-      }
     });
   });
 }
@@ -306,7 +337,269 @@ function requireAuth(req, res, next) {
   next();
 }
 
+// ============ CONFIGURATION DES FORMATS D'IMPORT ============
+
+// Configuration des formats d'import
+const IMPORT_FORMATS = {
+    'LEGACY': {
+        separator: ',',
+        mapping: {
+            'IPP': 'ipp',
+            'Nom': 'name',
+            'Prénom': 'firstName',
+            'Nom Naissance': 'birthName',
+            'Date Naissance': 'birthDate',
+            'Sexe': 'sex',
+            'Zone': 'zone',
+            'Date Entrée': 'entryDate'
+        },
+        filters: [],
+        skipRows: 0
+    },
+    
+    'MHCARE': {
+        separator: ';',
+        mapping: {
+            'IPP': 'ipp',
+            'NOM': 'name',
+            'PRENOM': 'firstName',
+            'SEXE': 'sex',
+            'DATE_DE_NAISSANCE': 'birthDate',
+            'DATE_DE_DEBUT': 'entryDate',
+            'SECTEUR': 'zone'
+        },
+        ignored: ['SEJOUR', 'DATE_DE_FIN', 'ADRESSE', 'COMPLEMENT_ADRESSE', 'CODE_POSTAL', 'VILLE', 'TELEPHONE'],
+        filters: [
+            {
+                field: 'STATUT',
+                operator: 'in',
+                values: ['Admission', 'Préadmission']
+            }
+        ],
+        skipRows: 0
+    },
+
+    'WINPHARM': {
+        separator: ';',
+        mapping: {
+            'N°\nIPP': 'ipp',
+            'Nom': 'name',
+            'Né(e) le': 'birthDate',
+            'Entré(e)\nle': 'entryDate',
+            'Unité Médicale': 'zone'
+        },
+        ignored: ['N°\nDossier', 'INS', 'Sorti(e)\nle', '', 'Age', 'Ch.', 'Lit', 'Dernier contrôle'],
+        filters: [
+            {
+                //field: 'Unité Médicale',
+                //operator: 'in',
+                //values: ['O NORD', 'O NORD IDEL', 'O SUD', 'O SUD IDEL', 'M BLEU', 'M BLEU IDEL', 'M ROSE', 'M ROSE IDEL']
+            }
+        ],
+        skipRows: 0
+    }
+
+};
+
+// Parser une ligne CSV avec séparateur personnalisé
+function parseCsvLine(line, separator = ',') {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        
+        if (char === '"') {
+            inQuotes = !inQuotes;
+        } else if (char === separator && !inQuotes) {
+            result.push(current.trim());
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    
+    result.push(current.trim());
+    return result.map(v => v.replace(/^"|"$/g, ''));
+}
+
+// Normaliser le format de date
+function normalizeDateFormat(dateStr) {
+    if (!dateStr) return '';
+    
+    // Format DD/MM/YYYY → YYYY-MM-DD
+    const match1 = dateStr.match(/^(\d{2})\/(\d{2})\/(\d{4})$/);
+    if (match1) {
+        return `${match1[3]}-${match1[2]}-${match1[1]}`;
+    }
+    
+    // Format DD-MM-YYYY → YYYY-MM-DD
+    const match2 = dateStr.match(/^(\d{2})-(\d{2})-(\d{4})$/);
+    if (match2) {
+        return `${match2[3]}-${match2[2]}-${match2[1]}`;
+    }
+    
+    // Format YYYY-MM-DD (déjà bon)
+    const match3 = dateStr.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (match3) {
+        return dateStr;
+    }
+    
+    // Format YYYYMMDD → YYYY-MM-DD
+    const match4 = dateStr.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (match4) {
+        return `${match4[1]}-${match4[2]}-${match4[3]}`;
+    }
+    
+    return dateStr;
+}
+
+// Mettre en majuscule la première lettre
+function capitalizeFirstLetter(str) {
+    if (!str) return '';
+    return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
+}
+
+// Mapper une ligne aux champs de la base de données
+function mapRowToClient(row, mapping) {
+    const client = {
+        ipp: '',
+        name: '',
+        firstName: '',
+        birthName: '',
+        birthDate: '',
+        sex: '',
+        zone: '',
+        entryDate: ''
+    };
+    
+    for (const [sourceField, targetField] of Object.entries(mapping)) {
+        if (row[sourceField] !== undefined) {
+            client[targetField] = row[sourceField].trim();
+        }
+    }
+    
+    // Normaliser les données
+    client.ipp = client.ipp.trim();
+    client.name = client.name.toUpperCase();
+    client.firstName = capitalizeFirstLetter(client.firstName);
+    
+    if (client.birthDate) {
+        client.birthDate = normalizeDateFormat(client.birthDate);
+    }
+    
+    if (client.entryDate) {
+        client.entryDate = normalizeDateFormat(client.entryDate);
+    }
+    
+    return client;
+}
+
+// Fonction principale d'import avec format
+function parseClientsWithFormat(fileContent, formatName) {
+    const format = IMPORT_FORMATS[formatName];
+    
+    if (!format) {
+        throw new Error(`Format d'import "${formatName}" non reconnu`);
+    }
+    
+    console.log(`📥 Import avec format: ${formatName}`);
+    console.log(`   Séparateur: "${format.separator}"`);
+    
+    const lines = fileContent.split('\n').filter(line => line.trim());
+    
+    if (lines.length < 2) {
+        throw new Error('Fichier vide ou invalide');
+    }
+    
+    const headers = parseCsvLine(lines[0], format.separator);
+    console.log(`   Headers trouvés: ${headers.join(', ')}`);
+    
+    const dataLines = lines.slice(1 + format.skipRows);
+    let imported = 0;
+    let filtered = 0;
+    let errors = 0;
+    
+    const clients = [];
+    
+    for (const line of dataLines) {
+        try {
+            const values = parseCsvLine(line, format.separator);
+            
+            const row = {};
+            headers.forEach((header, index) => {
+                row[header] = values[index] || '';
+            });
+            
+            // Appliquer les filtres
+            if (format.filters && format.filters.length > 0) {
+                let passFilters = true;
+                
+                for (const filter of format.filters) {
+                    const fieldValue = row[filter.field];
+                    
+                    if (filter.operator === 'in') {
+                        if (!filter.values.includes(fieldValue)) {
+                            passFilters = false;
+                            break;
+                        }
+                    } else if (filter.operator === 'equals') {
+                        if (fieldValue !== filter.value) {
+                            passFilters = false;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!passFilters) {
+                    filtered++;
+                    continue;
+                }
+            }
+            
+            const client = mapRowToClient(row, format.mapping);
+            
+            if (!client.ipp || client.ipp.trim() === '') {
+                errors++;
+                console.warn(`⚠️ Ligne ignorée (IPP manquant)`);
+                continue;
+            }
+            
+            clients.push(client);
+            imported++;
+            
+        } catch (err) {
+            errors++;
+            console.error('Erreur parsing ligne:', err);
+        }
+    }
+    
+    console.log(`✓ Parsing terminé:`);
+    console.log(`  - Importés: ${imported}`);
+    console.log(`  - Filtrés: ${filtered}`);
+    console.log(`  - Erreurs: ${errors}`);
+    
+    return {
+        clients: clients,
+        stats: {
+            imported: imported,
+            filtered: filtered,
+            errors: errors,
+            total: dataLines.length
+        }
+    };
+}
+
 // ============ ROUTES API ============
+
+// Route pour obtenir la configuration des zones
+app.get('/api/config/zones', (req, res) => {
+    res.json({
+        zones: ZONES_CONFIG,
+        total: ZONES_CONFIG.reduce((sum, z) => sum + z.count, 0)
+    });
+});
 
 // ============ AUTHENTIFICATION ============
 
@@ -403,7 +696,7 @@ app.get('/api/lockers', async (req, res) => {
 app.get('/api/lockers/zone/:zone', async (req, res) => {
   try {
     const zone = req.params.zone.toUpperCase();
-    if (!['NORD', 'SUD', 'PCA'].includes(zone)) {
+    if (!ZONES_CONFIG.includes(zone)) {
       return res.status(400).json({ error: 'Zone invalide' });
     }
     
@@ -539,7 +832,7 @@ app.get('/api/search/:query', async (req, res) => {
     const lockers = await dbAll(
       `SELECT * FROM lockers 
        WHERE name LIKE ? OR firstName LIKE ? OR CAST(code AS TEXT) LIKE ?
-       ORDER BY name ASC`,
+       ORDER BY number ASC`,
       [query, query]
     );
     res.json(lockers);
@@ -623,6 +916,114 @@ app.post('/api/exports/log', async (req, res) => {
     console.error('Erreur enregistrement export:', err);
     res.status(500).json({ error: err.message });
   }
+});
+
+// POST import clients depuis CSV
+app.post('/api/clients/import', requireAuth, async (req, res) => {
+    try {
+        const { data, rawContent, format } = req.body;
+        
+        let clients = [];
+        let stats = {
+            imported: 0,
+            filtered: 0,
+            errors: 0,
+            total: 0
+        };
+        
+        //Si rawContent est fourni, parser avec le format
+        if (rawContent) {
+            const formatName = format || process.env.CLIENT_IMPORT_FORMAT || 'LEGACY';
+            console.log(`📥 Parsing avec format: ${formatName}`);
+            
+            const result = parseClientsWithFormat(rawContent, formatName);
+            clients = result.clients;
+            stats = result.stats;
+        } else if (data && Array.isArray(data)) {
+            // Format legacy (déjà parsé côté client)
+            clients = data;
+            stats.imported = data.length;
+            stats.total = data.length;
+        } else {
+            return res.status(400).json({ error: 'Données invalides' });
+        }
+        
+        if (clients.length === 0) {
+            return res.status(400).json({ 
+                error: 'Aucune donnée valide trouvée',
+                stats: stats
+            });
+        }
+
+        console.log('Import de', clients.length, 'clients...');
+
+        // Supprimer tous les clients existants
+        await dbRun('DELETE FROM clients');
+
+        let importedCount = 0;
+        let errorCount = 0;
+
+        const stmt = db.prepare(`
+            INSERT INTO clients (ipp, name, firstName, birthName, birthDate, sex, zone, entryDate)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `);
+
+        for (const row of clients) {
+            try {
+                const { ipp, name, firstName, birthName, birthDate, sex, zone, entryDate } = row;
+                
+                if (!ipp) {
+                    errorCount++;
+                    continue;
+                }
+
+                stmt.run(ipp, name, firstName, birthName || '', birthDate, sex, zone, entryDate, (err) => {
+                    if (err) {
+                        console.error('Erreur insertion client:', err);
+                        errorCount++;
+                    } else {
+                        importedCount++;
+                    }
+                });
+            } catch (err) {
+                console.error('Erreur traitement ligne:', err);
+                errorCount++;
+            }
+        }
+
+        stmt.finalize(async () => {
+            console.log('Import terminé:', importedCount, 'clients importés,', errorCount, 'erreurs');
+            
+            const token = req.headers['authorization']?.replace('Bearer ', '');
+            const session = sessions.get(token);
+            const userName = session?.userName || 'Inconnu';
+            
+            await dbRun(
+                'INSERT INTO client_imports (recordCount, userName) VALUES (?, ?)',
+                [importedCount, userName]
+            );
+            
+            res.json({
+                success: true,
+                imported: importedCount,
+                errors: errorCount,
+                filtered: stats.filtered,
+                total: stats.total
+            });
+        });
+    } catch (err) {
+        console.error('Erreur import clients:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// GET format d'import configuré
+app.get('/api/config/import-format', (req, res) => {
+    const format = process.env.CLIENT_IMPORT_FORMAT || 'LEGACY';
+    res.json({
+        clientImportFormat: format,
+        availableFormats: Object.keys(IMPORT_FORMATS)
+    });
 });
 
 // GET historique des exports

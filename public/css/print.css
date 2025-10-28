@@ -1,0 +1,64 @@
+/* Règles pour l'impression : masquer tout sauf les tables */
+@media print {
+    body * {
+        visibility: hidden;
+    }
+
+    /* Afficher uniquement les tables et leur contenu */
+    .table-container, .table-container * {
+        visibility: visible;
+    }
+
+    .table-container {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+        padding: 0 !important;
+    }
+
+    /* Masquer explicitement les éléments non désirés */
+    #loginPage,
+    header,
+    .tabs,
+    .search-bar,
+    .btn-secondary,
+    .server-status,
+    .login-container,
+    .login-box,
+    .form-group,
+    .modal,
+    .dropdown-menu,
+    .section-header,
+    .controls {
+        display: none !important;
+    }
+
+    /* Optimiser l'affichage des tables */
+    table {
+        page-break-inside: avoid;
+        font-size: 12pt;
+    }
+
+    th, td {
+        padding: 8px;
+        border: 1px solid #ddd;
+    }
+
+    /* Éviter les sauts de page inutiles */
+    tr {
+        page-break-inside: avoid;
+    }
+
+    tr:nth-child(even) {
+        background-color: #ffffff !important; /* Blanc pour économiser l'encre */
+    }
+
+    tr:nth-child(odd) {
+        background-color: #f8f8f8 !important; /* Gris très clair pour l'impression */
+    }
+
+    td, th {
+        border: 1px solid #ddd !important; /* Bordures légères pour l'impression */
+    }
+}

@@ -37,6 +37,7 @@ const path = require('path');
 const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
+const helmet = require('helmet');
 
 // ============ CONFIGURATION ============
 
@@ -116,7 +117,17 @@ const app = express();
 
 // Middleware
 app.use(cors());
-app.use(express.json());
+app.use(express.json({limit: '50mb'}));
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    //defaultSrc: ["'self'"],
+    //scriptSrc: ["'self'", "'unsafe-inline'"],
+    //styleSrc: ["'self'", "'unsafe-inline'", "fonts.googleapis.com"],
+    //imgSrc: ["'self'", "data:"],    
+    //fontSrc: ["'self'", "fonts.gstatic.com"],
+  })
+);
 
 // Vérifier que le dossier public existe
 const publicPath = path.join(__dirname, 'public');
@@ -360,11 +371,11 @@ const IMPORT_FORMATS = {
     'MHCARE': {
         separator: ';',
         mapping: {
-            'IPP': 'ipp',
             'NOM': 'name',
             'PRENOM': 'firstName',
             'SEXE': 'sex',
             'DATE_DE_NAISSANCE': 'birthDate',
+            'IPP': 'ipp',
             'DATE_DE_DEBUT': 'entryDate',
             'SECTEUR': 'zone'
         },
@@ -1124,7 +1135,7 @@ app.get('/api/clients/:ipp', async (req, res) => {
   }
 });
 
-// GET statut import clients (NOUVELLE ROUTE)
+// GET statut import clients
 app.get('/api/clients/import-status', async (req, res) => {
   try {
     const lastImport = await dbGet(

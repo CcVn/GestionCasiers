@@ -64,6 +64,7 @@ function generateTabs() {
     const tabsContainer = document.querySelector('.tabs');
     if (!tabsContainer) return;
     //const colors = (process.env.ZONE_COLORS || '#3b82f6,#10b981,#f59e0b,#ef4444').split(',');
+    //const colors = '#3b82f6,#10b981,#f59e0b,#ef4444'.split(',');
     //ajouter ça dans le button: style="--zone-color: ${colors[index] || '#667eea'}
 
     tabsContainer.innerHTML = ZONES_CONFIG.map((zone, index) => `
@@ -116,6 +117,7 @@ function generateContentSections() {
                         <option value="occupied">Occupés</option>
                         <option value="empty">Vides</option>
                         <option value="recoverable" class="admin-only">Récupérables</option>
+                        <option value="duplicates" class="admin-only">Doublons ⚠️</option>
                     </select>
                     <select onchange="sortTable('${zone.name}', this.value)">
                         <option value="number">Trier par numéro</option>
@@ -164,6 +166,21 @@ function anonymizeName(name) {
 function anonymizeFirstName(firstName) {
     if (!ANONYMIZE_ENABLED || !firstName) return firstName;
     return firstName.substring(0, 2).toUpperCase();
+}
+
+// Autre fonction utilitaire sur format de date
+function formatDate(inputDate) {
+  //const [year, month, day] = inputDate.split('-');
+  //return `${day}/${month}/${year}`; // Note : Les mois en JavaScript commencent à 0, donc on ne retire pas 1 ici.
+
+  const date = new Date(inputDate);
+  if (isNaN(date.getTime())) {
+    return "Date invalide";
+  }
+  const day = String(date.getDate()).padStart(2, '0');
+  const month = String(date.getMonth() + 1).padStart(2, '0');
+  const year = date.getFullYear();
+  return `${day}/${month}/${year}`;
 }
 
 // ============ MODE SOMBRE ============
@@ -395,6 +412,7 @@ function logout() {
 
     showLoginPage(true);
     document.getElementById('loginPassword').value = '';
+    document.getElementById('globalSearch').value = '';
 }
 
 function showLoginPage(show) {
@@ -432,6 +450,7 @@ function updateAuthStatus() {
     //updateImportExportButtons();
 }
 
+/* 
 function updateImportExportButtons() {
     const importExportButtons = document.querySelectorAll('.search-bar button');
     console.log('Mise à jour des boutons header, IS_GUEST:', IS_GUEST);
@@ -484,6 +503,7 @@ function updateImportExportButtons() {
         }
     });
 }
+*/
 
 function isEditAllowed() {
     if (!IS_AUTHENTICATED) {
@@ -587,18 +607,18 @@ async function setupApp() {
     console.log('Token présent:', !!getAuthToken());
     
     try {
-        // 🔹 ÉTAPE 1 : Charger la configuration des zones
+        // ÉTAPE 1 : Charger la configuration des zones
         console.log('1️⃣ Chargement configuration zones...');
         await loadZonesConfig();
         console.log('✓ Config zones chargée:', ZONES_CONFIG);
         
-        // 🔹 ÉTAPE 2 : Générer l'interface
+        // ÉTAPE 2 : Générer l'interface
         console.log('2️⃣ Génération interface...');
         generateTabs();
         generateContentSections();
         console.log('✓ Interface générée');
         
-        // 🔹 ÉTAPE 3 : Initialiser les filtres
+        // ÉTAPE 3 : Initialiser les filtres
         console.log('3️⃣ Initialisation filtres...');
         CURRENT_FILTER = {};
         ZONES_CONFIG.forEach(zone => {
@@ -606,7 +626,7 @@ async function setupApp() {
         });
         console.log('✓ Filtres initialisés:', CURRENT_FILTER);
         
-        // 🔹 ÉTAPE 4 : Event listeners
+        // ÉTAPE 4 : Event listeners
         console.log('4️⃣ Event listeners...');
         
         const searchInput = document.getElementById('globalSearch');
@@ -627,21 +647,21 @@ async function setupApp() {
         
         console.log('✓ Event listeners installés');
         
-        // 🔹 ÉTAPE 5 : Charger les données
+        // ÉTAPE 5 : Charger les données
         console.log('5️⃣ Chargement données...');
         loadData();
         
-        // 🔹 ÉTAPE 6 : Vérifier serveur
+        // ÉTAPE 6 : Vérifier serveur
         console.log('6️⃣ Vérification serveur...');
         checkServerStatus();
         
-        // 🔹 ÉTAPE 7 : Appliquer mode guest si nécessaire
+        // ÉTAPE 7 : Appliquer mode guest si nécessaire
         if (IS_GUEST) {
             console.log('7️⃣ Application mode guest...');
             applyGuestDefaults();
         }
         
-        // 🔹 ÉTAPE 8 : Rafraîchissement automatique
+        // ÉTAPE 8 : Rafraîchissement automatique
         console.log('8️⃣ Démarrage rafraîchissement auto...');
         setInterval(() => {
             console.log('⟳ Rafraîchissement automatique...');
@@ -880,6 +900,9 @@ function renderTable(zone) {
         lockers = lockers.filter(l => !l.occupied);
     } else if (filter === 'recoverable') {
         lockers = lockers.filter(l => l.occupied && (l.recoverable == 1 || l.recoverable === true));
+    } else if (filter === 'duplicates') {
+        const duplicateInfo = detectDuplicates();
+        lockers = lockers.filter(l => duplicateInfo.duplicates.has(l.number));
     }
     
     if (IS_GUEST) {
@@ -899,28 +922,63 @@ function renderTable(zone) {
             return '<span class="status-occupied" title="Occupé"></span>';
         }
     };
+
+    // Détecter les doublons
+    const duplicateInfo = detectDuplicates();
+    const duplicateNumbers = duplicateInfo.duplicates;
     
-    // MODE GUEST - Sans commentaire
+    // Fonction pour obtenir les infos de doublon
+    const getDuplicateInfo = (locker) => {
+        if (!duplicateNumbers.has(locker.number)) return null;
+        
+        const ipp = locker.code?.trim();
+        const identity = `${locker.name}|${locker.firstName}|${locker.birthDate}`.toUpperCase();
+        
+        let reasons = [];
+        if (ipp && duplicateInfo.byIPP[ipp] && duplicateInfo.byIPP[ipp].length > 1) {
+            const others = duplicateInfo.byIPP[ipp].filter(n => n !== locker.number);
+            reasons.push(`IPP identique (casier${others.length > 1 ? 's' : ''}: ${others.join(', ')})`);
+        }
+        if (duplicateInfo.byIdentity[identity] && duplicateInfo.byIdentity[identity].length > 1) {
+            const others = duplicateInfo.byIdentity[identity].filter(n => n !== locker.number);
+            reasons.push(`Identité identique (casier${others.length > 1 ? 's' : ''}: ${others.join(', ')})`);
+        }
+        
+        return reasons.join(' + ');
+    };
+    
+    // MODE GUEST - Sans commentaire, status, actions
     if (IS_GUEST) {
-        tbody.innerHTML = lockers.map(locker => `
-            <tr>
+        tbody.innerHTML = lockers.map(locker => {
+            const isDuplicate = duplicateNumbers.has(locker.number);
+            const duplicateClass = isDuplicate ? 'duplicate-row' : '';
+            const duplicateTitle = isDuplicate ? getDuplicateInfo(locker) : '';
+            
+            return `
+            <tr class="${duplicateClass}" title="${duplicateTitle}">
                 <td><strong>${locker.number}</strong></td>
                 <td>${locker.occupied ? anonymizeName(locker.name) : '<span class="cell-empty">—</span>'}</td>
                 <td>${locker.occupied ? anonymizeFirstName(locker.firstName) : '<span class="cell-empty">—</span>'}</td>
                 <td>${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
-                <td class="hide-mobile">${locker.occupied ? locker.birthDate : '<span class="cell-empty">—</span>'}</td>
+                <td class="hide-mobile">${locker.occupied ? formatDate(locker.birthDate) : '<span class="cell-empty">—</span>'}</td>
             </tr>
-        `).join('');
+        `}).join('');
+
+    // MODE ADMIN
     } else {
-        // MODE ADMIN - Avec commentaire
-        tbody.innerHTML = lockers.map(locker => `
-            <tr>
-                <td><strong>${locker.number}</strong></td>
+        tbody.innerHTML = lockers.map(locker => {
+            const isDuplicate = duplicateNumbers.has(locker.number);
+            const duplicateClass = isDuplicate ? 'duplicate-row' : '';
+            const duplicateTitle = isDuplicate ? getDuplicateInfo(locker) : '';
+            
+            return `
+            <tr class="${duplicateClass}" title="${duplicateTitle}">
+                <td><strong>${locker.number}</strong>${isDuplicate ? ' ⚠️' : ''}</td>
                 <td>${locker.occupied ? anonymizeName(locker.name) : '<span class="cell-empty">—</span>'}</td>
                 <td>${locker.occupied ? anonymizeFirstName(locker.firstName) : '<span class="cell-empty">—</span>'}</td>
-                <td class="hide-mobile">${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
-                <td class="hide-mobile">${locker.occupied ? locker.birthDate : '<span class="cell-empty">—</span>'}</td>
-                <td class="hide-mobile" style="text-align: center;">${getStatus(locker)}</td>
+                <td>${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? formatDate(locker.birthDate) : '<span class="cell-empty">—</span>'}</td>
+                <td style="text-align: center;">${getStatus(locker)}</td>
                 <td class="hide-mobile">${locker.comment || '<span class="cell-empty">—</span>'}</td>
                 <td class="hide-mobile">
                     <div class="menu-dot">
@@ -932,25 +990,107 @@ function renderTable(zone) {
                     </div>
                 </td>
             </tr>
-        `).join('');
+        `}).join('');
     }
 }
 
+// filterTable() avec gestion du filtre "duplicates"
 function filterTable(zone, value) {
     CURRENT_FILTER[zone] = value;
+    
+    // Si filtre "duplicates", on doit détecter d'abord
+    if (value === 'duplicates') {
+        const duplicateInfo = detectDuplicates();
+        // Filtrer sera géré dans renderTable
+    }
     renderTable(zone);
 }
+
 
 function sortTable(zone, value) {
     const tbody = document.getElementById(`tbody-${zone}`);
     const rows = Array.from(tbody.querySelectorAll('tr'));
-    
+
     rows.sort((a, b) => {
         const idx = value === 'name' ? 1 : 0;
-        return a.cells[idx].textContent.localeCompare(b.cells[idx].textContent);
+        const aText = a.cells[idx].textContent;
+        const bText = b.cells[idx].textContent;
+
+        // Remplace '—' par un caractère après 'z' (par exemple '{')
+        const aVal = aText.replace(/—/g, '{');
+        const bVal = bText.replace(/—/g, '{');
+
+        // Compare les chaînes caractère par caractère
+        for (let i = 0; i < Math.min(aVal.length, bVal.length); i++) {
+            const aCharCode = aVal.charCodeAt(i);
+            const bCharCode = bVal.charCodeAt(i);
+            if (aCharCode !== bCharCode) {
+                return aCharCode - bCharCode;
+            }
+        }
+        // Si toutes les lettres sont égales, compare la longueur
+        return aVal.length - bVal.length;
+    });
+
+    // Réattache les lignes triées
+    rows.forEach(row => tbody.appendChild(row));
+
+    // Rétablit l'affichage avec '—'
+    rows.forEach(row => {
+        const idx = value === 'name' ? 1 : 0;
+        row.cells[idx].textContent = row.cells[idx].textContent.replace(/\{/g, '—');
+    });
+}
+
+// Fonction de détection des doublons
+function detectDuplicates() {
+    const duplicates = new Set();
+    const seen = {
+        byIPP: {},           // { IPP: [numbers...] }
+        byIdentity: {}       // { "NOM|PRENOM|DDN": [numbers...] }
+    };
+    
+    // Parcourir tous les casiers occupés
+    DATA.filter(l => l.occupied).forEach(locker => {
+        const ipp = locker.code?.trim();
+        const identity = `${locker.name}|${locker.firstName}|${locker.birthDate}`.toUpperCase();
+        
+        // Détection par IPP
+        if (ipp) {
+            if (!seen.byIPP[ipp]) {
+                seen.byIPP[ipp] = [];
+            }
+            seen.byIPP[ipp].push(locker.number);
+            
+            if (seen.byIPP[ipp].length > 1) {
+                // Marquer tous les casiers avec cet IPP comme doublons
+                seen.byIPP[ipp].forEach(num => duplicates.add(num));
+            }
+        }
+        
+        // Détection par identité (nom + prénom + DDN)
+        if (locker.name && locker.firstName && locker.birthDate) {
+            if (!seen.byIdentity[identity]) {
+                seen.byIdentity[identity] = [];
+            }
+            seen.byIdentity[identity].push(locker.number);
+            
+            if (seen.byIdentity[identity].length > 1) {
+                // Marquer tous les casiers avec cette identité comme doublons
+                seen.byIdentity[identity].forEach(num => duplicates.add(num));
+            }
+        }
     });
     
-    rows.forEach(row => tbody.appendChild(row));
+    console.log('🔍 Doublons détectés:', duplicates.size);
+    console.log('  Par IPP:', Object.entries(seen.byIPP).filter(([k,v]) => v.length > 1));
+    console.log('  Par identité:', Object.entries(seen.byIdentity).filter(([k,v]) => v.length > 1));
+    
+    return {
+        duplicates: duplicates,
+        byIPP: seen.byIPP,
+        byIdentity: seen.byIdentity
+    };
 }
 
 function searchLockers(query) {
@@ -959,14 +1099,9 @@ function searchLockers(query) {
         return;
     }
     
-    if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
-        console.log('⚠️ ZONES_CONFIG non chargée');
-        return;
-    }
-    
     const searchTerm = query.toLowerCase().trim();
     
-    // Recherche dans nom, prénom, code IPP
+    // Recherche globale
     const results = DATA.filter(l => {
         const searchText = (l.name + ' ' + l.firstName + ' ' + l.code).toLowerCase();
         return searchText.includes(searchTerm);
@@ -975,151 +1110,29 @@ function searchLockers(query) {
     console.log(`🔍 Recherche "${query}" : ${results.length} résultat(s)`);
     
     if (results.length === 0) {
-        // Afficher "Aucun résultat" dans toutes les zones
         ZONES_CONFIG.forEach(zone => {
             const tbody = document.getElementById(`tbody-${zone.name}`);
             if (tbody) {
                 const colspan = IS_GUEST ? '5' : '8';
-                tbody.innerHTML = `
-                    <tr>
-                        <td colspan="${colspan}" style="text-align: center; padding: 30px; color: var(--text-tertiary);">
-                            Aucun résultat pour "${query}"
-                        </td>
-                    </tr>
-                `;
+                tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align: center; padding: 30px; color: var(--text-tertiary);">Aucun résultat pour "${query}"</td></tr>`;
             }
         });
         return;
     }
     
-    // Grouper les résultats par zone
-    const byZone = {};
-    ZONES_CONFIG.forEach(zone => {
-        byZone[zone.name] = results.filter(l => l.zone === zone.name);
-    });
-    
-    // Afficher les résultats dans chaque zone
-    ZONES_CONFIG.forEach(zone => {
-        const tbody = document.getElementById(`tbody-${zone.name}`);
-        if (!tbody) {
-            console.warn(`tbody-${zone.name} non trouvé`);
-            return;
-        }
-        
-        const zoneResults = byZone[zone.name];
-        const colspan = IS_GUEST ? '5' : '8';
-        
-        if (zoneResults.length === 0) {
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="${colspan}" style="text-align: center; padding: 20px; color: var(--text-tertiary); font-style: italic;">
-                        Aucun résultat dans cette zone
-                    </td>
-                </tr>
-            `;
-            return;
-        }
-        
-        const getStatus = (locker) => {
-            if (!locker.occupied) {
-                return '<span class="status-empty" title="Libre"></span>';
-            } else if (locker.recoverable == 1 || locker.recoverable === true) {
-                return '<span class="status-recoverable" title="Récupérable"></span>';
-            } else {
-                return '<span class="status-occupied" title="Occupé"></span>';
-            }
-        };
-        
-        // MODE GUEST
-        if (IS_GUEST) {
-            tbody.innerHTML = zoneResults.map(locker => `
-                <tr>
-                    <td><strong>${locker.number}</strong></td>
-                    <td>${locker.occupied ? anonymizeName(locker.name) : '<span class="cell-empty">—</span>'}</td>
-                    <td>${locker.occupied ? anonymizeFirstName(locker.firstName) : '<span class="cell-empty">—</span>'}</td>
-                    <td>${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
-                    <td class="hide-mobile">${locker.occupied ? locker.birthDate : '<span class="cell-empty">—</span>'}</td>
-                </tr>
-            `).join('');
-        } else {
-            // MODE ADMIN
-            tbody.innerHTML = zoneResults.map(locker => `
-                <tr>
-                    <td><strong>${locker.number}</strong></td>
-                    <td>${locker.occupied ? anonymizeName(locker.name) : '<span class="cell-empty">—</span>'}</td>
-                    <td>${locker.occupied ? anonymizeFirstName(locker.firstName) : '<span class="cell-empty">—</span>'}</td>
-                    <td>${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
-                    <td class="hide-mobile">${locker.occupied ? locker.birthDate : '<span class="cell-empty">—</span>'}</td>
-                    <td style="text-align: center;">${getStatus(locker)}</td>
-                    <td class="hide-mobile">${locker.comment || '<span class="cell-empty">—</span>'}</td>
-                    <td class="hide-mobile">
-                        <div class="menu-dot">
-                            <button class="btn-secondary" onclick="toggleDropdown(event)">⋮</button>
-                            <div class="dropdown-menu">
-                                <button onclick="openModalEdit('${locker.number}')">Modifier</button>
-                                <button class="btn-delete" onclick="releaseLocker('${locker.number}')">Libérer</button>
-                            </div>
-                        </div>
-                    </td>
-                </tr>
-            `).join('');
-        }
-    });
-}
-
-// ============================================
-//   Recherche améliorée avec highlighting
-// ============================================
-
-function searchLockersAdvanced(query) {
-    if (!query || query.trim() === '') {
-        renderAllTables();
-        return;
-    }
-    
-    const searchTerm = query.toLowerCase().trim();
-    
-    // Recherche dans nom, prénom, code IPP
-    const results = DATA.filter(l => {
-        const searchText = (l.name + ' ' + l.firstName + ' ' + l.code).toLowerCase();
-        return searchText.includes(searchTerm);
-    });
-    
-    console.log(`🔍 Recherche "${query}" : ${results.length} résultat(s)`);
-    
-    if (results.length === 0) {
-        // Afficher "Aucun résultat" dans toutes les zones
-        ZONES_CONFIG.forEach(zone => {
-            const tbody = document.getElementById(`tbody-${zone}`);
-            const colspan = IS_GUEST ? '5' : '8';
-            tbody.innerHTML = `
-                <tr>
-                    <td colspan="${colspan}" style="text-align: center; padding: 30px; color: var(--text-tertiary);">
-                        Aucun résultat pour "${query}"<br><br>                                     
-                             ¯\\_(ツ)_/¯
-                    </td>
-                </tr>
-            `;
-        });
-        return;
-    }
-    
-    // Basculer sur la zone du PREMIER résultat (comme avant)
+    // Basculer sur la zone du premier résultat
     const firstZone = results[0].zone;
     switchTab(firstZone);
     
     // Vider les autres zones
     ZONES_CONFIG.forEach(zone => {
-        if (zone !== firstZone) {
-            const tbody = document.getElementById(`tbody-${zone}`);
-            tbody.innerHTML = '';
+        if (zone.name !== firstZone) {
+            const tbody = document.getElementById(`tbody-${zone.name}`);
+            if (tbody) tbody.innerHTML = '';
         }
     });
     
-    // Afficher TOUS les résultats dans la première zone (table unifiée)
-    const tbody = document.getElementById(`tbody-${firstZone}`);
-    
-    // Fonction pour surligner le terme recherché
+    // Fonction highlight
     const highlight = (text, search) => {
         if (!text || !search) return text;
         const regex = new RegExp(`(${search})`, 'gi');
@@ -1127,35 +1140,32 @@ function searchLockersAdvanced(query) {
     };
     
     const getStatus = (locker) => {
-        if (!locker.occupied) {
-            return '<span class="status-empty" title="Libre"></span>';
-        } else if (locker.recoverable == 1 || locker.recoverable === true) {
-            return '<span class="status-recoverable" title="Récupérable"></span>';
-        } else {
-            return '<span class="status-occupied" title="Occupé"></span>';
-        }
+        if (!locker.occupied) return '<span class="status-empty" title="Libre"></span>';
+        else if (locker.recoverable == 1 || locker.recoverable === true) return '<span class="status-recoverable" title="Récupérable"></span>';
+        else return '<span class="status-occupied" title="Occupé"></span>';
     };
     
-    // MODE GUEST
+    // Afficher TOUS les résultats dans la zone du premier résultat
+    const tbody = document.getElementById(`tbody-${firstZone}`);
+    
     if (IS_GUEST) {
         tbody.innerHTML = results.map(locker => `
             <tr>
                 <td><strong>${locker.number}</strong></td>
                 <td>${locker.occupied ? highlight(anonymizeName(locker.name), searchTerm) : '<span class="cell-empty">—</span>'}</td>
                 <td>${locker.occupied ? highlight(anonymizeFirstName(locker.firstName), searchTerm) : '<span class="cell-empty">—</span>'}</td>
-                <td class="hide-mobile">${locker.occupied ? highlight(locker.code, searchTerm) : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? highlight(locker.code, searchTerm) : '<span class="cell-empty">—</span>'}</td>
                 <td class="hide-mobile">${locker.occupied ? locker.birthDate : '<span class="cell-empty">—</span>'}</td>
             </tr>
         `).join('');
     } else {
-        // MODE ADMIN
         tbody.innerHTML = results.map(locker => `
             <tr>
                 <td><strong>${locker.number}</strong></td>
                 <td>${locker.occupied ? highlight(anonymizeName(locker.name), searchTerm) : '<span class="cell-empty">—</span>'}</td>
-                <td class="hide-mobile">${locker.occupied ? highlight(anonymizeFirstName(locker.firstName), searchTerm) : '<span class="cell-empty">—</span>'}</td>
-                <td class="hide-mobile">${locker.occupied ? highlight(locker.code, searchTerm) : '<span class="cell-empty">—</span>'}</td>
-                <td>${locker.occupied ? locker.birthDate : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? highlight(anonymizeFirstName(locker.firstName), searchTerm) : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? highlight(locker.code, searchTerm) : '<span class="cell-empty">—</span>'}</td>
+                <td class="hide-mobile">${locker.occupied ? formatDate(locker.birthDate) : '<span class="cell-empty">—</span>'}</td>
                 <td style="text-align: center;">${getStatus(locker)}</td>
                 <td class="hide-mobile">${locker.comment ? highlight(locker.comment, searchTerm) : '<span class="cell-empty">—</span>'}</td>
                 <td class="hide-mobile">
@@ -1647,9 +1657,9 @@ async function searchClient() {
         if (res.ok) {
             const client = await res.json();
             
-            document.getElementById('lastName').value = client.name || '';
-            document.getElementById('firstName').value = client.firstName || '';
-            document.getElementById('birthDate').value = client.birthDate || '';
+            document.getElementById('lastName').value = client.name || client.NOM || '';
+            document.getElementById('firstName').value = client.firstName || client.PRENOM || '';
+            document.getElementById('birthDate').value = client.birthDate || client.DATE_DE_NAISSANCE || '';
             
             showStatus('✓ Client trouvé et champs remplis', 'success');
         } else if (res.status === 404) {
@@ -1721,4 +1731,36 @@ function debugAppState() {
     tabs.forEach(tab => {
         console.log(`    - ${tab.textContent.trim()} (${tab.classList.contains('active') ? 'actif' : 'inactif'})`);
     });
+}
+
+function showDuplicatesPanel() {
+    const duplicateInfo = detectDuplicates();
+    
+    if (duplicateInfo.duplicates.size === 0) {
+        alert('✓ Aucun doublon détecté');
+        return;
+    }
+    
+    let message = `⚠️ ${duplicateInfo.duplicates.size} doublons détectés\n\n`;
+    
+    // Doublons par IPP
+    const ippDupes = Object.entries(duplicateInfo.byIPP).filter(([k,v]) => v.length > 1);
+    if (ippDupes.length > 0) {
+        message += `Par IPP identique (${ippDupes.length}):\n`;
+        ippDupes.forEach(([ipp, numbers]) => {
+            message += `  • IPP ${ipp}: casiers ${numbers.join(', ')}\n`;
+        });
+    }
+    
+    // Doublons par identité
+    const identityDupes = Object.entries(duplicateInfo.byIdentity).filter(([k,v]) => v.length > 1);
+    if (identityDupes.length > 0) {
+        message += `\nPar identité (${identityDupes.length}):\n`;
+        identityDupes.forEach(([identity, numbers]) => {
+            const [name, firstName, birthDate] = identity.split('|');
+            message += `  • ${name} ${firstName} (${birthDate}): casiers ${numbers.join(', ')}\n`;
+        });
+    }
+    
+    alert(message);
 }

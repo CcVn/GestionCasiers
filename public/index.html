@@ -3,16 +3,100 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>HADO - Casiers zone départ</title>
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self' '; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' 'unsafe-eval';">
+    <title>PUI - Casiers zone départ</title>
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/mobile.css">
     <link rel="stylesheet" href="css/print.css">
+    <style>
+        /* Container des outils admin */
+        .admin-tools-container {
+            display: none;
+            background: var(--bg-secondary);
+            border: 1px solid var(--border-color);
+            border-radius: 8px;
+            padding: 16px;
+            margin-bottom: 20px;
+            box-shadow: 0 2px 4px var(--shadow);
+            animation: slideDown 0.3s ease;
+        }
+
+        .admin-tools-container.active {
+            display: block;
+        }
+
+        @keyframes slideDown {
+            from {
+                opacity: 0;
+                transform: translateY(-10px);
+            }
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        .admin-tools-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 12px;
+            padding-bottom: 12px;
+            border-bottom: 1px solid var(--border-light);
+        }
+
+        .admin-tools-header h3 {
+            font-size: 14px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            margin: 0;
+        }
+
+        .admin-tools-content {
+            display: flex;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
+
+        .btn-settings {
+            padding: 10px;
+            background: var(--button-secondary-bg);
+            border: 1px solid var(--border-color);
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 18px;
+            transition: all 0.2s;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-settings:hover {
+            background: var(--button-secondary-hover);
+            transform: scale(1.05);
+        }
+
+        .btn-settings.active {
+            background: #e3f2fd;
+            border-color: #2196f3;
+            color: #1976d2;
+        }
+
+        @media (max-width: 768px) {
+            .admin-tools-content {
+                flex-direction: column;
+            }
+            
+            .admin-tools-content button {
+                width: 100%;
+            }
+        }
+    </style>
 </head>
 <body>
     <div id="loginPage" class="login-container active">
         <div class="login-box">
-            <h1>HADO - Casiers zone départ</h1>
-            <!-- <p style="color: #666; margin-bottom: 30px;">Sélectionnez un mode d'accès</p> -->
+            <h1>PUI - Casiers zone départ</h1>
             <form id="loginForm">
                 <div class="form-group" id="userNameGroup" style="display: none;">
                     <input type="text" id="userName" placeholder="Votre nom ou initiales" autocomplete="off">
@@ -30,7 +114,7 @@
         <header>
             <div class="header-info">
                 <div>
-                    <h1>HADO - Casiers zone départ</h1>
+                    <h1>PUI - Casiers zone départ</h1>
                     <div id="authStatus" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
                 </div>
                 <div style="display: flex; gap: 15px; align-items: center;">
@@ -41,12 +125,34 @@
             <div class="search-bar">
                 <input type="text" id="globalSearch" placeholder="Rechercher par nom, prénom ou IPP...">
                 <button class="btn-secondary admin-only" onclick="importClients()" title="Importer les admissions depuis un export MH">⬆️ Import présents</button>
-                <button class="btn-secondary admin-only" onclick="importCSV()" title="Importer des données casiers depuis un CSV">⬆️ Import casiers</button>
-                <button class="btn-secondary admin-only" onclick="exportData('json')" title="Exporter les casiers au format JSON">⬇ JSON</button>
-                <button class="btn-secondary admin-only" onclick="exportData('csv')" title="Exporter les casiers au format CSV">⬇ CSV</button>
-                <button class="btn-secondary admin-only" onclick="createBackup()" title="Créer un backup manuel de la base Sqlite">💾 Backup</button>
+                <button class="btn-settings admin-only" onclick="toggleAdminTools()" title="Outils d'administration" id="btnSettings">⚙️</button>
             </div>
         </header>
+
+        <!-- CONTAINER OUTILS ADMIN (masqué par défaut) -->
+        <div class="admin-tools-container admin-only" id="adminTools">
+            <div class="admin-tools-header">
+                <h3>🛠️ Outils d'administration</h3>
+                <button class="btn-secondary btn-small" onclick="toggleAdminTools()" style="padding: 4px 8px; font-size: 11px;">Fermer</button>
+            </div>
+            <div class="admin-tools-content">
+                <button class="btn-secondary" onclick="importCSV()" title="Importer des données casiers depuis un CSV">
+                    ⬆️ Import casiers
+                </button>
+                <button class="btn-secondary" onclick="exportData('json')" title="Exporter les casiers au format JSON">
+                    ⬇ Export JSON
+                </button>
+                <button class="btn-secondary" onclick="exportData('csv')" title="Exporter les casiers au format CSV">
+                    ⬇ Export CSV
+                </button>
+                <button class="btn-secondary" onclick="createBackup()" title="Créer un backup manuel de la base Sqlite">
+                    💾 Backup base
+                </button>
+                <button class="btn-secondary" onclick="showDuplicatesPanel()" title="Afficher la liste des doublons détectés">
+                    ⚠️ Analyse doublons
+                </button>
+            </div>
+        </div>
 
         <!-- ONGLETS (seront générés dynamiquement) -->
         <div class="tabs"></div>
@@ -115,5 +221,17 @@
     </div>
 
     <script src="app.js"></script>
+    <script>
+        // Fonction pour toggle le container des outils admin
+        function toggleAdminTools() {
+            const container = document.getElementById('adminTools');
+            const btn = document.getElementById('btnSettings');
+            
+            if (container && btn) {
+                container.classList.toggle('active');
+                btn.classList.toggle('active');
+            }
+        }
+    </script>
 </body>
 </html>

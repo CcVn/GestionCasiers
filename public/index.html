@@ -3,95 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta http-equiv="Content-Security-Policy" content="default-src 'self' '; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' 'unsafe-eval';">
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' 'unsafe-eval';">
     <title>PUI - Casiers zone départ</title>
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/mobile.css">
     <link rel="stylesheet" href="css/print.css">
-    <style>
-        /* Container des outils admin */
-        .admin-tools-container {
-            display: none;
-            background: var(--bg-secondary);
-            border: 1px solid var(--border-color);
-            border-radius: 8px;
-            padding: 16px;
-            margin-bottom: 20px;
-            box-shadow: 0 2px 4px var(--shadow);
-            animation: slideDown 0.3s ease;
-        }
-
-        .admin-tools-container.active {
-            display: block;
-        }
-
-        @keyframes slideDown {
-            from {
-                opacity: 0;
-                transform: translateY(-10px);
-            }
-            to {
-                opacity: 1;
-                transform: translateY(0);
-            }
-        }
-
-        .admin-tools-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 12px;
-            padding-bottom: 12px;
-            border-bottom: 1px solid var(--border-light);
-        }
-
-        .admin-tools-header h3 {
-            font-size: 14px;
-            font-weight: 600;
-            color: var(--text-secondary);
-            margin: 0;
-        }
-
-        .admin-tools-content {
-            display: flex;
-            gap: 10px;
-            flex-wrap: wrap;
-        }
-
-        .btn-settings {
-            padding: 10px;
-            background: var(--button-secondary-bg);
-            border: 1px solid var(--border-color);
-            border-radius: 6px;
-            cursor: pointer;
-            font-size: 18px;
-            transition: all 0.2s;
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-        }
-
-        .btn-settings:hover {
-            background: var(--button-secondary-hover);
-            transform: scale(1.05);
-        }
-
-        .btn-settings.active {
-            background: #e3f2fd;
-            border-color: #2196f3;
-            color: #1976d2;
-        }
-
-        @media (max-width: 768px) {
-            .admin-tools-content {
-                flex-direction: column;
-            }
-            
-            .admin-tools-content button {
-                width: 100%;
-            }
-        }
-    </style>
+    <link rel="stylesheet" href="css/admintools.css">
 </head>
 <body>
     <div id="loginPage" class="login-container active">
@@ -115,7 +32,10 @@
             <div class="header-info">
                 <div>
                     <h1>PUI - Casiers zone départ</h1>
-                    <div id="authStatus" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+                    <div style="display: flex; gap: 20px; align-items: center;">
+                        <div id="authStatus" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+                        <div id="importStatus" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+                    </div>
                 </div>
                 <div style="display: flex; gap: 15px; align-items: center;">
                     <div id="serverStatus" class="server-status offline">⚪ Vérification...</div>
@@ -148,9 +68,36 @@
                 <button class="btn-secondary" onclick="createBackup()" title="Créer un backup manuel de la base Sqlite">
                     💾 Backup base
                 </button>
+                <button class="btn-secondary" onclick="showRestorePanel()" title="Restaurer la base depuis un backup">
+                    🔄 Restore base
+                </button>
                 <button class="btn-secondary" onclick="showDuplicatesPanel()" title="Afficher la liste des doublons détectés">
                     ⚠️ Analyse doublons
                 </button>
+                <button class="btn-secondary" onclick="showClientsStats()" title="Afficher les statistiques de la base clients">
+                    📊 Stats clients
+                </button>
+                <button class="btn-secondary" onclick="showConnectionStats()" title="Afficher les statistiques de connexion">
+                    📈 Stats connexions
+                </button>
+                
+                <!-- Dark Mode Toggle -->
+                <div class="dark-mode-selector" title="Changer le mode d'affichage">
+                    <button class="mode-btn" data-mode="inactive" onclick="setDarkMode('inactive')">
+                        <span class="icon">☀️</span>
+                        <span class="label">Clair</span>
+                    </button>
+                    <button class="mode-btn" data-mode="system" onclick="setDarkMode('system')">
+                        <span class="icon">💻</span>
+                        <span class="label">Auto</span>
+                    </button>
+                    <button class="mode-btn" data-mode="active" onclick="setDarkMode('active')">
+                        <span class="icon">🌙</span>
+                        <span class="label">Sombre</span>
+                    </button>
+                </div>
+
+
             </div>
         </div>
 
@@ -217,6 +164,57 @@
                     <button type="submit" class="btn-primary">Enregistrer</button>
                 </div>
             </form>
+        </div>
+    </div>
+
+<!-- Panel stats clients -->
+    <div id="clientsStatsPanel" class="clients-stats-panel">
+        <div class="clients-stats-content">
+            <div class="clients-stats-header">
+                <h2>📊 Base de données clients</h2>
+                <button class="btn-secondary" onclick="closeClientsStats()">✕</button>
+            </div>
+            
+            <div id="clientsStatsContent">
+                <p style="text-align: center; color: var(--text-secondary);">Chargement...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Panel restore -->
+    <div id="restorePanel" class="restore-panel">
+        <div class="restore-content">
+            <div class="restore-header">
+                <h2>🔄 Restaurer la base de données</h2>
+                <button class="btn-secondary" onclick="closeRestorePanel()">✕</button>
+            </div>
+
+            <div class="warning-box">
+                <div class="icon">⚠️</div>
+                <div class="content">
+                    <p><strong>ATTENTION : Opération critique !</strong></p>
+                    <p>La restauration remplacera <strong>TOUTES les données actuelles</strong> par celles du backup sélectionné.</p>
+                    <p>Cette action est <strong>IRRÉVERSIBLE</strong>. Un backup automatique sera créé avant la restauration.</p>
+                </div>
+            </div>
+
+            <div id="restoreContent">
+                <p style="text-align: center; color: var(--text-secondary);">Chargement...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Panel stats connexions -->
+    <div id="connectionStatsPanel" class="connection-stats-panel">
+        <div class="connection-stats-content">
+            <div class="connection-stats-header">
+                <h2>📈 Statistiques de connexion</h2>
+                <button class="btn-secondary" onclick="closeConnectionStats()">✕</button>
+            </div>
+            
+            <div id="connectionStatsContent">
+                <p style="text-align: center; color: var(--text-secondary);">Chargement...</p>
+            </div>
         </div>
     </div>
 

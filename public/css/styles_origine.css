@@ -621,40 +621,275 @@ select:focus {
     box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
 }
 
-/* ===  CSS pour colorer les doublons === */
-
-/* Ligne de doublon */
-tr.duplicate-row {
-    background: rgba(255, 152, 0, 0.1) !important;
-    border-left: 3px solid #ff9800;
+/* Style pour les commentaires longs */
+.comment-text {
+    max-width: 200px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
 }
 
-tr.duplicate-row:hover {
-    background: rgba(255, 152, 0, 0.2) !important;
+/* Voir le commentaire complet au survol */
+.comment-text:hover {
+    white-space: normal;
+    overflow: visible;
+    position: relative;
+    z-index: 10;
+    background: var(--bg-secondary);
+    padding: 4px 8px;
+    border-radius: 4px;
+    box-shadow: 0 2px 8px var(--shadow);
 }
 
-/* Animation pour attirer l'attention */
-@keyframes pulse-duplicate {
-    0%, 100% {
-        box-shadow: 0 0 0 0 rgba(255, 152, 0, 0.4);
+/* Suggestion LeChat pour n'imprimer que les tables*/ 
+@media print {
+    body * {
+        visibility: hidden;
     }
-    50% {
-        box-shadow: 0 0 0 4px rgba(255, 152, 0, 0);
+    #loginPage, header, .tabs, .search-bar, .btn-secondary, .server-status, .login-container, .login-box, .form-group {
+        display: none !important;
+    }
+
+    table, table * {
+        visibility: visible;
+    }
+    table {
+        position: absolute;
+        left: 0;
+        top: 0;
+        width: 100%;
+    }
+
+    /* Coloration type Excel  Jeu "Bleu Clair / Gris Très Léger"*/
+    /* Alternance de lignes pour un effet Excel */
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 14px;
+    }
+
+    th {
+        background-color: #f0f4f8;
+        padding: 10px;
+        text-align: left;
+        border-bottom: 1px solid #d0d7e0;
+    }
+
+    tr:nth-child(even) {
+        background-color: #f8f9fc; /* Gris très clair */
+    }
+
+    tr:nth-child(odd) {
+        background-color: #e6f0fa; /* Bleu pastel très léger */
+    }
+
+    td {
+        padding: 8px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    /* Coloration type Excel  Jeu Jeu "Vert Menthe / Blanc Cassé"*/
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 14px;
+    }
+
+    th {
+        background-color: #f0f8f0;
+        padding: 10px;
+        text-align: left;
+        border-bottom: 1px solid #d0e0d0;
+    }
+
+    tr:nth-child(even) {
+        background-color: #ffffff; /* Blanc */
+    }
+
+    tr:nth-child(odd) {
+        background-color: #f0fcf0; /* Vert menthe très clair */
+    }
+
+    td {
+        padding: 8px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    /* Coloration type Excel  Jeu "Rose Poudré / Gris Perle" */
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 14px;
+    }
+
+    th {
+        background-color: #faf0f0;
+        padding: 10px;
+        text-align: left;
+        border-bottom: 1px solid #e8d8d8;
+    }
+
+    tr:nth-child(even) {
+        background-color: #fcf8f8; /* Gris perle */
+    }
+
+    tr:nth-child(odd) {
+        background-color: #fde8e8; /* Rose poudré très clair */
+    }
+
+    td {
+        padding: 8px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+    /* Coloration type Excel  Jeu "Jaune Paille / Blanc" */
+    table {
+        border-collapse: collapse;
+        width: 100%;
+        font-size: 14px;
+    }
+
+    th {
+        background-color: #fcf8e8;
+        padding: 10px;
+        text-align: left;
+        border-bottom: 1px solid #e8e0c8;
+    }
+
+    tr:nth-child(even) {
+        background-color: #ffffff; /* Blanc */
+    }
+
+    tr:nth-child(odd) {
+        background-color: #fcfce8; /* Jaune paille très clair */
+    }
+
+    td {
+        padding: 8px;
+        border-bottom: 1px solid #e0e0e0;
+    }
+
+}
+
+@media (max-width: 768px) {
+    .container {
+        padding: 10px;
+    }
+
+    h1 {
+        font-size: 22px;
+    }
+
+    .section-header {
+        flex-direction: column;
+        align-items: flex-start;
+        padding: 12px 15px;
+    }
+
+    .section-header h2 {
+        font-size: 16px;
+    }
+
+    .zone-counter {
+        display: block;
+        margin-left: 0;
+        margin-top: 5px;
+        width: fit-content;
+    }
+
+    .controls {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+
+    .controls button, .controls select {
+        font-size: 12px;
+        padding: 8px 10px;
+    }
+
+    /* Masquer certaines colonnes sur mobile */
+    .hide-mobile {
+        display: none !important;
+    }
+
+    /* Masquer les colonnes admin en mode guest */
+    .guest-mode .admin-only {
+        display: none !important;
+    }
+
+    /* Adapter les onglets pour mobile */
+    .tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+
+    .tab-button {
+        white-space: nowrap;
+        padding: 10px 15px;
+        font-size: 13px;
+    }
+
+    /* Table responsive */
+    .table-container {
+        padding: 10px;
+    }
+
+    table {
+        font-size: 12px;
+    }
+
+    th, td {
+        padding: 6px 4px;
+    }
+
+    /* Status badges plus petits */
+    .status-empty,
+    .status-occupied,
+    .status-recoverable {
+        width: 18px;
+        height: 18px;
+    }
+
+    .status-empty::before,
+    .status-occupied::before,
+    .status-recoverable::before {
+        font-size: 10px;
+    }
+
+    /* Search bar plus petite */
+    .search-bar input {
+        padding: 10px 12px;
+        font-size: 13px;
+    }
+
+    /* Login box responsive */
+    .login-box {
+        padding: 30px 20px;
+        margin: 20px;
+    }
+
+    .login-box h1 {
+        font-size: 24px;
+    }
+
+    /* Ajuster le header */
+    .header-info {
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+    }
+
+    .header-info > div {
+        width: 100%;
+    }
+
+    #authStatus {
+        font-size: 11px !important;
+    }
+
+    .server-status {
+        font-size: 11px;
+        padding: 6px 12px;
+        text-align: center;
     }
 }
-
-tr.duplicate-row td:first-child {
-    animation: pulse-duplicate 2s infinite;
-}
-
-/* Badge de warning */
-tr.duplicate-row td:first-child strong::after {
-    content: '';
-    display: inline-block;
-    width: 8px;
-    height: 8px;
-    background: #ff9800;
-    border-radius: 50%;
-    margin-left: 6px;
-}
-

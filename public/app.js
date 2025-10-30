@@ -2,8 +2,8 @@
 let API_URL = 'http://localhost:5000/api';
 let DATA = [];
 let ZONES_CONFIG = []; // Variable globale pour stocker la config des zones
-let CURRENT_FILTER = { NORD: 'all', SUD: 'all', PCA: 'all' };
-let CURRENT_ZONE = 'NORD';
+//let CURRENT_FILTER = { NORD: 'all', SUD: 'all', PCA: 'all' };
+//let CURRENT_ZONE = 'NORD';
 let IS_AUTHENTICATED = false;
 let IS_GUEST = false;
 let IS_MOBILE = false;
@@ -185,6 +185,8 @@ function formatDate(inputDate) {
 
 // ============ MODE SOMBRE ============
 
+// ============ MODE SOMBRE ============
+
 function applyDarkMode(setting) {
     DARK_MODE_SETTING = setting || 'system';
     console.log('Application du mode sombre:', DARK_MODE_SETTING);
@@ -211,8 +213,39 @@ function applyDarkMode(setting) {
             }
         });
     }
+    
+    // Mettre à jour l'interface du sélecteur
+    updateDarkModeButtons();
 }
 
+function updateDarkModeButtons() {
+    const buttons = document.querySelectorAll('.mode-btn');
+    buttons.forEach(btn => {
+        btn.classList.remove('active');
+        if (btn.dataset.mode === DARK_MODE_SETTING) {
+            btn.classList.add('active');
+        }
+    });
+}
+
+function setDarkMode(mode) {
+    console.log('🌓 Changement mode:', mode);
+    
+    // Sauvegarder la préférence localement
+    localStorage.setItem('darkMode', mode);
+    
+    // Appliquer immédiatement
+    applyDarkMode(mode);
+    
+    // Afficher une notification
+    const modeNames = {
+        'inactive': 'Mode clair',
+        'active': 'Mode sombre',
+        'system': 'Mode automatique'
+    };
+    
+    showStatus(`✓ ${modeNames[mode]} activé`, 'success');
+}
 // ============ DÉTECTION MOBILE ============
 function detectMobile() {
     IS_MOBILE = window.innerWidth <= 768;
@@ -450,7 +483,71 @@ function updateAuthStatus() {
     //updateImportExportButtons();
 }
 
-/* 
+// pour l'info sur le dernier import patients
+async function updateImportStatus() {
+    try {
+        const token = getAuthToken();
+        if (!token) return;
+        
+        const res = await fetch(`${API_URL}/clients/import-status`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!res.ok) return;
+        
+        const data = await res.json();
+        
+        const statusEl = document.getElementById('importStatus');
+        if (!statusEl) return;
+        
+        if (!data.hasImport) {
+            statusEl.innerHTML = '⚠️ Aucun import client';
+            statusEl.style.color = '#f59e0b';
+            statusEl.title = 'Aucun import de clients effectué - Import recommandé';
+        } else {
+            const importDate = new Date(data.lastImportDate);
+            const daysSince = data.daysSinceImport;
+            
+            let message = '';
+            let color = '#666';
+            let title = '';
+            
+            const formattedDateTime = importDate.toLocaleString('fr-FR', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+
+            if (daysSince === 0) {
+                message = '✓ Base patients mise à jour aujourd\'hui';
+                color = '#10b981';
+                title = `Dernier import: ${formattedDateTime}`;
+            } else if (daysSince === 1) {
+                message = '✓ Base patients mise à jour hier';
+                color = '#10b981';
+                title = `Dernière mise à jour de la base patients: ${formattedDateTime}`;
+            } else if (daysSince <= data.warningThreshold) {
+                message = `✓ Import il y a ${daysSince}j`;
+                color = '#10b981';
+                title = `Dernière mise à jour de la base patients: ${formattedDateTime}`;
+            } else {
+                message = `⚠️ Import il y a ${daysSince}j`;
+                color = '#f59e0b';
+                title = `Dernière mise à jour de la base patients: ${formattedDateTime} - Import recommandé`;
+            }
+            
+            statusEl.innerHTML = message;
+            statusEl.style.color = color;
+            statusEl.title = title;
+        }
+    } catch (err) {
+        console.error('Erreur chargement statut import:', err);
+    }
+}
+
+// plus utilisée pour l'instant
 function updateImportExportButtons() {
     const importExportButtons = document.querySelectorAll('.search-bar button');
     console.log('Mise à jour des boutons header, IS_GUEST:', IS_GUEST);
@@ -503,7 +600,6 @@ function updateImportExportButtons() {
         }
     });
 }
-*/
 
 function isEditAllowed() {
     if (!IS_AUTHENTICATED) {
@@ -599,7 +695,7 @@ function showAdminElements() {
     console.log('✓ Éléments admin réaffichés');
 }
 
-// ============ CONFIGURATION API ============
+// ============ CONFIGURATION API ============================
 
 async function setupApp() {
     console.log('🚀 Setup de l\'application...');
@@ -632,11 +728,7 @@ async function setupApp() {
         const searchInput = document.getElementById('globalSearch');
         if (searchInput) {
             searchInput.addEventListener('input', function(e) {
-                if (e.target.value.trim()) {
-                    searchLockers(e.target.value);
-                } else {
-                    renderAllTables();
-                }
+                debouncedSearch(e.target.value);
             });
         }
         
@@ -655,19 +747,34 @@ async function setupApp() {
         console.log('6️⃣ Vérification serveur...');
         checkServerStatus();
         
-        // ÉTAPE 7 : Appliquer mode guest si nécessaire
+        // ÉTAPE 7 : Appliquer mode dark sauvegardé
+        console.log('7️⃣ Application préférences dark mode...');
+        const savedMode = localStorage.getItem('darkMode');
+        if (savedMode) {
+            console.log('Mode sauvegardé trouvé:', savedMode);
+            applyDarkMode(savedMode);
+        } else {
+            applyDarkMode(DARK_MODE_SETTING);
+        }
+        
+        // ÉTAPE 7b : Charger statut import
+        console.log('7️⃣b Chargement statut import...');
+        updateImportStatus();
+
+        // ÉTAPE 8 : Appliquer mode guest si nécessaire
         if (IS_GUEST) {
             console.log('7️⃣ Application mode guest...');
             applyGuestDefaults();
         }
-        
-        // ÉTAPE 8 : Rafraîchissement automatique
+
+        // ÉTAPE 9 : Rafraîchissement automatique
         console.log('8️⃣ Démarrage rafraîchissement auto...');
         setInterval(() => {
             console.log('⟳ Rafraîchissement automatique...');
             loadData();
             checkServerStatus();
-        }, 60000);
+            updateImportStatus();
+        }, 120000);
         
         console.log('✅ Application initialisée avec succès');
         
@@ -743,7 +850,7 @@ function applyAdminDefaults() {
     console.log('✓ Mode guest appliqué');
 }
 
-// ============ BACKUP ============
+// ============ BACKUP =============================================
 
 function createBackup() {
     if (!isEditAllowed()) return;
@@ -904,7 +1011,24 @@ function renderTable(zone) {
         const duplicateInfo = detectDuplicates();
         lockers = lockers.filter(l => duplicateInfo.duplicates.has(l.number));
     }
+
+    // Appliquer le tri selon la valeur du select
+    const sortSelect = document.querySelector(`select[onchange="sortTable('${zone}', this.value)"]`);
+    const sortValue = sortSelect ? sortSelect.value : 'number';
     
+    if (sortValue === 'name') {
+        lockers.sort((a, b) => {
+            const nameA = (a.name || '').toLowerCase();
+            const nameB = (b.name || '').toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+    } else {
+        // Tri par numéro (par défaut)
+        lockers.sort((a, b) => {
+            return a.number.localeCompare(b.number);
+        });
+    }
+        
     if (IS_GUEST) {
         lockers.sort((a, b) => {
             const nameA = (a.name || '').toLowerCase();
@@ -1006,7 +1130,7 @@ function filterTable(zone, value) {
     renderTable(zone);
 }
 
-
+// Tri de la table
 function sortTable(zone, value) {
     const tbody = document.getElementById(`tbody-${zone}`);
     const rows = Array.from(tbody.querySelectorAll('tr'));
@@ -1166,7 +1290,7 @@ function searchLockers(query) {
                 <td>${locker.occupied ? highlight(anonymizeFirstName(locker.firstName), searchTerm) : '<span class="cell-empty">—</span>'}</td>
                 <td>${locker.occupied ? highlight(locker.code, searchTerm) : '<span class="cell-empty">—</span>'}</td>
                 <td class="hide-mobile">${locker.occupied ? formatDate(locker.birthDate) : '<span class="cell-empty">—</span>'}</td>
-                <td style="text-align: center;">${getStatus(locker)}</td>
+                <td class="hide-mobile" style="text-align: center;">${getStatus(locker)}</td>
                 <td class="hide-mobile">${locker.comment ? highlight(locker.comment, searchTerm) : '<span class="cell-empty">—</span>'}</td>
                 <td class="hide-mobile">
                     <div class="menu-dot">
@@ -1578,6 +1702,7 @@ function importCSV() {
 }
 
 // ============ IMPORT CLIENTS ============
+
 function importClients() {
     if (!isEditAllowed()) return;
     
@@ -1626,6 +1751,8 @@ function importClients() {
                 }
                 message += `Total : ${result.total}`;
                 alert(message);
+                updateImportStatus(); // Rafraîchir le statut d'import
+
             } else if (res.status === 401) {
                 alert('Session expirée. Veuillez vous reconnecter.');
                 logout();
@@ -1674,6 +1801,7 @@ async function searchClient() {
 }
 
 // ============ UTILITAIRES ============
+
 // Fonction debounce pour éviter trop d'appels
 function debounce(func, wait) {
     let timeout;
@@ -1686,6 +1814,15 @@ function debounce(func, wait) {
         timeout = setTimeout(later, wait);
     };
 }
+// Créer la version debounced de searchLockers
+const debouncedSearch = debounce((query) => {
+    if (query.trim()) {
+        searchLockers(query);
+    } else {
+        renderAllTables();
+    }
+}, 400); // Attendre 400ms après la dernière frappe (range 250-500ms conseillé)
+
 
 function printTable() {
     window.print();
@@ -1763,4 +1900,696 @@ function showDuplicatesPanel() {
     }
     
     alert(message);
+}
+
+// ============ STATS CLIENTS ============
+
+async function showClientsStats() {
+    const panel = document.getElementById('clientsStatsPanel');
+    const content = document.getElementById('clientsStatsContent');
+    
+    // Afficher le panel avec un loader
+    panel.classList.add('active');
+    content.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 40px;">⏳ Chargement des statistiques...</p>';
+    
+    try {
+        const token = getAuthToken();
+        const res = await fetch(`${API_URL}/clients/stats`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!res.ok) {
+            throw new Error('Erreur ' + res.status);
+        }
+        
+        const data = await res.json();
+        renderClientsStats(data);
+        
+    } catch (err) {
+        console.error('Erreur chargement stats clients:', err);
+        content.innerHTML = `
+            <div style="text-align: center; padding: 40px;">
+                <p style="color: #ef4444; font-weight: 600; margin-bottom: 10px;">❌ Erreur</p>
+                <p style="color: var(--text-secondary);">${err.message}</p>
+                <button class="btn-secondary" onclick="showClientsStats()" style="margin-top: 20px;">Réessayer</button>
+            </div>
+        `;
+    }
+}
+
+function renderClientsStats(data) {
+    const content = document.getElementById('clientsStatsContent');
+    
+    // Formater la date du dernier import
+    let lastImportInfo = 'Aucun import';
+    if (data.lastImport) {
+        const importDate = new Date(data.lastImport.importDate);
+        const daysSince = Math.floor((Date.now() - importDate) / (1000 * 60 * 60 * 24));
+        lastImportInfo = `${importDate.toLocaleDateString('fr-FR')} (il y a ${daysSince} jour${daysSince > 1 ? 's' : ''})`;
+    }
+    
+    // Construire le HTML
+    let html = `
+        <div class="stats-grid">
+            <div class="stat-card">
+                <div class="stat-value">${data.total}</div>
+                <div class="stat-label">Clients total</div>
+            </div>
+    `;
+    
+    // Stats par zone
+    if (data.byZone && data.byZone.length > 0) {
+        data.byZone.slice(0, 3).forEach(zone => {
+            html += `
+                <div class="stat-card">
+                    <div class="stat-value">${zone.count}</div>
+                    <div class="stat-label">${zone.zone || 'Non défini'}</div>
+                </div>
+            `;
+        });
+    }
+    
+    // Stats par sexe
+    if (data.bySex && data.bySex.length > 0) {
+        data.bySex.forEach(sex => {
+            const sexLabel = sex.sex === 'M' ? 'Hommes' : sex.sex === 'F' ? 'Femmes' : 'Non défini';
+            html += `
+                <div class="stat-card">
+                    <div class="stat-value">${sex.count}</div>
+                    <div class="stat-label">${sexLabel}</div>
+                </div>
+            `;
+        });
+    }
+    
+    html += `</div>`;
+    
+    // Info dernier import
+    html += `
+        <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 16px; margin-bottom: 24px;">
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <p style="font-size: 13px; color: var(--text-secondary); margin: 0 0 4px 0;">Dernier import</p>
+                    <p style="font-size: 15px; font-weight: 600; margin: 0;">${lastImportInfo}</p>
+                    ${data.lastImport ? `<p style="font-size: 12px; color: var(--text-tertiary); margin: 4px 0 0 0;">Par ${data.lastImport.userName}</p>` : ''}
+                </div>
+                ${data.lastImport ? `<div style="font-size: 24px; color: var(--primary-color);">📥</div>` : ''}
+            </div>
+        </div>
+    `;
+    
+    // Répartition par zone (graphique textuel)
+    if (data.byZone && data.byZone.length > 0) {
+        html += `
+            <div style="margin-bottom: 24px;">
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">Répartition par zone</h3>
+                <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+        `;
+        
+        const maxCount = Math.max(...data.byZone.map(z => z.count));
+        data.byZone.forEach(zone => {
+            const percentage = (zone.count / data.total * 100).toFixed(1);
+            const barWidth = (zone.count / maxCount * 100).toFixed(1);
+            html += `
+                <div style="margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 13px;">
+                        <span style="font-weight: 600;">${zone.zone || 'Non défini'}</span>
+                        <span style="color: var(--text-secondary);">${zone.count} (${percentage}%)</span>
+                    </div>
+                    <div style="background: var(--border-light); border-radius: 4px; height: 8px; overflow: hidden;">
+                        <div style="background: var(--primary-color); height: 100%; width: ${barWidth}%; transition: width 0.3s;"></div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `
+                </div>
+            </div>
+        `;
+    }
+    
+    // Aperçu des 10 premiers clients
+    if (data.preview && data.preview.length > 0) {
+        html += `
+            <div class="clients-preview-section">
+                <h3>Aperçu des données (10 premiers clients)</h3>
+                <div style="overflow-x: auto;">
+                    <table class="clients-preview-table">
+                        <thead>
+                            <tr>
+                                <th>IPP</th>
+                                <th>Nom</th>
+                                <th>Prénom</th>
+                                <th>DDN</th>
+                                <th>Sexe</th>
+                                <th>Zone</th>
+                                <th>Entrée</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        data.preview.forEach(client => {
+            html += `
+                <tr>
+                    <td><strong>${client.ipp}</strong></td>
+                    <td>${client.name || '—'}</td>
+                    <td>${client.firstName || '—'}</td>
+                    <td>${client.birthDate ? formatDate(client.birthDate) : '—'}</td>
+                    <td>${client.sex || '—'}</td>
+                    <td>${client.zone || '—'}</td>
+                    <td>${client.entryDate ? formatDate(client.entryDate) : '—'}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    } else {
+        html += `
+            <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                <p style="font-size: 18px; margin-bottom: 10px;">📭</p>
+                <p>Aucun client dans la base de données</p>
+                <button class="btn-primary" onclick="closeClientsStats(); importClients();" style="margin-top: 20px;">
+                    Importer des clients
+                </button>
+            </div>
+        `;
+    }
+    
+    content.innerHTML = html;
+}
+
+function closeClientsStats() {
+    document.getElementById('clientsStatsPanel').classList.remove('active');
+}
+
+// ============ RESTORE BACKUP ============
+
+let selectedBackupFile = null;
+let uploadedBackupData = null;
+
+async function showRestorePanel() {
+    if (!isEditAllowed()) return;
+    
+    const panel = document.getElementById('restorePanel');
+    const content = document.getElementById('restoreContent');
+    
+    // Afficher le panel
+    panel.classList.add('active');
+    content.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 40px;">⏳ Chargement des backups...</p>';
+    
+    try {
+        const token = getAuthToken();
+        const res = await fetch(`${API_URL}/backups`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!res.ok) {
+            throw new Error('Erreur ' + res.status);
+        }
+        
+        const data = await res.json();
+        renderRestorePanel(data.backups);
+        
+    } catch (err) {
+        console.error('Erreur chargement backups:', err);
+        content.innerHTML = `
+            <div style="text-align: center; padding: 40px;">
+                <p style="color: #ef4444; font-weight: 600; margin-bottom: 10px;">❌ Erreur</p>
+                <p style="color: var(--text-secondary);">${err.message}</p>
+                <button class="btn-secondary" onclick="showRestorePanel()" style="margin-top: 20px;">Réessayer</button>
+            </div>
+        `;
+    }
+}
+
+function renderRestorePanel(backups) {
+    const content = document.getElementById('restoreContent');
+    
+    let html = '';
+    
+    // Zone d'upload
+    html += `
+        <div class="upload-zone" id="uploadZone" onclick="document.getElementById('fileInput').click()">
+            <div class="icon">📁</div>
+            <p><strong>Importer un fichier backup (.db)</strong></p>
+            <p style="font-size: 12px;">Cliquez ou glissez-déposez un fichier ici</p>
+        </div>
+        <input type="file" id="fileInput" accept=".db" style="display: none;" onchange="handleFileSelect(event)">
+    `;
+    
+    // Liste des backups disponibles
+    if (backups && backups.length > 0) {
+        html += `
+            <div class="backup-list">
+                <h3>Backups disponibles sur le serveur (${backups.length})</h3>
+        `;
+        
+        backups.forEach((backup, index) => {
+            const date = new Date(backup.date);
+            const formattedDate = date.toLocaleString('fr-FR', {
+                year: 'numeric',
+                month: '2-digit',
+                day: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            const size = (backup.size / 1024).toFixed(2);
+            
+            html += `
+                <div class="backup-item" onclick="selectBackup('${backup.filename}', this)">
+                    <div class="info">
+                        <div class="name">📦 ${backup.filename}</div>
+                        <div class="meta">📅 ${formattedDate}</div>
+                    </div>
+                    <div class="size">${size} KB</div>
+                </div>
+            `;
+        });
+        
+        html += `</div>`;
+    } else {
+        html += `
+            <div style="text-align: center; padding: 30px; color: var(--text-secondary);">
+                <p style="font-size: 18px; margin-bottom: 10px;">📭</p>
+                <p>Aucun backup disponible sur le serveur</p>
+                <p style="font-size: 12px; margin-top: 8px;">Importez un fichier backup ou créez-en un nouveau</p>
+            </div>
+        `;
+    }
+    
+    // Boutons d'action
+    html += `
+        <div class="restore-actions">
+            <button class="btn-secondary" onclick="closeRestorePanel()">Annuler</button>
+            <button class="btn-primary" id="btnRestore" onclick="confirmRestore()" disabled>
+                🔄 Restaurer
+            </button>
+        </div>
+    `;
+    
+    content.innerHTML = html;
+    
+    // Configurer drag & drop
+    setupDragAndDrop();
+}
+
+function setupDragAndDrop() {
+    const zone = document.getElementById('uploadZone');
+    if (!zone) return;
+    
+    zone.addEventListener('dragover', (e) => {
+        e.preventDefault();
+        zone.classList.add('dragover');
+    });
+    
+    zone.addEventListener('dragleave', () => {
+        zone.classList.remove('dragover');
+    });
+    
+    zone.addEventListener('drop', (e) => {
+        e.preventDefault();
+        zone.classList.remove('dragover');
+        
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleFile(files[0]);
+        }
+    });
+}
+
+function handleFileSelect(event) {
+    const file = event.target.files[0];
+    if (file) {
+        handleFile(file);
+    }
+}
+
+function handleFile(file) {
+    if (!file.name.endsWith('.db')) {
+        alert('❌ Format invalide : seuls les fichiers .db sont acceptés');
+        return;
+    }
+    
+    const reader = new FileReader();
+    
+    reader.onload = function(e) {
+        const arrayBuffer = e.target.result;
+        const uint8Array = new Uint8Array(arrayBuffer);
+        
+        // Vérifier le header SQLite
+        const header = String.fromCharCode.apply(null, uint8Array.slice(0, 16));
+        if (!header.startsWith('SQLite format 3')) {
+            alert('❌ Fichier invalide : ce n\'est pas une base SQLite');
+            return;
+        }
+        
+        // Convertir en base64
+        const base64 = btoa(String.fromCharCode.apply(null, uint8Array));
+        
+        uploadedBackupData = base64;
+        selectedBackupFile = null;
+        
+        // Désélectionner tous les backups de la liste
+        document.querySelectorAll('.backup-item').forEach(item => {
+            item.classList.remove('selected');
+        });
+        
+        // Mettre à jour l'interface
+        const zone = document.getElementById('uploadZone');
+        zone.innerHTML = `
+            <div class="icon">✅</div>
+            <p><strong>${file.name}</strong></p>
+            <p style="font-size: 12px;">Taille : ${(file.size / 1024).toFixed(2)} KB</p>
+            <p style="font-size: 11px; margin-top: 8px; color: var(--text-tertiary);">Cliquez pour changer de fichier</p>
+        `;
+        zone.style.borderColor = 'var(--primary-color)';
+        zone.style.background = '#e3f2fd';
+        
+        // Activer le bouton restore
+        document.getElementById('btnRestore').disabled = false;
+    };
+    
+    reader.readAsArrayBuffer(file);
+}
+
+function selectBackup(filename, element) {
+    selectedBackupFile = filename;
+    uploadedBackupData = null;
+    
+    // Désélectionner tous
+    document.querySelectorAll('.backup-item').forEach(item => {
+        item.classList.remove('selected');
+    });
+    
+    // Sélectionner celui-ci
+    element.classList.add('selected');
+    
+    // Réinitialiser la zone d'upload
+    const zone = document.getElementById('uploadZone');
+    zone.innerHTML = `
+        <div class="icon">📁</div>
+        <p><strong>Importer un fichier backup (.db)</strong></p>
+        <p style="font-size: 12px;">Cliquez ou glissez-déposez un fichier ici</p>
+    `;
+    zone.style.borderColor = '';
+    zone.style.background = '';
+    
+    // Activer le bouton restore
+    document.getElementById('btnRestore').disabled = false;
+}
+
+async function confirmRestore() {
+    if (!selectedBackupFile && !uploadedBackupData) {
+        alert('Veuillez sélectionner un backup');
+        return;
+    }
+    
+    const source = selectedBackupFile || 'fichier importé';
+    
+    const confirmed = confirm(
+        `⚠️ CONFIRMATION REQUISE\n\n` +
+        `Vous allez restaurer la base depuis :\n"${source}"\n\n` +
+        `Cette action va :\n` +
+        `• Créer un backup de sécurité de la base actuelle\n` +
+        `• Remplacer TOUTES les données par celles du backup\n` +
+        `• Redémarrer le serveur automatiquement\n\n` +
+        `Cette opération est IRRÉVERSIBLE.\n\n` +
+        `Voulez-vous continuer ?`
+    );
+    
+    if (!confirmed) return;
+    
+    // Double confirmation
+    const doubleConfirm = confirm(
+        `⚠️ DERNIÈRE CONFIRMATION\n\n` +
+        `Êtes-vous absolument certain de vouloir restaurer la base ?\n\n` +
+        `Tapez OK pour confirmer.`
+    );
+    
+    if (!doubleConfirm) return;
+    
+    // Afficher un loader
+    const content = document.getElementById('restoreContent');
+    content.innerHTML = `
+        <div style="text-align: center; padding: 60px;">
+            <div style="font-size: 48px; margin-bottom: 20px;">⏳</div>
+            <p style="font-size: 18px; font-weight: 600; margin-bottom: 10px;">Restauration en cours...</p>
+            <p style="color: var(--text-secondary); font-size: 14px;">Ne fermez pas cette fenêtre</p>
+        </div>
+    `;
+    
+    try {
+        const token = getAuthToken();
+        const res = await fetch(`${API_URL}/restore`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`
+            },
+            body: JSON.stringify({
+                filename: selectedBackupFile,
+                fileData: uploadedBackupData
+            })
+        });
+        
+        const data = await res.json();
+        
+        if (!res.ok) {
+            throw new Error(data.error || 'Erreur lors de la restauration');
+        }
+        
+        // Succès
+        content.innerHTML = `
+            <div style="text-align: center; padding: 60px;">
+                <div style="font-size: 64px; margin-bottom: 20px;">✅</div>
+                <p style="font-size: 20px; font-weight: 600; margin-bottom: 16px; color: #10b981;">Restauration réussie !</p>
+                <p style="color: var(--text-secondary); margin-bottom: 8px;">Backup de sécurité créé : ${data.safetyBackup}</p>
+                <p style="color: var(--text-secondary); margin-bottom: 24px;">Le serveur va redémarrer dans quelques secondes...</p>
+                <div style="background: var(--bg-secondary); border-radius: 8px; padding: 16px; margin-top: 20px;">
+                    <p style="font-size: 14px; color: var(--text-primary); margin: 0;">
+                        ⏳ Rechargement automatique de la page...
+                    </p>
+                </div>
+            </div>
+        `;
+        
+        // Recharger la page après 3 secondes
+        setTimeout(() => {
+            window.location.reload();
+        }, 3000);
+        
+    } catch (err) {
+        console.error('Erreur restauration:', err);
+        content.innerHTML = `
+            <div style="text-align: center; padding: 60px;">
+                <div style="font-size: 64px; margin-bottom: 20px;">❌</div>
+                <p style="font-size: 20px; font-weight: 600; margin-bottom: 16px; color: #ef4444;">Erreur lors de la restauration</p>
+                <p style="color: var(--text-secondary); margin-bottom: 24px;">${err.message}</p>
+                <button class="btn-primary" onclick="showRestorePanel()">Réessayer</button>
+            </div>
+        `;
+    }
+}
+
+function closeRestorePanel() {
+    document.getElementById('restorePanel').classList.remove('active');
+    selectedBackupFile = null;
+    uploadedBackupData = null;
+}
+
+// ============ STATS CONNEXIONS ============
+
+async function showConnectionStats() {
+    const panel = document.getElementById('connectionStatsPanel');
+    const content = document.getElementById('connectionStatsContent');
+    
+    // Afficher le panel
+    panel.classList.add('active');
+    content.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 40px;">⏳ Chargement des statistiques...</p>';
+    
+    try {
+        const token = getAuthToken();
+        const res = await fetch(`${API_URL}/stats/connections/summary`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        
+        if (!res.ok) {
+            throw new Error('Erreur ' + res.status);
+        }
+        
+        const data = await res.json();
+        renderConnectionStats(data);
+        
+    } catch (err) {
+        console.error('Erreur chargement stats connexions:', err);
+        content.innerHTML = `
+            <div style="text-align: center; padding: 40px;">
+                <p style="color: #ef4444; font-weight: 600; margin-bottom: 10px;">❌ Erreur</p>
+                <p style="color: var(--text-secondary);">${err.message}</p>
+                <button class="btn-secondary" onclick="showConnectionStats()" style="margin-top: 20px;">Réessayer</button>
+            </div>
+        `;
+    }
+}
+
+function renderConnectionStats(data) {
+    const content = document.getElementById('connectionStatsContent');
+    
+    let html = '';
+    
+    // Cartes récapitulatives
+    html += `
+        <div class="stats-summary">
+            <div class="summary-card total">
+                <div class="value">${data.total.total}</div>
+                <div class="label">Total</div>
+            </div>
+            <div class="summary-card admin">
+                <div class="value">${data.total.admin}</div>
+                <div class="label">Admin</div>
+            </div>
+            <div class="summary-card guest">
+                <div class="value">${data.total.guest}</div>
+                <div class="label">Guest</div>
+            </div>
+        </div>
+    `;
+    
+    // Tableau des statistiques par période
+    html += `
+        <div class="stats-table-container">
+            <table class="stats-table">
+                <thead>
+                    <tr>
+                        <th>Période</th>
+                        <th style="text-align: center;">Admin</th>
+                        <th style="text-align: center;">Guest</th>
+                        <th style="text-align: center;">Total</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    <tr>
+                        <td class="period-col">📅 Aujourd'hui</td>
+                        <td class="admin-col" style="text-align: center;">${data.today.admin}</td>
+                        <td class="guest-col" style="text-align: center;">${data.today.guest}</td>
+                        <td class="total-col" style="text-align: center;">${data.today.total}</td>
+                    </tr>
+                    <tr>
+                        <td class="period-col">📆 Semaine en cours</td>
+                        <td class="admin-col" style="text-align: center;">${data.week.admin}</td>
+                        <td class="guest-col" style="text-align: center;">${data.week.guest}</td>
+                        <td class="total-col" style="text-align: center;">${data.week.total}</td>
+                    </tr>
+                    <tr>
+                        <td class="period-col">📊 Mois en cours</td>
+                        <td class="admin-col" style="text-align: center;">${data.month.admin}</td>
+                        <td class="guest-col" style="text-align: center;">${data.month.guest}</td>
+                        <td class="total-col" style="text-align: center;">${data.month.total}</td>
+                    </tr>
+                    <tr>
+                        <td class="period-col">📈 Année en cours</td>
+                        <td class="admin-col" style="text-align: center;">${data.year.admin}</td>
+                        <td class="guest-col" style="text-align: center;">${data.year.guest}</td>
+                        <td class="total-col" style="text-align: center;">${data.year.total}</td>
+                    </tr>
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    // Graphique des 7 derniers jours
+    if (data.last7Days && data.last7Days.length > 0) {
+        // Grouper par date
+        const dailyData = {};
+        data.last7Days.forEach(stat => {
+            if (!dailyData[stat.date]) {
+                dailyData[stat.date] = { admin: 0, guest: 0 };
+            }
+            dailyData[stat.date][stat.role] = stat.count;
+        });
+        
+        // Générer les 7 derniers jours même si pas de données
+        const dates = [];
+        for (let i = 6; i >= 0; i--) {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            dates.push(date.toISOString().split('T')[0]);
+        }
+        
+        // Trouver le max pour la largeur des barres
+        let maxCount = 0;
+        dates.forEach(date => {
+            const admin = dailyData[date]?.admin || 0;
+            const guest = dailyData[date]?.guest || 0;
+            const total = admin + guest;
+            if (total > maxCount) maxCount = total;
+        });
+        
+        html += `
+            <div class="chart-container">
+                <h3>Connexions des 7 derniers jours</h3>
+        `;
+        
+        dates.forEach(date => {
+            const admin = dailyData[date]?.admin || 0;
+            const guest = dailyData[date]?.guest || 0;
+            const total = admin + guest;
+            
+            const dateObj = new Date(date + 'T00:00:00');
+            const formattedDate = dateObj.toLocaleDateString('fr-FR', { 
+                weekday: 'short', 
+                day: '2-digit', 
+                month: '2-digit' 
+            });
+            
+            const adminWidth = maxCount > 0 ? (admin / maxCount * 100) : 0;
+            const guestWidth = maxCount > 0 ? (guest / maxCount * 100) : 0;
+            
+            html += `
+                <div class="chart-bar">
+                    <div class="date">${formattedDate}</div>
+                    <div class="bars">
+                        ${admin > 0 ? `<div class="bar admin" style="width: ${adminWidth}%;" title="Admin: ${admin}">${admin}</div>` : ''}
+                        ${guest > 0 ? `<div class="bar guest" style="width: ${guestWidth}%;" title="Guest: ${guest}">${guest}</div>` : ''}
+                        ${total === 0 ? '<div style="color: var(--text-tertiary); font-size: 12px;">Aucune connexion</div>' : ''}
+                    </div>
+                    <div style="width: 40px; text-align: right; font-weight: 600; color: var(--text-secondary);">${total}</div>
+                </div>
+            `;
+        });
+        
+        html += `
+                <div class="chart-legend">
+                    <div class="chart-legend-item admin">
+                        <div class="color"></div>
+                        <span>Admin</span>
+                    </div>
+                    <div class="chart-legend-item guest">
+                        <div class="color"></div>
+                        <span>Guest</span>
+                    </div>
+                </div>
+            </div>
+        `;
+    } else {
+        html += `
+            <div style="text-align: center; padding: 30px; color: var(--text-secondary);">
+                <p style="font-size: 18px; margin-bottom: 10px;">📭</p>
+                <p>Aucune donnée de connexion disponible</p>
+            </div>
+        `;
+    }
+    
+    content.innerHTML = html;
+}
+
+function closeConnectionStats() {
+    document.getElementById('connectionStatsPanel').classList.remove('active');
 }

@@ -3,6 +3,75 @@
 // ⚠️ Charger les variables d'environnement DE .env EN PREMIER !
 require('dotenv').config();
 
+const { z } = require('zod');
+
+// ============ SCHÉMAS DE VALIDATION ZOD ============
+
+// Schéma pour créer/modifier un casier
+const lockerSchema = z.object({
+    number: z.string().min(1, 'Numéro de casier requis').regex(/^[A-Z]+\d{1,3}$/, 'Format numéro invalide'),
+    zone: z.string().min(1, 'Zone requise'),
+    name: z.string().max(100, 'Nom trop long').optional().default(''),
+    firstName: z.string().max(100, 'Prénom trop long').optional().default(''),
+    code: z.string().max(50, 'Code IPP trop long').optional().default(''),
+    birthDate: z.string().optional().default(''),
+    recoverable: z.boolean().optional().default(false),
+    comment: z.string().max(500, 'Commentaire trop long').optional().default('')
+});
+
+// Schéma pour import clients
+const clientSchema = z.object({
+    ipp: z.string().min(1, 'IPP requis'),
+    name: z.string().max(100).optional().default(''),
+    firstName: z.string().max(100).optional().default(''),
+    birthName: z.string().max(100).optional().default(''),
+    birthDate: z.string().optional().default(''),
+    sex: z.enum(['M', 'F', '']).optional().default(''),
+    zone: z.string().max(50).optional().default(''),
+    entryDate: z.string().optional().default('')
+});
+
+// Schéma pour import CSV casiers
+const importCasierSchema = z.object({
+    number: z.string().min(1),
+    zone: z.string().min(1),
+    name: z.string().max(100).optional().default(''),
+    firstName: z.string().max(100).optional().default(''),
+    code: z.string().max(50).optional().default(''),
+    birthDate: z.string().optional().default(''),
+    recoverable: z.boolean().optional().default(false)
+});
+
+// Schéma pour restauration backup
+const restoreSchema = z.object({
+    filename: z.string().optional(),
+    fileData: z.string().optional()
+}).refine(data => data.filename || data.fileData, {
+    message: 'Un fichier ou un nom de backup doit être fourni'
+});
+
+// Schéma pour login
+const loginSchema = z.object({
+    password: z.string()
+        .max(100, 'Mot de passe trop long')
+        .optional()
+        .default(''),
+    userName: z.string()
+        .min(1, 'Nom/initiales requis en mode modification')
+        .max(50, 'Nom/initiales trop long')
+        .regex(/^[a-zA-Z0-9\s\-_.]+$/, 'Caractères invalides dans le nom')
+        .optional()
+}).refine(data => {
+    // Si password fourni et non vide, userName est obligatoire
+    if (data.password && data.password.trim() !== '') {
+        return data.userName && data.userName.trim() !== '';
+    }
+    return true;
+}, {
+    message: 'Nom/initiales requis en mode modification',
+    path: ['userName']
+});
+
 // Parser la configuration des zones
 function parseZonesConfig() {
     const names = (process.env.ZONE_NAMES || 'NORD,SUD,PCA').split(',').map(s => s.trim());
@@ -45,14 +114,14 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
 const ANONYMIZE_GUEST = process.env.ANONYMIZE_GUEST === 'true';
 const ANONYMIZE_ADMIN = process.env.ANONYMIZE_ADMIN === 'true';
 const DARK_MODE = process.env.DARK_MODE || 'system';
-const CLIENT_IMPORT_WARNING_DAYS = parseInt(process.env.CLIENT_IMPORT_WARNING_DAYS) || 4;
-const BACKUP_FREQUENCY_HOURS = parseInt(process.env.BACKUP_FREQUENCY_HOURS) || 24;
-const BACKUP_RETENTION_COUNT = parseInt(process.env.BACKUP_RETENTION_COUNT) || 7;
-
 console.log('🔐 Mot de passe admin configuré');
 console.log('👁️ Anonymisation guest:', ANONYMIZE_GUEST);
 console.log('🔓 Anonymisation admin:', ANONYMIZE_ADMIN);
 console.log('🌓 Mode sombre:', DARK_MODE);
+
+const CLIENT_IMPORT_WARNING_DAYS = parseInt(process.env.CLIENT_IMPORT_WARNING_DAYS) || 4;
+const BACKUP_FREQUENCY_HOURS = parseInt(process.env.BACKUP_FREQUENCY_HOURS) || 24;
+const BACKUP_RETENTION_COUNT = parseInt(process.env.BACKUP_RETENTION_COUNT) || 7;
 
 // Gestion des sessions en mémoire
 const sessions = new Map();
@@ -616,49 +685,62 @@ app.get('/api/config/zones', (req, res) => {
 
 // POST login
 app.post('/api/login', async (req, res) => {
-  const { password, userName } = req.body;
-  
-  if (password === ADMIN_PASSWORD) {
-    if (!userName || userName.trim() === '') {
-      return res.status(400).json({ error: 'Nom/initiales requis en mode modification' });
+  try {
+    // VALIDATION ZOD
+    const validationResult = loginSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({ 
+        error: validationResult.error.errors[0].message
+      });
     }
     
-    const token = generateToken();
-    sessions.set(token, {
-      createdAt: Date.now(),
-      isAdmin: true,
-      userName: userName.trim()
-    });
+    const { password, userName } = validationResult.data;
     
-    await recordConnection('admin');
-    
-    res.json({
-      success: true,
-      token: token,
-      role: 'admin',
-      userName: userName.trim(),
-      anonymize: ANONYMIZE_ADMIN,
-      darkMode: DARK_MODE
-    });
-  } else if (!password || password === '') {
-    const token = generateToken();
-    sessions.set(token, {
-      createdAt: Date.now(),
-      isAdmin: false,
-      userName: 'guest'
-    });
-    
-    await recordConnection('guest');
-    
-    res.json({
-      success: true,
-      token: token,
-      role: 'guest',
-      anonymize: ANONYMIZE_GUEST,
-      darkMode: DARK_MODE
-    });
-  } else {
-    res.status(401).json({ error: 'Mot de passe incorrect' });
+    if (password === ADMIN_PASSWORD) {
+      if (!userName || userName.trim() === '') {
+        return res.status(400).json({ error: 'Nom/initiales requis en mode modification' });
+      }
+      
+      const token = generateToken();
+      sessions.set(token, {
+        createdAt: Date.now(),
+        isAdmin: true,
+        userName: userName.trim()
+      });
+      
+      await recordConnection('admin');
+      
+      res.json({
+        success: true,
+        token: token,
+        role: 'admin',
+        userName: userName.trim(),
+        anonymize: ANONYMIZE_ADMIN,
+        darkMode: DARK_MODE
+      });
+    } else if (!password || password === '') {
+      const token = generateToken();
+      sessions.set(token, {
+        createdAt: Date.now(),
+        isAdmin: false,
+        userName: 'guest'
+      });
+      
+      await recordConnection('guest');
+      
+      res.json({
+        success: true,
+        token: token,
+        role: 'guest',
+        anonymize: ANONYMIZE_GUEST,
+        darkMode: DARK_MODE
+      });
+    } else {
+      res.status(401).json({ error: 'Mot de passe incorrect' });
+    }
+  } catch (err) {
+    console.error('Erreur login:', err);
+    res.status(500).json({ error: 'Erreur serveur lors de la connexion' });
   }
 });
 
@@ -741,10 +823,23 @@ app.get('/api/lockers/:number', async (req, res) => {
 // POST créer ou modifier un casier
 app.post('/api/lockers', requireAuth, async (req, res) => {
   try {
-    const { number, zone, name, firstName, code, birthDate, recoverable, comment } = req.body;
+    // VALIDATION ZOD
+    const validationResult = lockerSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({ 
+        error: 'Données invalides', 
+        details: validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')
+      });
+    }
+    
+    const { number, zone, name, firstName, code, birthDate, recoverable, comment } = validationResult.data;
 
-    if (!number || !zone) {
-      return res.status(400).json({ error: 'Numéro et zone requis' });
+    // Vérifier que la zone existe dans la config
+    const zoneExists = ZONES_CONFIG.some(z => z.name === zone);
+    if (!zoneExists) {
+      return res.status(400).json({ 
+        error: `Zone invalide: ${zone}. Zones disponibles: ${ZONES_CONFIG.map(z => z.name).join(', ')}` 
+      });
     }
 
     const token = req.headers['authorization']?.replace('Bearer ', '');
@@ -895,6 +990,97 @@ app.get('/api/stats/connections', async (req, res) => {
   }
 });
 
+// GET statistiques de connexion agrégées
+app.get('/api/stats/connections/summary', async (req, res) => {
+  try {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    
+    // Calculer les dates de début pour chaque période
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    const weekStart = startOfWeek.toISOString().split('T')[0];
+    
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthStart = startOfMonth.toISOString().split('T')[0];
+    
+    const startOfYear = new Date(now.getFullYear(), 0, 1);
+    const yearStart = startOfYear.toISOString().split('T')[0];
+    
+    // Aujourd'hui
+    const todayStats = await dbAll(
+      `SELECT role, SUM(count) as total 
+       FROM connection_stats 
+       WHERE date = ?
+       GROUP BY role`,
+      [today]
+    );
+    
+    // Semaine en cours
+    const weekStats = await dbAll(
+      `SELECT role, SUM(count) as total 
+       FROM connection_stats 
+       WHERE date >= ?
+       GROUP BY role`,
+      [weekStart]
+    );
+    
+    // Mois en cours
+    const monthStats = await dbAll(
+      `SELECT role, SUM(count) as total 
+       FROM connection_stats 
+       WHERE date >= ?
+       GROUP BY role`,
+      [monthStart]
+    );
+    
+    // Année en cours
+    const yearStats = await dbAll(
+      `SELECT role, SUM(count) as total 
+       FROM connection_stats 
+       WHERE date >= ?
+       GROUP BY role`,
+      [yearStart]
+    );
+    
+    // Derniers 7 jours détaillés
+    const last7Days = await dbAll(
+      `SELECT date, role, SUM(count) as count 
+       FROM connection_stats 
+       WHERE date >= date('now', '-7 days')
+       GROUP BY date, role
+       ORDER BY date DESC`,
+      []
+    );
+    
+    // Total général
+    const totalStats = await dbAll(
+      `SELECT role, SUM(count) as total 
+       FROM connection_stats 
+       GROUP BY role`,
+      []
+    );
+    
+    // Formater les résultats
+    const formatStats = (stats) => {
+      const admin = stats.find(s => s.role === 'admin')?.total || 0;
+      const guest = stats.find(s => s.role === 'guest')?.total || 0;
+      return { admin, guest, total: admin + guest };
+    };
+    
+    res.json({
+      today: formatStats(todayStats),
+      week: formatStats(weekStats),
+      month: formatStats(monthStats),
+      year: formatStats(yearStats),
+      total: formatStats(totalStats),
+      last7Days: last7Days
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // GET historique des modifications d'un casier
 app.get('/api/lockers/:number/history', async (req, res) => {
   try {
@@ -968,6 +1154,27 @@ app.post('/api/clients/import', requireAuth, async (req, res) => {
 
         console.log('Import de', clients.length, 'clients...');
 
+        // VALIDATION ZOD - Valider chaque client avant import
+        const validatedClients = [];
+        let validationErrors = 0;
+        
+        for (const client of clients) {
+            const result = clientSchema.safeParse(client);
+            if (result.success) {
+                validatedClients.push(result.data);
+            } else {
+                console.warn(`Client invalide ignoré (IPP: ${client.ipp}):`, result.error.errors[0].message);
+                validationErrors++;
+            }
+        }
+        
+        if (validatedClients.length === 0) {
+            return res.status(400).json({ 
+                error: 'Aucun client valide après validation',
+                validationErrors: validationErrors
+            });
+        }
+
         // Supprimer tous les clients existants
         await dbRun('DELETE FROM clients');
 
@@ -979,7 +1186,7 @@ app.post('/api/clients/import', requireAuth, async (req, res) => {
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `);
 
-        for (const row of clients) {
+        for (const row of validatedClients) {  // Utiliser validatedClients au lieu de clients
             try {
                 const { ipp, name, firstName, birthName, birthDate, sex, zone, entryDate } = row;
                 
@@ -1002,8 +1209,8 @@ app.post('/api/clients/import', requireAuth, async (req, res) => {
             }
         }
 
-        stmt.finalize(async () => {
-            console.log('Import terminé:', importedCount, 'clients importés,', errorCount, 'erreurs');
+            stmt.finalize(async () => {
+            console.log('Import terminé:', importedCount, 'clients importés,', errorCount, 'erreurs,', validationErrors, 'validations échouées');
             
             const token = req.headers['authorization']?.replace('Bearer ', '');
             const session = sessions.get(token);
@@ -1018,6 +1225,7 @@ app.post('/api/clients/import', requireAuth, async (req, res) => {
                 success: true,
                 imported: importedCount,
                 errors: errorCount,
+                validationErrors: validationErrors,  // Ajouter cette info
                 filtered: stats.filtered,
                 total: stats.total
             });
@@ -1069,10 +1277,18 @@ app.post('/api/import', requireAuth, async (req, res) => {
     let imported = 0;
     let errors = 0;
     let invalidIPP = 0;
+    let validationErrors = 0;
 
     for (const row of data) {
       try {
-        const { number, zone, name, firstName, code, birthDate, recoverable } = row;
+        // VALIDATION ZOD
+        const validationResult = importCasierSchema.safeParse(row);
+        if (!validationResult.success) {
+          console.warn('Ligne invalide ignorée:', validationResult.error.errors[0].message);
+          validationErrors++;
+          continue;
+        }
+        const { number, zone, name, firstName, code, birthDate, recoverable } = validationResult.data;
         
         const locker = await dbGet('SELECT * FROM lockers WHERE number = ?', [number]);
         
@@ -1108,32 +1324,14 @@ app.post('/api/import', requireAuth, async (req, res) => {
       imported: imported,
       errors: errors,
       invalidIPP: invalidIPP,
+      validationErrors: validationErrors,
       total: data.length
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
-
 // ============ ROUTES CLIENTS ============
-
-// GET un client par IPP
-app.get('/api/clients/:ipp', async (req, res) => {
-  try {
-    const client = await dbGet(
-      'SELECT * FROM clients WHERE ipp = ?',
-      [req.params.ipp]
-    );
-    
-    if (!client) {
-      return res.status(404).json({ error: 'Client non trouvé' });
-    }
-    
-    res.json(client);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // GET statut import clients
 app.get('/api/clients/import-status', async (req, res) => {
@@ -1239,7 +1437,230 @@ app.post('/api/clients/import', requireAuth, async (req, res) => {
   }
 });
 
+//--- INFOS ---
+
+// GET statut import clients
+app.get('/api/clients/import-status', async (req, res) => {
+  try {
+    const lastImport = await dbGet(
+      'SELECT * FROM client_imports ORDER BY importDate DESC LIMIT 1'
+    );
+    
+    if (!lastImport) {
+      return res.json({
+        hasImport: false,
+        warning: true,
+        warningThreshold: CLIENT_IMPORT_WARNING_DAYS
+      });
+    }
+    
+    const importDate = new Date(lastImport.importDate);
+    const now = new Date();
+    const daysSince = Math.floor((now - importDate) / (1000 * 60 * 60 * 24));
+    
+    res.json({
+      hasImport: true,
+      lastImportDate: lastImport.importDate,
+      daysSinceImport: daysSince,
+      recordCount: lastImport.recordCount,
+      userName: lastImport.userName,
+      warning: daysSince > CLIENT_IMPORT_WARNING_DAYS,
+      warningThreshold: CLIENT_IMPORT_WARNING_DAYS
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET statistiques de la base clients
+app.get('/api/clients/stats', async (req, res) => {
+  try {
+    // Nombre total de clients
+    const total = await dbGet('SELECT COUNT(*) as count FROM clients');
+    
+    // Dernière import
+    const lastImport = await dbGet(
+      'SELECT * FROM client_imports ORDER BY importDate DESC LIMIT 1'
+    );
+    
+    // Répartition par zone
+    const byZone = await dbAll(
+      'SELECT zone, COUNT(*) as count FROM clients WHERE zone IS NOT NULL AND zone != "" GROUP BY zone ORDER BY count DESC'
+    );
+    
+    // Répartition par sexe
+    const bySex = await dbAll(
+      'SELECT sex, COUNT(*) as count FROM clients WHERE sex IS NOT NULL AND sex != "" GROUP BY sex'
+    );
+    
+    // 10 premiers clients
+    const preview = await dbAll(
+      'SELECT ipp, name, firstName, birthDate, sex, zone, entryDate FROM clients ORDER BY ipp ASC LIMIT 10'
+    );
+    
+    res.json({
+      total: total.count,
+      lastImport: lastImport,
+      byZone: byZone,
+      bySex: bySex,
+      preview: preview
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// GET un client par IPP
+app.get('/api/clients/:ipp', async (req, res) => {
+  try {
+    const client = await dbGet(
+      'SELECT * FROM clients WHERE ipp = ?',
+      [req.params.ipp]
+    );
+    
+    if (!client) {
+      return res.status(404).json({ error: 'Client non trouvé' });
+    }
+    
+    res.json(client);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============ BACKUP ============
+
+// GET liste des backups disponibles
+app.get('/api/backups', requireAuth, async (req, res) => {
+  try {
+    const backupDir = path.join(__dirname, 'backups');
+    
+    if (!fs.existsSync(backupDir)) {
+      return res.json({ backups: [] });
+    }
+    
+    const files = fs.readdirSync(backupDir)
+      .filter(f => f.endsWith('.db'))
+      .map(f => {
+        const filePath = path.join(backupDir, f);
+        const stats = fs.statSync(filePath);
+        return {
+          filename: f,
+          size: stats.size,
+          date: stats.mtime,
+          path: filePath
+        };
+      })
+      .sort((a, b) => b.date - a.date);
+    
+    res.json({ backups: files });
+  } catch (err) {
+    console.error('Erreur liste backups:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST restaurer un backup
+app.post('/api/restore', requireAuth, async (req, res) => {
+  try {
+    // VALIDATION ZOD
+    const validationResult = restoreSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({ 
+        error: 'Données invalides', 
+        details: validationResult.error.errors[0].message
+      });
+    }
+    
+    const { filename, fileData } = validationResult.data;
+    
+    // Créer un backup de sécurité avant restauration
+    const backupDir = path.join(__dirname, 'backups');
+    if (!fs.existsSync(backupDir)) {
+      fs.mkdirSync(backupDir);
+    }
+    
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const safetyBackupPath = path.join(backupDir, `backup_before_restore_${timestamp}.db`);
+    
+    console.log('🔒 Création backup de sécurité...');
+    fs.copyFileSync(dbPath, safetyBackupPath);
+    console.log('✓ Backup de sécurité créé:', path.basename(safetyBackupPath));
+    
+    let restorePath;
+    
+    // Si c'est un fichier uploadé (base64)
+    if (fileData) {
+      console.log('📤 Restauration depuis fichier uploadé...');
+      
+      // Décoder base64
+      const buffer = Buffer.from(fileData, 'base64');
+      
+      // Créer un fichier temporaire
+      const tempPath = path.join(backupDir, `temp_restore_${timestamp}.db`);
+      fs.writeFileSync(tempPath, buffer);
+      restorePath = tempPath;
+      
+    } else if (filename) {
+      // Restauration depuis un backup existant
+      console.log('📁 Restauration depuis backup existant:', filename);
+      restorePath = path.join(backupDir, filename);
+      
+      if (!fs.existsSync(restorePath)) {
+        throw new Error('Fichier backup non trouvé');
+      }
+    } else {
+      throw new Error('Aucun fichier spécifié');
+    }
+    
+    // Vérifier que c'est bien une base SQLite valide
+    console.log('🔍 Vérification du fichier...');
+    const fileBuffer = fs.readFileSync(restorePath);
+    const header = fileBuffer.toString('utf8', 0, 16);
+    
+    if (!header.startsWith('SQLite format 3')) {
+      if (fileData) fs.unlinkSync(restorePath); // Nettoyer le temp
+      throw new Error('Fichier invalide : ce n\'est pas une base SQLite');
+    }
+    
+    // Fermer la connexion actuelle
+    console.log('🔌 Fermeture connexion base actuelle...');
+    await new Promise((resolve, reject) => {
+      db.close((err) => {
+        if (err) reject(err);
+        else resolve();
+      });
+    });
+    
+    // Remplacer la base de données
+    console.log('🔄 Remplacement de la base...');
+    fs.copyFileSync(restorePath, dbPath);
+    
+    // Nettoyer le fichier temporaire si nécessaire
+    if (fileData) {
+      fs.unlinkSync(restorePath);
+    }
+    
+    console.log('✅ Base restaurée avec succès');
+    console.log('⚠️ REDÉMARRAGE DU SERVEUR NÉCESSAIRE');
+    
+    res.json({
+      success: true,
+      message: 'Base restaurée avec succès. Redémarrage du serveur nécessaire.',
+      safetyBackup: path.basename(safetyBackupPath)
+    });
+    
+    // Redémarrer le serveur après un court délai
+    setTimeout(() => {
+      console.log('🔄 Redémarrage du serveur...');
+      process.exit(0);
+    }, 1000);
+    
+  } catch (err) {
+    console.error('❌ Erreur restauration:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // POST créer un backup manuel (NOUVELLE ROUTE)
 app.post('/api/backup', requireAuth, async (req, res) => {
@@ -1340,6 +1761,7 @@ function setupAutoBackup() {
   console.log(`✓ Backups automatiques activés (toutes les ${BACKUP_FREQUENCY_HOURS}h, ${BACKUP_RETENTION_COUNT} fichiers conservés)`);
 }
 
+//-------------------------------------------
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date(), database: 'SQLite' });

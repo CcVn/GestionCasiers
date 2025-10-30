@@ -55,7 +55,7 @@
     }
 
     tr:nth-child(odd) {
-        background-color: #f8f8f8 !important; /* Gris très clair pour l'impression */
+        background-color: #efefef !important; /* Gris clair pour l'impression */
     }
 
     td, th {

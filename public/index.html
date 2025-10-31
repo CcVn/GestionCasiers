@@ -34,7 +34,7 @@
                     <h1>PUI - Casiers zone départ</h1>
                     <div style="display: flex; gap: 20px; align-items: center;">
                         <div id="authStatus" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
-                        <div id="importStatus" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+                        <div class="admin-only" id="importStatus" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
                     </div>
                 </div>
                 <div style="display: flex; gap: 15px; align-items: center;">
@@ -44,7 +44,7 @@
             </div>
             <div class="search-bar">
                 <input type="text" id="globalSearch" placeholder="Rechercher par nom, prénom ou IPP...">
-                <button class="btn-secondary admin-only" onclick="importClients()" title="Importer les admissions depuis un export MH">⬆️ Import présents</button>
+                <button class="btn-secondary admin-only" onclick="importClients()" title="Importer les admissions depuis un export MH">⬆️ Import patients</button>
                 <button class="btn-settings admin-only" onclick="toggleAdminTools()" title="Outils d'administration" id="btnSettings">⚙️</button>
             </div>
         </header>
@@ -73,6 +73,9 @@
                 </button>
                 <button class="btn-secondary" onclick="showDuplicatesPanel()" title="Afficher la liste des doublons détectés">
                     ⚠️ Analyse doublons
+                </button>
+                <button class="btn-secondary" onclick="showHomonymsPanel()" title="Afficher la liste des homonymes détectés">
+                    👥 Analyse homonymes
                 </button>
                 <button class="btn-secondary" onclick="showClientsStats()" title="Afficher les statistiques de la base clients">
                     📊 Stats clients

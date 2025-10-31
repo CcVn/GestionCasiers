@@ -74,9 +74,12 @@ const loginSchema = z.object({
 
 // Parser la configuration des zones
 function parseZonesConfig() {
-    const names = (process.env.ZONE_NAMES || 'NORD,SUD,PCA').split(',').map(s => s.trim());
-    const counts = (process.env.ZONE_COUNTS || '75,75,40').split(',').map(s => parseInt(s.trim()));
-    const prefixes = (process.env.ZONE_PREFIXES || 'N,S,P').split(',').map(s => s.trim());
+//    const names = (process.env.ZONE_NAMES || 'NORD,SUD,PCA').split(',').map(s => s.trim());
+//    const counts = (process.env.ZONE_COUNTS || '75,75,40').split(',').map(s => parseInt(s.trim()));
+//    const prefixes = (process.env.ZONE_PREFIXES || 'N,S,P').split(',').map(s => s.trim());
+    const names = (process.env.ZONE_NAMES).split(',').map(s => s.trim());
+    const counts = (process.env.ZONE_COUNTS).split(',').map(s => parseInt(s.trim()));
+    const prefixes = (process.env.ZONE_PREFIXES).split(',').map(s => s.trim());
     
     if (names.length !== counts.length || names.length !== prefixes.length) {
         console.error('❌ ERREUR: Configuration des zones invalide');
@@ -107,10 +110,29 @@ const fs = require('fs');
 const os = require('os');
 const crypto = require('crypto');
 const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const bcrypt = require('bcrypt');
 
 // ============ CONFIGURATION ============
 
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin123';
+const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
+const ADMIN_PASSWORD_LEGACY = process.env.ADMIN_PASSWORD; // Pour migration
+
+// Vérifier qu'un mot de passe est configuré
+if (!ADMIN_PASSWORD_HASH && !ADMIN_PASSWORD_LEGACY) {
+    console.error('❌ ERREUR: Aucun mot de passe admin configuré !');
+    console.error('   Définissez ADMIN_PASSWORD_HASH dans le fichier .env');
+    console.error('   Utilisez: node generate-password.js pour générer un hash');
+    process.exit(1);
+}
+
+if (ADMIN_PASSWORD_LEGACY && !ADMIN_PASSWORD_HASH) {
+    console.warn('⚠️  ATTENTION: ADMIN_PASSWORD en clair détecté !');
+    console.warn('   Utilisez: node generate-password.js pour générer un hash');
+    console.warn('   Puis ajoutez ADMIN_PASSWORD_HASH dans .env');
+}
+console.log('🔐 Authentification configurée');
+
 const ANONYMIZE_GUEST = process.env.ANONYMIZE_GUEST === 'true';
 const ANONYMIZE_ADMIN = process.env.ANONYMIZE_ADMIN === 'true';
 const DARK_MODE = process.env.DARK_MODE || 'system';
@@ -182,6 +204,55 @@ function getLocalIP() {
   return 'localhost';
 }
 
+// ============ RATE LIMITING ============
+
+// Limiteur général pour toutes les routes
+const generalLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 100, // Max 100 requêtes par IP
+  message: { error: 'Trop de requêtes, veuillez réessayer plus tard.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Limiteur assez strict pour le login
+const loginLimiter = rateLimit({
+  windowMs: 5 * 60 * 1000, // 5 minutes
+  max: 10, // Max 10 tentatives de login
+  message: { error: 'Trop de tentatives de connexion. Réessayez dans 5 minutes.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+  skipSuccessfulRequests: true, // Ne compte que les échecs
+});
+
+// Limiteur pour les imports (opérations lourdes)
+const importLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 heure
+  max: 15, // Max 10 imports par heure
+  message: { error: 'Trop d\'imports. Limite: 15 par heure.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Limiteur pour les exports
+const exportLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 20, // Max 20 exports
+  message: { error: 'Trop d\'exports. Réessayez plus tard.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// Limiteur pour les backups/restore (très critique)
+const backupLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 heure
+  max: 5, // Max 5 opérations
+  message: { error: 'Trop d\'opérations de backup/restore. Limite: 5 par heure.' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+// ============ APP & MIDDLEWARE ============
 const app = express();
 
 // Middleware
@@ -197,6 +268,7 @@ app.use(
     //fontSrc: ["'self'", "fonts.gstatic.com"],
   })
 );
+app.use('/api/', generalLimiter); // Appliquer le rate limiting général
 
 // Vérifier que le dossier public existe
 const publicPath = path.join(__dirname, 'public');
@@ -684,7 +756,7 @@ app.get('/api/config/zones', (req, res) => {
 // ============ AUTHENTIFICATION ============
 
 // POST login
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
   try {
     // VALIDATION ZOD
     const validationResult = loginSchema.safeParse(req.body);
@@ -696,7 +768,20 @@ app.post('/api/login', async (req, res) => {
     
     const { password, userName } = validationResult.data;
     
-    if (password === ADMIN_PASSWORD) {
+    // Vérifier le mot de passe legacy ou hash
+    let isPasswordValid = false;
+    if (ADMIN_PASSWORD_HASH) {
+        // Utiliser bcrypt pour comparer avec le hash
+        isPasswordValid = await bcrypt.compare(password, ADMIN_PASSWORD_HASH);
+    } else if (ADMIN_PASSWORD_LEGACY) {
+        // Fallback: comparaison en clair (pour migration)
+        isPasswordValid = password === ADMIN_PASSWORD_LEGACY;
+        if (isPasswordValid) {
+            console.warn('⚠️  Connexion avec mot de passe en clair. Migrez vers bcrypt !');
+        }
+    }
+
+    if (isPasswordValid) {
       if (!userName || userName.trim() === '') {
         return res.status(400).json({ error: 'Nom/initiales requis en mode modification' });
       }
@@ -1099,7 +1184,7 @@ app.get('/api/lockers/:number/history', async (req, res) => {
 });
 
 // POST enregistrer un export
-app.post('/api/exports/log', async (req, res) => {
+app.post('/api/exports/log', exportLimiter, async (req, res) => {
   try {
     const { format, recordCount, userName, userRole } = req.body;
     
@@ -1116,7 +1201,7 @@ app.post('/api/exports/log', async (req, res) => {
 });
 
 // POST import clients depuis CSV
-app.post('/api/clients/import', requireAuth, async (req, res) => {
+app.post('/api/clients/import', requireAuth, importLimiter, async (req, res) => {
     try {
         const { data, rawContent, format } = req.body;
         
@@ -1266,7 +1351,7 @@ app.get('/api/exports/history', async (req, res) => {
 });
 
 // POST import CSV casiers
-app.post('/api/import', requireAuth, async (req, res) => {
+app.post('/api/import', requireAuth, importLimiter, async (req, res) => {
   try {
     const { data } = req.body;
     
@@ -1531,7 +1616,7 @@ app.get('/api/clients/:ipp', async (req, res) => {
 // ============ BACKUP ============
 
 // GET liste des backups disponibles
-app.get('/api/backups', requireAuth, async (req, res) => {
+app.get('/api/backups', requireAuth, backupLimiter, async (req, res) => {
   try {
     const backupDir = path.join(__dirname, 'backups');
     
@@ -1561,7 +1646,7 @@ app.get('/api/backups', requireAuth, async (req, res) => {
 });
 
 // POST restaurer un backup
-app.post('/api/restore', requireAuth, async (req, res) => {
+app.post('/api/restore', requireAuth, backupLimiter, async (req, res) => {
   try {
     // VALIDATION ZOD
     const validationResult = restoreSchema.safeParse(req.body);
@@ -1662,8 +1747,8 @@ app.post('/api/restore', requireAuth, async (req, res) => {
   }
 });
 
-// POST créer un backup manuel (NOUVELLE ROUTE)
-app.post('/api/backup', requireAuth, async (req, res) => {
+// POST créer un backup manuel 
+app.post('/api/backup', requireAuth, backupLimiter, async (req, res) => {
   try {
     const backupDir = path.join(__dirname, 'backups');
     

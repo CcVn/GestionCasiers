@@ -750,3 +750,27 @@
         min-width: 24px;
     }
 }
+
+/* Mise en valeur des homonymes */
+.homonym-name {
+    font-weight: 700;
+    color: #9333ea;
+    position: relative;
+}
+
+.dark-mode .homonym-name {
+    color: #c084fc;
+}
+
+/* Optionnel: ajouter un petit indicateur visuel */
+.homonym-name::after {
+    content: "👥";
+    font-size: 10px;
+    margin-left: 4px;
+    opacity: 0.6;
+}
+
+/* Au survol, afficher plus d'info */
+.homonym-name:hover::after {
+    opacity: 1;
+}

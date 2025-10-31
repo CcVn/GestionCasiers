@@ -2,8 +2,6 @@
 let API_URL = 'http://localhost:5000/api';
 let DATA = [];
 let ZONES_CONFIG = []; // Variable globale pour stocker la config des zones
-//let CURRENT_FILTER = { NORD: 'all', SUD: 'all', PCA: 'all' };
-//let CURRENT_ZONE = 'NORD';
 let IS_AUTHENTICATED = false;
 let IS_GUEST = false;
 let IS_MOBILE = false;
@@ -50,12 +48,12 @@ async function loadZonesConfig() {
     } catch (err) {
         console.error('Erreur chargement config zones:', err);
         // Fallback sur la config par défaut
-        ZONES_CONFIG = [
+/*        ZONES_CONFIG = [
             { name: 'NORD', count: 75, prefix: 'N' },
             { name: 'SUD', count: 75, prefix: 'S' },
             { name: 'PCA', count: 40, prefix: 'P' }
         ];
-        return ZONES_CONFIG;
+        return ZONES_CONFIG; */
     }
 }
 
@@ -334,8 +332,16 @@ function setupLoginPage() {
 function handleLogin(e) {
     e.preventDefault();
     document.body.classList.remove('guest-mode');
+    
     const password = document.getElementById('loginPassword').value;
     const userName = document.getElementById('userName').value;
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
+    
+    // LOADING STATE
+    submitBtn.disabled = true;
+    submitBtn.textContent = '⏳ Connexion...';
+    submitBtn.style.opacity = '0.6';
     
     fetch(`${API_URL}/login`, {
         method: 'POST',
@@ -375,14 +381,32 @@ function handleLogin(e) {
         setupApp();
     })
     .catch(err => {
-        alert(err.message);
+        if (err.message.includes('429')) {
+            alert('⏱️ Trop de tentatives de connexion.\nVeuillez patienter 5 minutes.');
+        } else {
+            alert(err.message);
+        }
         document.getElementById('loginPassword').value = '';
         document.getElementById('userName').value = '';
         console.error('Erreur login:', err);
-    });
+    })
+    .finally(() => {
+        // RESET STATE
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+        submitBtn.classList.remove('btn-loading');
+    });        
 }
 
 function loginAsGuest() {
+    const btn = event.target;
+    const originalText = btn.textContent;
+    
+    // LOADING STATE
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Chargement...';
+    btn.classList.add('btn-loading');
+
     fetch(`${API_URL}/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -404,7 +428,14 @@ function loginAsGuest() {
     })
     .catch(err => {
         console.error('Erreur login guest:', err);
-    });
+        alert('Erreur de connexion');
+    })
+    .finally(() => {
+        // RESET STATE
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        btn.classList.remove('btn-loading');
+    });     
 }
 
 function logout() {
@@ -857,6 +888,14 @@ function createBackup() {
     
     if (!confirm('Créer un backup de la base de données maintenant ?')) return;
     
+    const btn = event.target;
+    const originalText = btn.innerHTML;
+    
+    // LOADING STATE
+    btn.disabled = true;
+    btn.innerHTML = '⏳ Création...';
+    btn.classList.add('btn-loading');
+ 
     const token = getAuthToken();
     
     fetch(`${API_URL}/backup`, {
@@ -873,6 +912,12 @@ function createBackup() {
     .catch(err => {
         alert('Erreur lors du backup : ' + err.message);
         console.error('Erreur backup:', err);
+    })
+    .finally(() => {
+        // RESET STATE
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+        btn.classList.remove('btn-loading');
     });
 }
 
@@ -1050,6 +1095,9 @@ function renderTable(zone) {
     // Détecter les doublons
     const duplicateInfo = detectDuplicates();
     const duplicateNumbers = duplicateInfo.duplicates;
+    // Détecter les homonymes
+    const homonymInfo = detectHomonyms();
+    const homonymNumbers = homonymInfo.homonyms;
     
     // Fonction pour obtenir les infos de doublon
     const getDuplicateInfo = (locker) => {
@@ -1081,9 +1129,8 @@ function renderTable(zone) {
             return `
             <tr class="${duplicateClass}" title="${duplicateTitle}">
                 <td><strong>${locker.number}</strong></td>
-                <td>${locker.occupied ? anonymizeName(locker.name) : '<span class="cell-empty">—</span>'}</td>
-                <td>${locker.occupied ? anonymizeFirstName(locker.firstName) : '<span class="cell-empty">—</span>'}</td>
-                <td>${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeName(locker.name)}</span>` : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeFirstName(locker.firstName)}</span>` : '<span class="cell-empty">—</span>'}</td>               <td>${locker.occupied ? anonymizeName(locker.name) : '<span class="cell-empty">—</span>'}</td>
                 <td class="hide-mobile">${locker.occupied ? formatDate(locker.birthDate) : '<span class="cell-empty">—</span>'}</td>
             </tr>
         `}).join('');
@@ -1098,11 +1145,11 @@ function renderTable(zone) {
             return `
             <tr class="${duplicateClass}" title="${duplicateTitle}">
                 <td><strong>${locker.number}</strong>${isDuplicate ? ' ⚠️' : ''}</td>
-                <td>${locker.occupied ? anonymizeName(locker.name) : '<span class="cell-empty">—</span>'}</td>
-                <td>${locker.occupied ? anonymizeFirstName(locker.firstName) : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeName(locker.name)}</span>` : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeFirstName(locker.firstName)}</span>` : '<span class="cell-empty">—</span>'}</td>
                 <td>${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
-                <td>${locker.occupied ? formatDate(locker.birthDate) : '<span class="cell-empty">—</span>'}</td>
-                <td style="text-align: center;">${getStatus(locker)}</td>
+                <td class="hide-mobile">${locker.occupied ? formatDate(locker.birthDate) : '<span class="cell-empty">—</span>'}</td>
+                <td class="hide-mobile" style="text-align: center;">${getStatus(locker)}</td>
                 <td class="hide-mobile">${locker.comment || '<span class="cell-empty">—</span>'}</td>
                 <td class="hide-mobile">
                     <div class="menu-dot">
@@ -1217,6 +1264,96 @@ function detectDuplicates() {
     };
 }
 
+// Fonction de détection des homonymes
+function detectHomonyms() {
+    const homonyms = new Set();
+    const seen = {
+        byFullName: {},      // { "NOM|PRENOM": [numbers...] }
+        byLastName: {}       // { "NOM": [numbers...] }
+    };
+    
+    // Parcourir tous les casiers occupés
+    DATA.filter(l => l.occupied).forEach(locker => {
+        const fullName = `${locker.name}|${locker.firstName}`.toUpperCase();
+        const lastName = locker.name.toUpperCase();
+        
+        // Détection par nom + prénom (mais avec IPP et DDN différents)
+        if (locker.name && locker.firstName) {
+            if (!seen.byFullName[fullName]) {
+                seen.byFullName[fullName] = [];
+            }
+            seen.byFullName[fullName].push({
+                number: locker.number,
+                ipp: locker.code,
+                birthDate: locker.birthDate
+            });
+        }
+        
+        // Détection par nom seul
+        if (locker.name) {
+            if (!seen.byLastName[lastName]) {
+                seen.byLastName[lastName] = [];
+            }
+            seen.byLastName[lastName].push({
+                number: locker.number,
+                firstName: locker.firstName,
+                ipp: locker.code,
+                birthDate: locker.birthDate
+            });
+        }
+    });
+    
+    // Identifier les homonymes par nom+prénom (avec IPP/DDN différents)
+    Object.entries(seen.byFullName).forEach(([fullName, lockers]) => {
+        if (lockers.length > 1) {
+            // Vérifier que ce sont bien des personnes différentes
+            const uniquePersons = new Set();
+            lockers.forEach(l => {
+                uniquePersons.add(`${l.ipp}|${l.birthDate}`);
+            });
+            
+            // Si au moins 2 personnes différentes avec même nom+prénom
+            if (uniquePersons.size > 1) {
+                lockers.forEach(l => homonyms.add(l.number));
+            }
+        }
+    });
+    
+    // Identifier les homonymes par nom seul (au moins 2 prénoms différents)
+    Object.entries(seen.byLastName).forEach(([lastName, lockers]) => {
+        if (lockers.length > 1) {
+            const uniqueFirstNames = new Set();
+            lockers.forEach(l => {
+                if (l.firstName) uniqueFirstNames.add(l.firstName.toUpperCase());
+            });
+            
+            // Si au moins 2 prénoms différents avec même nom
+            if (uniqueFirstNames.size > 1) {
+                lockers.forEach(l => homonyms.add(l.number));
+            }
+        }
+    });
+    
+    console.log('👥 Homonymes détectés:', homonyms.size);
+    console.log('  Par nom+prénom:', Object.entries(seen.byFullName).filter(([k,v]) => {
+        if (v.length <= 1) return false;
+        const uniquePersons = new Set(v.map(l => `${l.ipp}|${l.birthDate}`));
+        return uniquePersons.size > 1;
+    }).length);
+    console.log('  Par nom seul:', Object.entries(seen.byLastName).filter(([k,v]) => {
+        if (v.length <= 1) return false;
+        const uniqueFirstNames = new Set(v.map(l => l.firstName?.toUpperCase()));
+        return uniqueFirstNames.size > 1;
+    }).length);
+    
+    return {
+        homonyms: homonyms,
+        byFullName: seen.byFullName,
+        byLastName: seen.byLastName
+    };
+}
+
+//========================================
 function searchLockers(query) {
     if (!query || query.trim() === '') {
         renderAllTables();
@@ -1231,6 +1368,10 @@ function searchLockers(query) {
         return searchText.includes(searchTerm);
     });
     
+    const duplicateInfo = detectDuplicates();
+    const homonymInfo = detectHomonyms();
+    const homonymNumbers = homonymInfo.homonyms;
+
     console.log(`🔍 Recherche "${query}" : ${results.length} résultat(s)`);
     
     if (results.length === 0) {
@@ -1388,80 +1529,97 @@ function closeModal() {
 async function handleFormSubmit(e) {
     e.preventDefault();
     
-    const newLockerNumber = document.getElementById('lockerNumber').value;
-    const zone = document.getElementById('zone').value;
-    const recoverable = document.getElementById('recoverable').checked;
-    const comment = document.getElementById('comment').value;
-    const token = getAuthToken();
+    const submitBtn = e.target.querySelector('button[type="submit"]');
+    const originalText = submitBtn.textContent;
     
-    // 🔹 NOUVEAU : Détecter si le numéro de casier a changé
-    const isLockerChanged = EDITING_LOCKER_NUMBER && EDITING_LOCKER_NUMBER !== newLockerNumber;
-    
-    if (isLockerChanged) {
-        // Afficher une popup de confirmation
-        const oldNumber = EDITING_LOCKER_NUMBER;
-        const patientName = document.getElementById('lastName').value + ' ' + document.getElementById('firstName').value;
+    // LOADING STATE
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '⏳ Enregistrement...';
+    submitBtn.classList.add('btn-loading');
+
+    try {
+        const newLockerNumber = document.getElementById('lockerNumber').value;
+        const zone = document.getElementById('zone').value;
+        const recoverable = document.getElementById('recoverable').checked;
+        const comment = document.getElementById('comment').value;
+        const token = getAuthToken();
         
-        const confirmMessage = `⚠️ CHANGEMENT DE CASIER\n\n` +
-            `Patient : ${patientName}\n` +
-            `Ancien casier : ${oldNumber}\n` +
-            `Nouveau casier : ${newLockerNumber}\n\n` +
-            `Voulez-vous libérer automatiquement l'ancien casier ${oldNumber} ?`;
+        // Détecter si le numéro de casier a changé
+        const isLockerChanged = EDITING_LOCKER_NUMBER && EDITING_LOCKER_NUMBER !== newLockerNumber;
         
-        const shouldReleaseOld = confirm(confirmMessage);
-        
-        if (shouldReleaseOld) {
-            // Enregistrer le nouveau casier d'abord
-            try {
-                await saveLocker(newLockerNumber, zone, recoverable, comment, token);
-                
-                // Puis libérer l'ancien casier
-                await releaseLockerSilent(oldNumber, token);
-                
-                closeModal();
-                loadData();
-                showStatus(`✓ ${patientName} déplacé de ${oldNumber} vers ${newLockerNumber}`, 'success');
-            } catch (err) {
-                showStatus('Erreur lors du déplacement: ' + err.message, 'error');
-            }
-        } else {
-            // L'utilisateur ne veut pas libérer l'ancien, juste créer le nouveau
-            const confirmKeepOld = confirm(
-                `L'ancien casier ${oldNumber} restera occupé.\n` +
-                `Voulez-vous continuer ?`
-            );
+        if (isLockerChanged) {
+            // Afficher une popup de confirmation
+            const oldNumber = EDITING_LOCKER_NUMBER;
+            const patientName = document.getElementById('lastName').value + ' ' + document.getElementById('firstName').value;
             
-            if (confirmKeepOld) {
+            const confirmMessage = `⚠️ CHANGEMENT DE CASIER\n\n` +
+                `Patient : ${patientName}\n` +
+                `Ancien casier : ${oldNumber}\n` +
+                `Nouveau casier : ${newLockerNumber}\n\n` +
+                `Voulez-vous libérer automatiquement l'ancien casier ${oldNumber} ?`;
+            
+            const shouldReleaseOld = confirm(confirmMessage);
+            
+            if (shouldReleaseOld) {
+                // Enregistrer le nouveau casier d'abord
                 try {
                     await saveLocker(newLockerNumber, zone, recoverable, comment, token);
+                    
+                    // Puis libérer l'ancien casier
+                    await releaseLockerSilent(oldNumber, token);
+                    
                     closeModal();
                     loadData();
-                    showStatus(`✓ Nouveau casier ${newLockerNumber} créé (${oldNumber} toujours occupé)`, 'success');
+                    showStatus(`✓ ${patientName} déplacé de ${oldNumber} vers ${newLockerNumber}`, 'success');
                 } catch (err) {
-                    showStatus('Erreur: ' + err.message, 'error');
+                    showStatus('Erreur lors du déplacement: ' + err.message, 'error');
                 }
-            }
-            // Sinon, on ne fait rien (l'utilisateur annule tout)
-        }
-    } else {
-        // Pas de changement de numéro, comportement normal
-        try {
-            await saveLocker(newLockerNumber, zone, recoverable, comment, token);
-            closeModal();
-            loadData();
-            
-            // Vérifier si l'IPP était valide
-            const result = await fetch(`${API_URL}/lockers/${newLockerNumber}`);
-            const data = await result.json();
-            
-            if (data.ippValid === false) {
-                showStatus('⚠️ Casier enregistré mais N°IPP non trouvé dans la base clients (marqué récupérable)', 'error');
             } else {
-                showStatus('✓ Casier enregistré', 'success');
+                // L'utilisateur ne veut pas libérer l'ancien, juste créer le nouveau
+                const confirmKeepOld = confirm(
+                    `L'ancien casier ${oldNumber} restera occupé.\n` +
+                    `Voulez-vous continuer ?`
+                );
+                
+                if (confirmKeepOld) {
+                    try {
+                        await saveLocker(newLockerNumber, zone, recoverable, comment, token);
+                        closeModal();
+                        loadData();
+                        showStatus(`✓ Nouveau casier ${newLockerNumber} créé (${oldNumber} toujours occupé)`, 'success');
+                    } catch (err) {
+                        showStatus('Erreur: ' + err.message, 'error');
+                    }
+                }
+                // Sinon, on ne fait rien (l'utilisateur annule tout)
             }
-        } catch (err) {
-            showStatus('Erreur: ' + err.message, 'error');
+        } else {
+            // Pas de changement de numéro, comportement normal
+            try {
+                await saveLocker(newLockerNumber, zone, recoverable, comment, token);
+                closeModal();
+                loadData();
+                
+                // Vérifier si l'IPP était valide
+                const result = await fetch(`${API_URL}/lockers/${newLockerNumber}`);
+                const data = await result.json();
+                
+                if (data.ippValid === false) {
+                    showStatus('⚠️ Casier enregistré mais N°IPP non trouvé dans la base clients (marqué récupérable)', 'error');
+                } else {
+                    showStatus('✓ Casier enregistré', 'success');
+                }
+            } catch (err) {
+                showStatus('Erreur: ' + err.message, 'error');
+            }
         }
+    } catch (err) {
+        showStatus('Erreur: ' + err.message, 'error');
+    } finally {
+        // RESET STATE (même en cas d'erreur)
+        submitBtn.disabled = false;
+        submitBtn.innerHTML = originalText;
+        submitBtn.classList.remove('btn-loading');
     }
 }
 
@@ -1637,6 +1795,18 @@ function importCSV() {
         const file = e.target.files[0];
         if (!file) return;
         
+        // Trouver le bouton d'import casiers
+        const importBtn = Array.from(document.querySelectorAll('.admin-tools-content button'))
+            .find(btn => btn.textContent.includes('Import casiers'));
+        const originalText = importBtn ? importBtn.innerHTML : '';
+        
+        // LOADING STATE
+        if (importBtn) {
+            importBtn.disabled = true;
+            importBtn.innerHTML = '⏳ Import...';
+            importBtn.classList.add('btn-loading');
+        }
+      
         try {
             const text = await file.text();
             const lines = text.split('\n').filter(line => line.trim());
@@ -1695,6 +1865,13 @@ function importCSV() {
         } catch (err) {
             alert('Erreur lors de l\'import : ' + err.message);
             console.error('Erreur import:', err);
+        } finally {
+            // RESET STATE
+            if (importBtn) {
+                importBtn.disabled = false;
+                importBtn.innerHTML = originalText;
+                importBtn.classList.remove('btn-loading');
+            }
         }
     };
     
@@ -1714,6 +1891,17 @@ function importClients() {
         const file = e.target.files[0];
         if (!file) return;
         
+        // Trouver le bouton d'import
+        const importBtn = document.querySelector('button[onclick="importClients()"]');
+        const originalText = importBtn ? importBtn.innerHTML : '';
+        
+        // LOADING STATE
+        if (importBtn) {
+            importBtn.disabled = true;
+            importBtn.innerHTML = '⏳ Import...';
+            importBtn.classList.add('btn-loading');
+        }
+
         try {
             console.log('📂 Lecture du fichier clients...');
             const text = await file.text();
@@ -1749,8 +1937,12 @@ function importClients() {
                 if (result.errors > 0) {
                     message += `✗ Erreurs : ${result.errors}\n`;
                 }
+                if (result.validationErrors > 0) {
+                    message += `⚠️ Validation échouée : ${result.validationErrors}\n`;
+                }
                 message += `Total : ${result.total}`;
                 alert(message);
+                
                 updateImportStatus(); // Rafraîchir le statut d'import
 
             } else if (res.status === 401) {
@@ -1763,6 +1955,13 @@ function importClients() {
         } catch (err) {
             alert('Erreur lors de l\'import clients : ' + err.message);
             console.error('Erreur import clients:', err);
+        } finally {
+            // RESET STATE
+            if (importBtn) {
+                importBtn.disabled = false;
+                importBtn.innerHTML = originalText;
+                importBtn.classList.remove('btn-loading');
+            }
         }
     };
     
@@ -1902,6 +2101,57 @@ function showDuplicatesPanel() {
     alert(message);
 }
 
+function showHomonymsPanel() {
+    const homonymInfo = detectHomonyms();
+    
+    if (homonymInfo.homonyms.size === 0) {
+        alert('✓ Aucun homonyme détecté');
+        return;
+    }
+    
+    let message = `👥 ${homonymInfo.homonyms.size} homonymes détectés\n\n`;
+    
+    // Homonymes par nom+prénom
+    const fullNameHomonyms = Object.entries(homonymInfo.byFullName).filter(([k,v]) => {
+        if (v.length <= 1) return false;
+        const uniquePersons = new Set(v.map(l => `${l.ipp}|${l.birthDate}`));
+        return uniquePersons.size > 1;
+    });
+    
+    if (fullNameHomonyms.length > 0) {
+        message += `Même nom + prénom (${fullNameHomonyms.length}):\n`;
+        fullNameHomonyms.forEach(([fullName, lockers]) => {
+            const [name, firstName] = fullName.split('|');
+            message += `  • ${name} ${firstName}:\n`;
+            lockers.forEach(l => {
+                message += `    - Casier ${l.number} (IPP: ${l.ipp}, DDN: ${l.birthDate || 'N/A'})\n`;
+            });
+        });
+    }
+    
+    // Homonymes par nom seul
+    const lastNameHomonyms = Object.entries(homonymInfo.byLastName).filter(([k,v]) => {
+        if (v.length <= 1) return false;
+        const uniqueFirstNames = new Set(v.map(l => l.firstName?.toUpperCase()));
+        return uniqueFirstNames.size > 1;
+    });
+    
+    if (lastNameHomonyms.length > 0) {
+        message += `\nMême nom (${lastNameHomonyms.length}):\n`;
+        lastNameHomonyms.slice(0, 5).forEach(([lastName, lockers]) => {
+            message += `  • ${lastName}: ${lockers.length} casiers\n`;
+            lockers.forEach(l => {
+                message += `    - ${l.firstName || 'N/A'} (${l.number})\n`;
+            });
+        });
+        if (lastNameHomonyms.length > 5) {
+            message += `  ... et ${lastNameHomonyms.length - 5} autres noms\n`;
+        }
+    }
+    
+    alert(message);
+}
+
 // ============ STATS CLIENTS ============
 
 async function showClientsStats() {
@@ -1928,10 +2178,9 @@ async function showClientsStats() {
     } catch (err) {
         console.error('Erreur chargement stats clients:', err);
         content.innerHTML = `
-            <div style="text-align: center; padding: 40px;">
-                <p style="color: #ef4444; font-weight: 600; margin-bottom: 10px;">❌ Erreur</p>
-                <p style="color: var(--text-secondary);">${err.message}</p>
-                <button class="btn-secondary" onclick="showClientsStats()" style="margin-top: 20px;">Réessayer</button>
+            <div style="display: flex; flex-direction: column; align-items: center; padding: 60px;">
+                <div class="spinner"></div>
+                <p style="margin-top: 20px; font-weight: 600; color: var(--text-primary);">Chargement des statistiques...</p>
             </div>
         `;
     }
@@ -2120,10 +2369,9 @@ async function showRestorePanel() {
     } catch (err) {
         console.error('Erreur chargement backups:', err);
         content.innerHTML = `
-            <div style="text-align: center; padding: 40px;">
-                <p style="color: #ef4444; font-weight: 600; margin-bottom: 10px;">❌ Erreur</p>
-                <p style="color: var(--text-secondary);">${err.message}</p>
-                <button class="btn-secondary" onclick="showRestorePanel()" style="margin-top: 20px;">Réessayer</button>
+            <div style="display: flex; flex-direction: column; align-items: center; padding: 60px;">
+                <div class="spinner"></div>
+                <p style="margin-top: 20px; font-weight: 600; color: var(--text-primary);">Chargement des backups...</p>
             </div>
         `;
     }
@@ -2430,10 +2678,9 @@ async function showConnectionStats() {
     } catch (err) {
         console.error('Erreur chargement stats connexions:', err);
         content.innerHTML = `
-            <div style="text-align: center; padding: 40px;">
-                <p style="color: #ef4444; font-weight: 600; margin-bottom: 10px;">❌ Erreur</p>
-                <p style="color: var(--text-secondary);">${err.message}</p>
-                <button class="btn-secondary" onclick="showConnectionStats()" style="margin-top: 20px;">Réessayer</button>
+            <div style="display: flex; flex-direction: column; align-items: center; padding: 60px;">
+                <div class="spinner"></div>
+                <p style="margin-top: 20px; font-weight: 600; color: var(--text-primary);">Chargement des statistiques...</p>
             </div>
         `;
     }

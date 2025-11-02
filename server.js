@@ -1,13 +1,14 @@
-// server.js - Backend Node.js avec Express et SQLite
-
-// ⚠️ Charger les variables d'environnement DE .env EN PREMIER !
+// Charger les variables d'environnement DE .env EN PREMIER
 require('dotenv').config();
 
+const isProduction = process.env.NODE_ENV === 'production';
 const { z } = require('zod');
 
 // ============ SCHÉMAS DE VALIDATION ZOD ============
 
 // Schéma pour créer/modifier un casier
+
+
 const lockerSchema = z.object({
     number: z.string().min(1, 'Numéro de casier requis').regex(/^[A-Z]+\d{1,3}$/, 'Format numéro invalide'),
     zone: z.string().min(1, 'Zone requise'),
@@ -16,7 +17,9 @@ const lockerSchema = z.object({
     code: z.string().max(50, 'Code IPP trop long').optional().default(''),
     birthDate: z.string().optional().default(''),
     recoverable: z.boolean().optional().default(false),
-    comment: z.string().max(500, 'Commentaire trop long').optional().default('')
+    comment: z.string().max(500, 'Commentaire trop long').optional().default(''),
+    expectedVersion: z.union([z.number(), z.null()]).optional()  // MODIFIER : accepter number, null ou undefined
+    //expectedVersion: z.number().nullable().optional()  // number | null | undefined
 });
 
 // Schéma pour import clients
@@ -57,18 +60,19 @@ const loginSchema = z.object({
         .optional()
         .default(''),
     userName: z.string()
-        .min(1, 'Nom/initiales requis en mode modification')
         .max(50, 'Nom/initiales trop long')
-        .regex(/^[a-zA-Z0-9\s\-_.]+$/, 'Caractères invalides dans le nom')
         .optional()
+        .default('')
+        .transform(val => val.trim())  // Nettoyer les espaces
 }).refine(data => {
-    // Si password fourni et non vide, userName est obligatoire
-    if (data.password && data.password.trim() !== '') {
-        return data.userName && data.userName.trim() !== '';
+    // Si userName est vide ou contient seulement des espaces, c'est OK (sera remplacé par l'IP)
+    if (!data.userName || data.userName === '') {
+        return true;
     }
-    return true;
+    // Si userName est fourni, vérifier les caractères
+    return /^[a-zA-Z0-9\s\-_.]+$/.test(data.userName);
 }, {
-    message: 'Nom/initiales requis en mode modification',
+    message: 'Caractères invalides dans le nom',
     path: ['userName']
 });
 
@@ -112,6 +116,8 @@ const crypto = require('crypto');
 const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcrypt');
+const cookieParser = require('cookie-parser');
+const csrf = require('csurf');
 
 // ============ CONFIGURATION ============
 
@@ -135,6 +141,10 @@ console.log('🔐 Authentification configurée');
 
 const ANONYMIZE_GUEST = process.env.ANONYMIZE_GUEST === 'true';
 const ANONYMIZE_ADMIN = process.env.ANONYMIZE_ADMIN === 'true';
+// Configuration anonymisation (peut être overridée à chaud)
+let ANONYMIZE_GUEST_RUNTIME = ANONYMIZE_GUEST;
+let ANONYMIZE_ADMIN_RUNTIME = ANONYMIZE_ADMIN;
+
 const DARK_MODE = process.env.DARK_MODE || 'system';
 console.log('🔐 Mot de passe admin configuré');
 console.log('👁️ Anonymisation guest:', ANONYMIZE_GUEST);
@@ -145,14 +155,20 @@ const CLIENT_IMPORT_WARNING_DAYS = parseInt(process.env.CLIENT_IMPORT_WARNING_DA
 const BACKUP_FREQUENCY_HOURS = parseInt(process.env.BACKUP_FREQUENCY_HOURS) || 24;
 const BACKUP_RETENTION_COUNT = parseInt(process.env.BACKUP_RETENTION_COUNT) || 7;
 
+// Nettoyage automatique des sessions expirées : Pour ce cas d'usage (pharmacie, quelques dizaines d'utilisateurs)
+const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; // 8 heures (journée de travail)
+const SESSION_CLEANUP_INTERVAL_MS = 30 * 60 * 1000; // Nettoyer toutes les 30 minutes
+
 // Gestion des sessions en mémoire
 const sessions = new Map();
 
+
 // Fonction pour enregistrer une connexion dans les stats
-async function recordConnection(role) {
+async function recordConnection(role, userName = null, ipAddress = null) {
   const today = new Date().toISOString().split('T')[0];
   
   try {
+    // Stats agrégées (existant)
     const existing = await dbGet(
       'SELECT * FROM connection_stats WHERE date = ? AND role = ?',
       [today, role]
@@ -169,11 +185,16 @@ async function recordConnection(role) {
         [today, role]
       );
     }
+    
+    // AJOUTER : Log individuel
+    await dbRun(
+      'INSERT INTO connection_logs (role, userName, ipAddress) VALUES (?, ?, ?)',
+      [role, userName || null, ipAddress || null]
+    );
   } catch (err) {
     console.error('Erreur enregistrement stats connexion:', err);
   }
 }
-
 // Fonction pour enregistrer une modification dans l'historique
 async function recordHistory(lockerNumber, action, userName, userRole, details = '') {
   try {
@@ -204,6 +225,20 @@ function getLocalIP() {
   return 'localhost';
 }
 
+// Fonction pour obtenir l'IP du client
+function getClientIP(req) {
+  // Vérifier les headers de proxy (si derrière nginx/apache)
+  const forwarded = req.headers['x-forwarded-for'];
+  if (forwarded) {
+    // Prendre la première IP si plusieurs
+    return forwarded.split(',')[0].trim();
+  }
+  
+  //console.log('Adresse IP entrante: ', req.ip);
+  // Fallback sur l'IP directe
+  return req.ip || req.connection.remoteAddress || 'unknown';
+}
+
 // ============ RATE LIMITING ============
 
 // Limiteur général pour toutes les routes
@@ -218,7 +253,7 @@ const generalLimiter = rateLimit({
 // Limiteur assez strict pour le login
 const loginLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 10, // Max 10 tentatives de login
+  max: 5, // Max 5 tentatives de login
   message: { error: 'Trop de tentatives de connexion. Réessayez dans 5 minutes.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -256,21 +291,69 @@ const backupLimiter = rateLimit({
 const app = express();
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: true,  // @TODO: En production, mettre l'URL exacte du frontend
+  credentials: true  // CRITIQUE : permet l'envoi de cookies cross-origin
+}));
 app.use(express.json({limit: '50mb'}));
-app.use(
-  helmet({
-    contentSecurityPolicy: false,
-    //defaultSrc: ["'self'"],
-    //scriptSrc: ["'self'", "'unsafe-inline'"],
-    //styleSrc: ["'self'", "'unsafe-inline'", "fonts.googleapis.com"],
-    //imgSrc: ["'self'", "data:"],    
-    //fontSrc: ["'self'", "fonts.gstatic.com"],
-  })
-);
+app.use(cookieParser());
+// Protection CSRF
+const csrfProtection = csrf({ 
+  cookie: {
+    httpOnly: false,  // Le token doit être lisible par JS côté client
+    sameSite: 'lax',
+    secure: process.env.NODE_ENV === 'production'
+  }
+});
 app.use('/api/', generalLimiter); // Appliquer le rate limiting général
 
-// Vérifier que le dossier public existe
+// ---- HELMET : voir plus tard pour ajouter les nonces avec crypto
+// par ex remplacer <button onclick="toggleAdminTools()">...</button> par <button id="btnToggleAdminTools">...</button>
+/* app.use(
+  helmet({
+    contentSecurityPolicy: {
+      directives: {
+        defaultSrc: ["'self'"],
+        scriptSrc: ["'self'", "'unsafe-inline'"], // Scripts : autoriser self + inline (onclick="" dans le HTMLetc.)
+        styleSrc: ["'self'", "'unsafe-inline'"], // Pour les styles inline dans vos composants
+        scriptSrcAttr: ["'unsafe-inline'"], 
+        imgSrc: ["'self'", "data:"],   // Pour les images en base64 si nécessaire
+        fontSrc: ["'self'"],
+        connectSrc: ["'self'"], // Connexions : autoriser self (pour vos API fetch)
+        frameSrc: ["'none'"], // Frames : bloquer (pas besoin d'iframes)
+        objectSrc: ["'none'"], // Objects : bloquer (pas de Flash, etc.)
+        baseUri: ["'self'"], // Base URI : restreindre
+        formAction: ["'self'"],  // Form actions : autoriser self
+        // Activer upgradeInsecureRequests SEULEMENT en production
+        ...(isProduction && { upgradeInsecureRequests: [] })
+      }
+    },
+    crossOriginEmbedderPolicy: false,  // Désactiver si problèmes CORS
+    crossOriginResourcePolicy: { policy: "same-origin" },
+    frameguard: { action: 'deny' }, // Protection contre le clickjacking
+    // Force HTTPS en production
+    // HSTS seulement en production
+    hsts: isProduction ? {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true
+    } : false,
+    hidePoweredBy: true, // Cache les headers serveur
+    //noSniff: true,  // Bloque le MIME sniffing
+    //ieNoOpen: true, // Force le téléchargement au lieu de l'affichage
+    xssFilter: true, // Protection XSS (ancienne méthode, mais garde-fou)
+  })
+); */
+app.use(
+  helmet({
+    contentSecurityPolicy: false,  // Désactive toute la CSP
+  })
+);
+// Pour les étiquettes
+app.set("views", path.join(__dirname, 'views')); // Définir le dossier des vues
+app.set("view engine", "ejs"); // Choisir le moteur de rendu (EJS dans cet exemple)
+
+//---- Vérifier que le dossier public existe
 const publicPath = path.join(__dirname, 'public');
 if (!fs.existsSync(publicPath)) {
   console.warn('⚠️  ATTENTION: Dossier "public" introuvable à :', publicPath);
@@ -365,7 +448,7 @@ function initializeDatabase() {
       }
     });
 
-    // Créer la table clients
+    // Créer la table patients/clients
     db.run(`
       CREATE TABLE IF NOT EXISTS clients (
         ipp INTEGER PRIMARY KEY,
@@ -378,8 +461,8 @@ function initializeDatabase() {
         entryDate TEXT
       )
     `, (err) => {
-      if (err) console.error('Erreur création table clients:', err);
-      else console.log('✓ Table clients créée/vérifiée');
+      if (err) console.error('Erreur création table patients:', err);
+      else console.log('✓ Table patients créée/vérifiée');
     });
 
     // Créer la table d'historique
@@ -412,6 +495,20 @@ function initializeDatabase() {
       else console.log('✓ Table connection_stats créée/vérifiée');
     });
 
+    // Créer la table des logs de connexion individuels
+    db.run(`
+      CREATE TABLE IF NOT EXISTS connection_logs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        timestamp DATETIME DEFAULT CURRENT_TIMESTAMP,
+        role TEXT NOT NULL,
+        userName TEXT,
+        ipAddress TEXT
+      )
+    `, (err) => {
+      if (err) console.error('Erreur création table connection_logs:', err);
+      else console.log('✓ Table connection_logs créée/vérifiée');
+    });
+
     // Créer la table des logs d'export
     db.run(`
       CREATE TABLE IF NOT EXISTS export_logs (
@@ -427,7 +524,7 @@ function initializeDatabase() {
       else console.log('✓ Table export_logs créée/vérifiée');
     });
 
-    // Créer la table des imports clients
+    // Créer la table des imports patients
     db.run(`
       CREATE TABLE IF NOT EXISTS client_imports (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -473,7 +570,7 @@ function initializeDatabase() {
 // ============ MIDDLEWARE D'AUTHENTIFICATION ============
 
 function requireAuth(req, res, next) {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
+  const token = req.cookies.auth_token;
   
   if (!token || !sessions.has(token)) {
     return res.status(401).json({ error: 'Non authentifié' });
@@ -481,13 +578,48 @@ function requireAuth(req, res, next) {
   
   const session = sessions.get(token);
   const now = Date.now();
-  if (now - session.createdAt > 24 * 60 * 60 * 1000) {
+  
+  // Vérifier l'expiration
+  if (now - session.createdAt > SESSION_DURATION_MS) {
     sessions.delete(token);
+    res.clearCookie('auth_token');
     return res.status(401).json({ error: 'Session expirée' });
   }
   
+  // OPTION A : Renouveler la session à chaque requête (rolling session)
+  session.createdAt = now;
+  sessions.set(token, session);
+  
+  // OPTION B : Renouveler seulement si proche de l'expiration (50% du temps écoulé)
+  // const halfDuration = SESSION_DURATION_MS / 2;
+  // if (now - session.createdAt > halfDuration) {
+  //   session.createdAt = now;
+  //   sessions.set(token, session);
+  // }
+  
   next();
 }
+
+// Fonction de nettoyage des sessions expirées
+function cleanupExpiredSessions() {
+  const now = Date.now();
+  let cleaned = 0;
+  
+  for (const [token, session] of sessions.entries()) {
+    if (now - session.createdAt > SESSION_DURATION_MS) {
+      sessions.delete(token);
+      cleaned++;
+    }
+  }
+  
+  if (cleaned > 0) {
+    console.log(`🧹 ${cleaned} session(s) expirée(s) nettoyée(s)`);
+  }
+}
+
+// Lancer le nettoyage périodique
+setInterval(cleanupExpiredSessions, SESSION_CLEANUP_INTERVAL_MS);
+console.log(`✓ Nettoyage automatique des sessions activé (toutes les ${SESSION_CLEANUP_INTERVAL_MS / 60000} minutes)`);
 
 // ============ CONFIGURATION DES FORMATS D'IMPORT ============
 
@@ -753,10 +885,15 @@ app.get('/api/config/zones', (req, res) => {
     });
 });
 
-// ============ AUTHENTIFICATION ============
+// Route pour obtenir le token CSRF
+app.get('/api/csrf-token', csrfProtection, (req, res) => {
+  res.json({ csrfToken: req.csrfToken() });
+});
+
+// ============ ROUTES AUTHENTIFICATION ============
 
 // POST login
-app.post('/api/login', loginLimiter, async (req, res) => {
+app.post('/api/login', loginLimiter, csrfProtection, async (req, res) => {
   try {
     // VALIDATION ZOD
     const validationResult = loginSchema.safeParse(req.body);
@@ -782,28 +919,41 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     }
 
     if (isPasswordValid) {
-      if (!userName || userName.trim() === '') {
-        return res.status(400).json({ error: 'Nom/initiales requis en mode modification' });
-      }
-      
+
+       // Utiliser l'IP comme userName par défaut si non fourni
+      const clientIP = getClientIP(req);
+      const finalUserName = (userName && userName.trim() !== '') 
+        ? userName.trim() 
+        : clientIP;
+
       const token = generateToken();
       sessions.set(token, {
         createdAt: Date.now(),
         isAdmin: true,
-        userName: userName.trim()
+        userName: finalUserName
+      });
+      console.log(finalUserName)
+
+      // Stocker le token dans un cookie httpOnly
+      res.cookie('auth_token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',  // HTTPS en prod
+        sameSite: 'lax',  // Protection CSRF (strict si même domaine)
+        maxAge: 24 * 60 * 60 * 1000  // 24h
       });
       
-      await recordConnection('admin');
+      await recordConnection('admin', finalUserName, clientIP);
       
+      // Ne plus renvoyer le token dans la réponse JSON
       res.json({
-        success: true,
-        token: token,
-        role: 'admin',
-        userName: userName.trim(),
-        anonymize: ANONYMIZE_ADMIN,
-        darkMode: DARK_MODE
+          success: true,
+          role: 'admin',
+          userName: finalUserName,
+          anonymize: ANONYMIZE_ADMIN_RUNTIME,  // Utiliser la valeur runtime
+          darkMode: DARK_MODE
       });
-    } else if (!password || password === '') {
+
+} else if (!password || password === '') {
       const token = generateToken();
       sessions.set(token, {
         createdAt: Date.now(),
@@ -811,13 +961,21 @@ app.post('/api/login', loginLimiter, async (req, res) => {
         userName: 'guest'
       });
       
-      await recordConnection('guest');
+      // Stocker le token dans un cookie httpOnly
+      res.cookie('auth_token', token, {
+        httpOnly: true,
+        secure: process.env.NODE_ENV === 'production',
+        sameSite: 'lax',
+        maxAge: 24 * 60 * 60 * 1000
+      });
+      
+      const clientIP = getClientIP(req);
+      await recordConnection('guest', null, clientIP);
       
       res.json({
         success: true,
-        token: token,
         role: 'guest',
-        anonymize: ANONYMIZE_GUEST,
+        anonymize: ANONYMIZE_GUEST_RUNTIME,  // Utiliser la valeur runtime
         darkMode: DARK_MODE
       });
     } else {
@@ -830,17 +988,25 @@ app.post('/api/login', loginLimiter, async (req, res) => {
 });
 
 // POST logout
-app.post('/api/logout', (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
+app.post('/api/logout', csrfProtection, (req, res) => {
+  const token = req.cookies.auth_token;
   if (token) {
     sessions.delete(token);
   }
+  
+  // Supprimer le cookie
+  res.clearCookie('auth_token', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'lax'
+  });
+  
   res.json({ success: true });
 });
 
 // GET vérifier le rôle de l'utilisateur
 app.get('/api/auth/check', (req, res) => {
-  const token = req.headers['authorization']?.replace('Bearer ', '');
+  const token = req.cookies.auth_token;
   
   if (!token || !sessions.has(token)) {
     return res.status(401).json({ authenticated: false });
@@ -850,11 +1016,11 @@ app.get('/api/auth/check', (req, res) => {
   const isAdmin = session.isAdmin;
   
   res.json({
-    authenticated: true,
-    role: isAdmin ? 'admin' : 'guest',
-    userName: session.userName || '',
-    anonymize: isAdmin ? ANONYMIZE_ADMIN : ANONYMIZE_GUEST,
-    darkMode: DARK_MODE
+      authenticated: true,
+      role: isAdmin ? 'admin' : 'guest',
+      userName: session.userName || '',
+      anonymize: isAdmin ? ANONYMIZE_ADMIN_RUNTIME : ANONYMIZE_GUEST_RUNTIME,
+      darkMode: DARK_MODE
   });
 });
 
@@ -906,18 +1072,22 @@ app.get('/api/lockers/:number', async (req, res) => {
 });
 
 // POST créer ou modifier un casier
-app.post('/api/lockers', requireAuth, async (req, res) => {
+app.post('/api/lockers', requireAuth, csrfProtection, async (req, res) => {
   try {
+
+    console.log('📝 POST /api/lockers - Body:', req.body);
+    
     // VALIDATION ZOD
     const validationResult = lockerSchema.safeParse(req.body);
     if (!validationResult.success) {
+      console.error('❌ Validation Zod échouée:', validationResult.error);
       return res.status(400).json({ 
         error: 'Données invalides', 
         details: validationResult.error.errors.map(e => `${e.path.join('.')}: ${e.message}`).join(', ')
       });
     }
     
-    const { number, zone, name, firstName, code, birthDate, recoverable, comment } = validationResult.data;
+    const { number, zone, name, firstName, code, birthDate, recoverable, comment, expectedVersion } = req.body;
 
     // Vérifier que la zone existe dans la config
     const zoneExists = ZONES_CONFIG.some(z => z.name === zone);
@@ -927,7 +1097,7 @@ app.post('/api/lockers', requireAuth, async (req, res) => {
       });
     }
 
-    const token = req.headers['authorization']?.replace('Bearer ', '');
+    const token = req.cookies.auth_token;
     const session = sessions.get(token);
     const userName = session?.userName || 'Inconnu';
 
@@ -938,6 +1108,18 @@ app.post('/api/lockers', requireAuth, async (req, res) => {
 
     if (!existingLocker) {
       return res.status(404).json({ error: 'Casier non trouvé' });
+    }
+
+    // VÉRIFICATION DU CONFLIT DE VERSION
+    if (expectedVersion !== undefined && expectedVersion !== null) {
+      if (existingLocker.version !== expectedVersion) {
+        console.warn(`⚠️ Conflit de version détecté sur casier ${number}: attendu=${expectedVersion}, actuel=${existingLocker.version}`);
+        return res.status(409).json({ 
+          error: 'Conflit de version: ce casier a été modifié par un autre utilisateur',
+          currentVersion: existingLocker.version,
+          expectedVersion: expectedVersion
+        });
+      }
     }
 
     let isRecoverable = recoverable ? 1 : 0;
@@ -957,9 +1139,18 @@ app.post('/api/lockers', requireAuth, async (req, res) => {
       `UPDATE lockers 
        SET zone = ?, occupied = 1, recoverable = ?, name = ?, firstName = ?, code = ?, birthDate = ?, comment = ?,
            updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
-       WHERE number = ?`,
-      [zone, isRecoverable, name, firstName, code, birthDate, comment || '', userName, number]
+       WHERE number = ? AND version = ?`,
+      [zone, isRecoverable, name, firstName, code, birthDate, comment || '', userName, number, expectedVersion || existingLocker.version]
     );
+
+    // Vérifier que la mise à jour a bien eu lieu
+    const result = await dbGet('SELECT changes() as changes');
+    if (result.changes === 0) {
+      // Cas rare : la version a changé entre le SELECT et l'UPDATE
+      return res.status(409).json({ 
+        error: 'Conflit de version: ce casier a été modifié par un autre utilisateur',
+      });
+    }
 
     await recordHistory(number, action, userName, 'admin', details);
 
@@ -973,12 +1164,13 @@ app.post('/api/lockers', requireAuth, async (req, res) => {
       ippValid: ippValid
     });
   } catch (err) {
+    console.error('Erreur modification casier:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
 // DELETE libérer un casier
-app.delete('/api/lockers/:number', requireAuth, async (req, res) => {
+app.delete('/api/lockers/:number', requireAuth, csrfProtection, async (req, res) => {
   try {
     const token = req.headers['authorization']?.replace('Bearer ', '');
     const session = sessions.get(token);
@@ -1145,6 +1337,20 @@ app.get('/api/stats/connections/summary', async (req, res) => {
        GROUP BY role`,
       []
     );
+
+    // 15 dernières connexions individuelles
+    const recentConnections = await dbAll(
+      `SELECT 
+        id,
+        timestamp,
+        role,
+        userName,
+        ipAddress
+       FROM connection_logs 
+       ORDER BY timestamp DESC 
+       LIMIT 15`,
+      []
+    );
     
     // Formater les résultats
     const formatStats = (stats) => {
@@ -1159,7 +1365,8 @@ app.get('/api/stats/connections/summary', async (req, res) => {
       month: formatStats(monthStats),
       year: formatStats(yearStats),
       total: formatStats(totalStats),
-      last7Days: last7Days
+      last7Days: last7Days,
+      recentConnections: recentConnections
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -1183,8 +1390,116 @@ app.get('/api/lockers/:number/history', async (req, res) => {
   }
 });
 
+// GET statistiques des modifications de casiers
+app.get('/api/stats/modifications', requireAuth, async (req, res) => {
+  try {
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+    
+    // Calculer les dates de début
+    const startOfWeek = new Date(now);
+    startOfWeek.setDate(now.getDate() - now.getDay());
+    const weekStart = startOfWeek.toISOString().split('T')[0];
+    
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthStart = startOfMonth.toISOString().split('T')[0];
+    
+    // Aujourd'hui
+    const todayStats = await dbGet(
+      `SELECT COUNT(*) as count 
+       FROM locker_history 
+       WHERE DATE(timestamp) = ?`,
+      [today]
+    );
+    
+    // Semaine en cours
+    const weekStats = await dbGet(
+      `SELECT COUNT(*) as count 
+       FROM locker_history 
+       WHERE DATE(timestamp) >= ?`,
+      [weekStart]
+    );
+    
+    // Mois en cours
+    const monthStats = await dbGet(
+      `SELECT COUNT(*) as count 
+       FROM locker_history 
+       WHERE DATE(timestamp) >= ?`,
+      [monthStart]
+    );
+    
+    // Total
+    const totalStats = await dbGet(
+      `SELECT COUNT(*) as count FROM locker_history`
+    );
+    
+    // Répartition par type d'action
+    const byAction = await dbAll(
+      `SELECT action, COUNT(*) as count 
+       FROM locker_history 
+       GROUP BY action 
+       ORDER BY count DESC`
+    );
+    
+    // 10 dernières modifications avec détails du casier
+    const recentModifications = await dbAll(
+      `SELECT 
+        h.id,
+        h.lockerNumber,
+        h.action,
+        h.userName,
+        h.userRole,
+        h.details,
+        h.timestamp,
+        l.name,
+        l.firstName,
+        l.code,
+        l.zone
+       FROM locker_history h
+       LEFT JOIN lockers l ON h.lockerNumber = l.number
+       ORDER BY h.timestamp DESC 
+       LIMIT 10`
+    );
+    
+    // Utilisateurs les plus actifs
+    const topUsers = await dbAll(
+      `SELECT userName, COUNT(*) as count 
+       FROM locker_history 
+       WHERE userName IS NOT NULL AND userName != ''
+       GROUP BY userName 
+       ORDER BY count DESC 
+       LIMIT 5`
+    );
+    
+    // Activité par jour (7 derniers jours)
+    const dailyActivity = await dbAll(
+      `SELECT 
+        DATE(timestamp) as date,
+        COUNT(*) as count
+       FROM locker_history 
+       WHERE DATE(timestamp) >= date('now', '-7 days')
+       GROUP BY DATE(timestamp)
+       ORDER BY date DESC`
+    );
+    
+    res.json({
+      today: todayStats.count,
+      week: weekStats.count,
+      month: monthStats.count,
+      total: totalStats.count,
+      byAction: byAction,
+      recentModifications: recentModifications,
+      topUsers: topUsers,
+      dailyActivity: dailyActivity
+    });
+  } catch (err) {
+    console.error('Erreur stats modifications:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // POST enregistrer un export
-app.post('/api/exports/log', exportLimiter, async (req, res) => {
+app.post('/api/exports/log', exportLimiter, csrfProtection, async (req, res) => {
   try {
     const { format, recordCount, userName, userRole } = req.body;
     
@@ -1200,34 +1515,31 @@ app.post('/api/exports/log', exportLimiter, async (req, res) => {
   }
 });
 
-// POST import clients depuis CSV
-app.post('/api/clients/import', requireAuth, importLimiter, async (req, res) => {
+// POST import clients/patients depuis CSV
+app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, async (req, res) => {
     try {
-        const { data, rawContent, format } = req.body;
+        const { data, rawContent, format, mode } = req.body;  // Ajouter 'mode'
         
         let clients = [];
         let stats = {
             imported: 0,
+            skipped: 0,      // NOUVEAU
             filtered: 0,
             errors: 0,
             total: 0
         };
         
-        //Si rawContent est fourni, parser avec le format
+        // rawContent fourni → parser avec le format
         if (rawContent) {
             const formatName = format || process.env.CLIENT_IMPORT_FORMAT || 'LEGACY';
-            console.log(`📥 Parsing avec format: ${formatName}`);
-            
             const result = parseClientsWithFormat(rawContent, formatName);
             clients = result.clients;
             stats = result.stats;
         } else if (data && Array.isArray(data)) {
-            // Format legacy (déjà parsé côté client)
+            // Format legacy
             clients = data;
             stats.imported = data.length;
             stats.total = data.length;
-        } else {
-            return res.status(400).json({ error: 'Données invalides' });
         }
         
         if (clients.length === 0) {
@@ -1237,7 +1549,8 @@ app.post('/api/clients/import', requireAuth, importLimiter, async (req, res) => 
             });
         }
 
-        console.log('Import de', clients.length, 'clients...');
+        console.log('Import de', clients.length, 'patients...');
+        console.log('Mode:', mode || 'replace');
 
         // VALIDATION ZOD - Valider chaque client avant import
         const validatedClients = [];
@@ -1248,7 +1561,7 @@ app.post('/api/clients/import', requireAuth, importLimiter, async (req, res) => 
             if (result.success) {
                 validatedClients.push(result.data);
             } else {
-                console.warn(`Client invalide ignoré (IPP: ${client.ipp}):`, result.error.errors[0].message);
+                console.warn(`Patient invalide ignoré (IPP: ${client.ipp}):`, result.error.errors[0].message);
                 validationErrors++;
             }
         }
@@ -1260,30 +1573,34 @@ app.post('/api/clients/import', requireAuth, importLimiter, async (req, res) => 
             });
         }
 
-        // Supprimer tous les clients existants
-        await dbRun('DELETE FROM clients');
+        // MODE REPLACE : Supprimer tous les clients existants
+        if (!mode || mode === 'replace') {
+            await dbRun('DELETE FROM clients');
+            console.log('Base patients vidée (mode replace)');
+        }
 
         let importedCount = 0;
         let errorCount = 0;
+        let skippedCount = 0;  // NOUVEAU
 
-        const stmt = db.prepare(`
-            INSERT INTO clients (ipp, name, firstName, birthName, birthDate, sex, zone, entryDate)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        `);
+        // MODE MERGE : Utiliser INSERT OR IGNORE (SQLite)
+        const sqlQuery = (mode === 'merge') 
+            ? `INSERT OR IGNORE INTO clients (ipp, name, firstName, birthName, birthDate, sex, zone, entryDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+            : `INSERT INTO clients (ipp, name, firstName, birthName, birthDate, sex, zone, entryDate) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`;
 
-        for (const row of validatedClients) {  // Utiliser validatedClients au lieu de clients
+        const stmt = db.prepare(sqlQuery);
+
+        for (const row of validatedClients) {
             try {
                 const { ipp, name, firstName, birthName, birthDate, sex, zone, entryDate } = row;
                 
-                if (!ipp) {
-                    errorCount++;
-                    continue;
-                }
-
-                stmt.run(ipp, name, firstName, birthName || '', birthDate, sex, zone, entryDate, (err) => {
+                stmt.run(ipp, name, firstName, birthName, birthDate, sex, zone, entryDate, function(err) {
                     if (err) {
-                        console.error('Erreur insertion client:', err);
+                        console.error('Erreur insertion patient:', err);
                         errorCount++;
+                    } else if (this.changes === 0 && mode === 'merge') {
+                        // INSERT OR IGNORE n'a pas inséré = doublon
+                        skippedCount++;
                     } else {
                         importedCount++;
                     }
@@ -1294,8 +1611,8 @@ app.post('/api/clients/import', requireAuth, importLimiter, async (req, res) => 
             }
         }
 
-            stmt.finalize(async () => {
-            console.log('Import terminé:', importedCount, 'clients importés,', errorCount, 'erreurs,', validationErrors, 'validations échouées');
+        stmt.finalize(async () => {
+            console.log('Import terminé:', importedCount, 'importés,', skippedCount, 'ignorés,', errorCount, 'erreurs,', validationErrors, 'validations échouées');
             
             const token = req.headers['authorization']?.replace('Bearer ', '');
             const session = sessions.get(token);
@@ -1306,17 +1623,22 @@ app.post('/api/clients/import', requireAuth, importLimiter, async (req, res) => 
                 [importedCount, userName]
             );
             
+            // Compter le total en base (pour mode merge)
+            const totalInDb = await dbGet('SELECT COUNT(*) as count FROM clients');
+            
             res.json({
                 success: true,
                 imported: importedCount,
+                skipped: skippedCount,           // NOUVEAU
                 errors: errorCount,
-                validationErrors: validationErrors,  // Ajouter cette info
+                validationErrors: validationErrors,
                 filtered: stats.filtered,
-                total: stats.total
+                total: stats.total,
+                totalInDb: totalInDb.count        // NOUVEAU
             });
         });
     } catch (err) {
-        console.error('Erreur import clients:', err);
+        console.error('Erreur import patients:', err);
         res.status(500).json({ error: err.message });
     }
 });
@@ -1329,6 +1651,55 @@ app.get('/api/config/import-format', (req, res) => {
         availableFormats: Object.keys(IMPORT_FORMATS)
     });
 });
+
+// GET configuration d'anonymisation actuelle
+app.get('/api/config/anonymization', requireAuth, (req, res) => {
+  const token = req.cookies.auth_token;
+  const session = sessions.get(token);
+  const isAdmin = session?.isAdmin;
+  
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+  }
+  
+  res.json({
+    anonymizeGuest: ANONYMIZE_GUEST_RUNTIME,
+    anonymizeAdmin: ANONYMIZE_ADMIN_RUNTIME,
+    anonymizeGuestDefault: ANONYMIZE_GUEST,  // Valeur du .env
+    anonymizeAdminDefault: ANONYMIZE_ADMIN   // Valeur du .env
+  });
+});
+
+// POST modifier la configuration d'anonymisation (temporaire)
+app.post('/api/config/anonymization', requireAuth, csrfProtection, (req, res) => {
+  const token = req.cookies.auth_token;
+  const session = sessions.get(token);
+  const isAdmin = session?.isAdmin;
+  
+  if (!isAdmin) {
+    return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+  }
+  
+  const { anonymizeGuest, anonymizeAdmin } = req.body;
+  
+  if (typeof anonymizeGuest === 'boolean') {
+    ANONYMIZE_GUEST_RUNTIME = anonymizeGuest;
+    console.log('🔧 Anonymisation guest modifiée:', anonymizeGuest);
+  }
+  
+  if (typeof anonymizeAdmin === 'boolean') {
+    ANONYMIZE_ADMIN_RUNTIME = anonymizeAdmin;
+    console.log('🔧 Anonymisation admin modifiée:', anonymizeAdmin);
+  }
+  
+  res.json({
+    success: true,
+    anonymizeGuest: ANONYMIZE_GUEST_RUNTIME,
+    anonymizeAdmin: ANONYMIZE_ADMIN_RUNTIME,
+    message: 'Configuration modifiée (temporaire - perdue au redémarrage)'
+  });
+});
+
 
 // GET historique des exports
 app.get('/api/exports/history', async (req, res) => {
@@ -1351,7 +1722,7 @@ app.get('/api/exports/history', async (req, res) => {
 });
 
 // POST import CSV casiers
-app.post('/api/import', requireAuth, importLimiter, async (req, res) => {
+app.post('/api/import', requireAuth, importLimiter, csrfProtection, async (req, res) => {
   try {
     const { data } = req.body;
     
@@ -1416,43 +1787,105 @@ app.post('/api/import', requireAuth, importLimiter, async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
-// ============ ROUTES CLIENTS ============
 
-// GET statut import clients
-app.get('/api/clients/import-status', async (req, res) => {
+// POST import JSON casiers
+app.post('/api/import-json', requireAuth, importLimiter, csrfProtection, async (req, res) => {
   try {
-    const lastImport = await dbGet(
-      'SELECT * FROM client_imports ORDER BY importDate DESC LIMIT 1'
-    );
+    const { data, metadata } = req.body;
     
-    if (!lastImport) {
-      return res.json({
-        hasImport: false,
-        warning: true,
-        warningThreshold: CLIENT_IMPORT_WARNING_DAYS
-      });
+    if (!data || !Array.isArray(data)) {
+      return res.status(400).json({ error: 'Données JSON invalides - champ "data" requis et doit être un tableau' });
     }
     
-    const importDate = new Date(lastImport.importDate);
-    const now = new Date();
-    const daysSince = Math.floor((now - importDate) / (1000 * 60 * 60 * 24));
-    
+    console.log(`📥 Import JSON - ${data.length} casiers à importer`);
+    if (metadata) {
+      console.log(`   Metadata: exporté le ${metadata.exportDate} par ${metadata.exportBy}`);
+    }
+
+    const token = req.cookies.auth_token;
+    const session = sessions.get(token);
+    const userName = session?.userName || 'Inconnu';
+
+    let imported = 0;
+    let errors = 0;
+    let invalidIPP = 0;
+    let validationErrors = 0;
+    let skipped = 0;
+
+    for (const row of data) {
+      try {
+        // VALIDATION ZOD
+        const validationResult = importCasierSchema.safeParse(row);
+        if (!validationResult.success) {
+          console.warn('Ligne invalide ignorée:', validationResult.error.errors[0].message);
+          validationErrors++;
+          continue;
+        }
+        
+        const { number, zone, name, firstName, code, birthDate, recoverable, comment } = validationResult.data;
+        
+        const locker = await dbGet('SELECT * FROM lockers WHERE number = ?', [number]);
+        
+        if (!locker) {
+          console.warn(`Casier ${number} non trouvé, ignoré`);
+          skipped++;
+          continue;
+        }
+        
+        // Vérifier si déjà occupé
+        if (locker.occupied) {
+          console.warn(`Casier ${number} déjà occupé (${locker.name} ${locker.firstName}), ignoré`);
+          skipped++;
+          continue;
+        }
+        
+        let isRecoverable = recoverable ? 1 : 0;
+        if (code) {
+          const client = await dbGet('SELECT * FROM clients WHERE ipp = ?', [code]);
+          if (!client) {
+            isRecoverable = 1;
+            invalidIPP++;
+          }
+        }
+        
+        await dbRun(
+          `UPDATE lockers 
+           SET zone = ?, occupied = 1, recoverable = ?, name = ?, firstName = ?, code = ?, birthDate = ?, comment = ?,
+               updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
+           WHERE number = ?`,
+          [zone, isRecoverable, name, firstName, code, birthDate, comment || '', userName, number]
+        );
+        
+        await recordHistory(number, 'IMPORT_JSON', userName, 'admin', `${name} ${firstName} (IPP: ${code})`);
+        imported++;
+        
+      } catch (err) {
+        console.error('Erreur import ligne:', err);
+        errors++;
+      }
+    }
+
+    console.log(`✓ Import JSON terminé: ${imported} importés, ${skipped} ignorés, ${errors} erreurs`);
+
     res.json({
-      hasImport: true,
-      lastImportDate: lastImport.importDate,
-      daysSinceImport: daysSince,
-      recordCount: lastImport.recordCount,
-      userName: lastImport.userName,
-      warning: daysSince > CLIENT_IMPORT_WARNING_DAYS,
-      warningThreshold: CLIENT_IMPORT_WARNING_DAYS
+      success: true,
+      imported: imported,
+      skipped: skipped,
+      errors: errors,
+      invalidIPP: invalidIPP,
+      validationErrors: validationErrors,
+      total: data.length
     });
   } catch (err) {
+    console.error('Erreur import JSON:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
+// ============ ROUTES IMPORT CLIENTS ============
+
 // POST import clients depuis CSV
-app.post('/api/clients/import', requireAuth, async (req, res) => {
+app.post('/api/clients/import', requireAuth, csrfProtection, async (req, res) => {
   try {
     const { data } = req.body;
     
@@ -1542,11 +1975,13 @@ app.get('/api/clients/import-status', async (req, res) => {
     const importDate = new Date(lastImport.importDate);
     const now = new Date();
     const daysSince = Math.floor((now - importDate) / (1000 * 60 * 60 * 24));
+    const hoursSince = Math.floor((now - importDate) / (1000 * 60 * 60));
     
     res.json({
       hasImport: true,
       lastImportDate: lastImport.importDate,
       daysSinceImport: daysSince,
+      hoursSinceImport: hoursSince,
       recordCount: lastImport.recordCount,
       userName: lastImport.userName,
       warning: daysSince > CLIENT_IMPORT_WARNING_DAYS,
@@ -1578,7 +2013,7 @@ app.get('/api/clients/stats', async (req, res) => {
       'SELECT sex, COUNT(*) as count FROM clients WHERE sex IS NOT NULL AND sex != "" GROUP BY sex'
     );
     
-    // 10 premiers clients
+    // 10 premiers patients
     const preview = await dbAll(
       'SELECT ipp, name, firstName, birthDate, sex, zone, entryDate FROM clients ORDER BY ipp ASC LIMIT 10'
     );
@@ -1646,7 +2081,7 @@ app.get('/api/backups', requireAuth, backupLimiter, async (req, res) => {
 });
 
 // POST restaurer un backup
-app.post('/api/restore', requireAuth, backupLimiter, async (req, res) => {
+app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req, res) => {
   try {
     // VALIDATION ZOD
     const validationResult = restoreSchema.safeParse(req.body);
@@ -1748,7 +2183,7 @@ app.post('/api/restore', requireAuth, backupLimiter, async (req, res) => {
 });
 
 // POST créer un backup manuel 
-app.post('/api/backup', requireAuth, backupLimiter, async (req, res) => {
+app.post('/api/backup', requireAuth, backupLimiter, csrfProtection, async (req, res) => {
   try {
     const backupDir = path.join(__dirname, 'backups');
     
@@ -1847,9 +2282,49 @@ function setupAutoBackup() {
 }
 
 //-------------------------------------------
+// Route → affichage étiquettes
+/* avc sqlite
+app.get("/etiquettes", async (req, res) => {
+
+  const mydb = await open({
+    filename: path.join(__dirname, "db.sqlite3"),
+    driver: sqlite3.Database
+  });
+
+  const casiers = await mydb.all(
+    `SELECT number, name, firstName, birthDate, code, zone 
+      FROM lockers 
+      WHERE occupied>0
+      ORDER BY number`
+  );
+  res.render("labels", { casiers });
+});
+*/
+
 // Health check
 app.get('/api/health', (req, res) => {
   res.json({ status: 'OK', timestamp: new Date(), database: 'SQLite' });
+});
+
+// GET temps restant avant expiration
+app.get('/api/session/time-remaining', requireAuth, (req, res) => {
+  const token = req.cookies.auth_token;
+  const session = sessions.get(token);
+  
+  if (!session) {
+    return res.status(401).json({ error: 'Session non trouvée' });
+  }
+  
+  const now = Date.now();
+  const elapsed = now - session.createdAt;
+  const remaining = SESSION_DURATION_MS - elapsed;
+  const remainingMinutes = Math.floor(remaining / 60000);
+  
+  res.json({
+    expiresIn: remaining,
+    expiresInMinutes: remainingMinutes,
+    expiresAt: new Date(session.createdAt + SESSION_DURATION_MS).toISOString()
+  });
 });
 
 // Config
@@ -1863,6 +2338,12 @@ app.get('/api/config', (req, res) => {
     localIP: localIP,
     port: port
   });
+});
+
+// Route pour obtenir l'IP du client
+app.get('/api/client-ip', (req, res) => {
+  const clientIP = getClientIP(req);
+  res.json({ ip: clientIP });
 });
 
 // Route par défaut pour servir index.html

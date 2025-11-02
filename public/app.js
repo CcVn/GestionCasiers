@@ -5,41 +5,22 @@ let ZONES_CONFIG = []; // Variable globale pour stocker la config des zones
 let IS_AUTHENTICATED = false;
 let IS_GUEST = false;
 let IS_MOBILE = false;
-let AUTH_TOKEN = null;
 let ANONYMIZE_ENABLED = false;
 let USER_NAME = '';
-let DARK_MODE_SETTING = 'inactive'; //'system'
+let DARK_MODE_SETTING = 'system'
 let ADVANCED_RESEARCH = true;
 let EDITING_LOCKER_NUMBER = null; // Mémoriser le casier en cours d'édition
+let EDITING_LOCKER_VERSION = null; // Mémoriser la version du casier en cours d'édition
 
-// ============ TOKENS ============
-
-// Fonction pour récupérer le token
-function getAuthToken() {
-    if (!AUTH_TOKEN) {
-        AUTH_TOKEN = sessionStorage.getItem('auth_token');
-    }
-    return AUTH_TOKEN;
-}
-
-// Fonction pour sauvegarder le token
-function setAuthToken(token) {
-    AUTH_TOKEN = token;
-    sessionStorage.setItem('auth_token', token);
-}
-
-// Fonction pour supprimer le token
-function clearAuthToken() {
-    AUTH_TOKEN = null;
-    sessionStorage.removeItem('auth_token');
-}
 
 // ============ CONFIG DES ZONES ============
 
 // Fonction pour charger la configuration des zones
 async function loadZonesConfig() {
     try {
-        const response = await fetch(`${API_URL}/config/zones`);
+        const response = await fetch(`${API_URL}/config/zones`, {
+            credentials: 'include' 
+        });
         const data = await response.json();
         ZONES_CONFIG = data.zones;
         
@@ -106,7 +87,7 @@ function generateContentSections() {
             <div class="section-header">
                 <h2 style="font-size: 18px; font-weight: 600;">
                     Zone ${zone.name} (${firstNumber} à ${lastNumber})
-                    <span id="counter-${zone.name}" class="zone-counter">0/${zone.count}</span>
+                    <span class="zone-counter admin-only" id="counter-${zone.name}">0/${zone.count}</span>
                 </h2>
                 <div class="controls">
                     <button class="btn-primary admin-only" onclick="openModal('${zone.name}')">➕ Attribuer</button>
@@ -117,7 +98,7 @@ function generateContentSections() {
                         <option value="recoverable" class="admin-only">Récupérables</option>
                         <option value="duplicates" class="admin-only">Doublons ⚠️</option>
                     </select>
-                    <select onchange="sortTable('${zone.name}', this.value)">
+                    <select class="admin-only" onchange="sortTable('${zone.name}', this.value)">
                         <option value="number">Trier par numéro</option>
                         <option value="name">Trier par nom</option>
                     </select>
@@ -181,7 +162,27 @@ function formatDate(inputDate) {
   return `${day}/${month}/${year}`;
 }
 
-// ============ MODE SOMBRE ============
+// ============ TOKEN CSRF ============
+// Fonction pour charger le token CSRF
+async function loadCsrfToken() {
+    try {
+        const response = await fetch(`${API_URL}/csrf-token`, {
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            console.warn('⚠️ Impossible de charger le token CSRF');
+            return;
+        }
+        
+        const data = await response.json();
+        CSRF_TOKEN = data.csrfToken;
+        console.log('✓ Token CSRF chargé');
+    } catch (err) {
+        console.error('❌ Erreur chargement token CSRF:', err);
+        CSRF_TOKEN = null;
+    }
+}
 
 // ============ MODE SOMBRE ============
 
@@ -214,6 +215,8 @@ function applyDarkMode(setting) {
     
     // Mettre à jour l'interface du sélecteur
     updateDarkModeButtons();
+    // Mettre à jour l'icône du bouton header
+    updateThemeIcon();
 }
 
 function updateDarkModeButtons() {
@@ -244,6 +247,46 @@ function setDarkMode(mode) {
     
     showStatus(`✓ ${modeNames[mode]} activé`, 'success');
 }
+function toggleDarkModeQuick() {
+    // Cycle: inactive → active → inactive
+    let newMode;
+    
+    if (DARK_MODE_SETTING === 'inactive') {
+        newMode = 'active';
+    } else {
+        newMode = 'inactive';
+    }
+    
+    // Animation du bouton
+    const btn = document.getElementById('btnThemeToggle');
+    if (btn) {
+        btn.classList.add('animating');
+        setTimeout(() => btn.classList.remove('animating'), 500);
+    }
+    
+    // Appliquer le nouveau mode
+    setDarkMode(newMode);
+    
+    // Mettre à jour l'icône
+    updateThemeIcon();
+}
+
+function updateThemeIcon() {
+    const btn = document.getElementById('btnThemeToggle');
+    if (!btn) return;
+    
+    const icon = btn.querySelector('.theme-icon');
+    if (!icon) return;
+    
+    if (DARK_MODE_SETTING === 'active') {
+        icon.textContent = '🌙';
+        btn.title = 'Activer le mode clair';
+    } else {
+        icon.textContent = '☀️';
+        btn.title = 'Activer le mode sombre';
+    }
+}
+
 // ============ DÉTECTION MOBILE ============
 function detectMobile() {
     IS_MOBILE = window.innerWidth <= 768;
@@ -252,8 +295,8 @@ function detectMobile() {
 }
 
 // ============ INITIALISATION ============
-document.addEventListener('DOMContentLoaded', function() {
-    console.log('Page chargée');
+document.addEventListener('DOMContentLoaded', async function() {
+    //console.log('Page chargée');
     
     const protocol = window.location.protocol;
     const host = window.location.host;
@@ -262,42 +305,52 @@ document.addEventListener('DOMContentLoaded', function() {
     
     detectMobile();
     
-    const existingToken = getAuthToken();
-    if (existingToken) {
-        console.log('Token existant trouvé');
-        fetch(`${API_URL}/auth/check`, {
-            headers: { 'Authorization': `Bearer ${existingToken}` }
-        })
-        .then(res => res.json())
-        .then(data => {
-            if (data.authenticated) {
-                console.log('Token valide, rôle:', data.role);
-                IS_AUTHENTICATED = data.role === 'admin';
-                IS_GUEST = data.role === 'guest';
-                ANONYMIZE_ENABLED = data.anonymize || false;
-                USER_NAME = data.userName || '';
-                applyDarkMode(data.darkMode || 'system');
-                console.log('Anonymisation activée:', ANONYMIZE_ENABLED);
-                console.log('Utilisateur:', USER_NAME);
-                showLoginPage(false);
-                updateAuthStatus();
-                setupApp();
-            } else {
-                console.log('Token invalide');
-                clearAuthToken();
-                setupLoginPage();
-            }
-        })
-        .catch(err => {
-            console.error('Erreur vérification token:', err);
-            clearAuthToken();
-            setupLoginPage();
-        });
-    } else {
-        console.log('Pas de token, affichage login');
-        setupLoginPage();
+    // Charger le token CSRF immédiatement
+    await loadCsrfToken();
+
+    // Vérifier si le paramètre ?guest est présent dans l'URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const autoGuest = urlParams.get('guest') !== null;
+    if (autoGuest) {
+        console.log('Mode guest automatique détecté via URL');
+        loginAsGuestAuto();
+        return;
     }
-    
+
+    // Vérifier si une session existe via cookie
+    fetch(`${API_URL}/auth/check`, {
+        credentials: 'include'  // Envoie le cookie automatiquement
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.authenticated) {
+            console.log('Session valide, rôle:', data.role);
+            IS_AUTHENTICATED = data.role === 'admin';
+            IS_GUEST = data.role === 'guest';
+            ANONYMIZE_ENABLED = data.anonymize || false;
+            USER_NAME = data.userName || '';
+            applyDarkMode(data.darkMode || 'system');
+            console.log('Anonymisation activée:', ANONYMIZE_ENABLED);
+            console.log('Utilisateur:', USER_NAME);
+            showLoginPage(false);
+            updateAuthStatus();
+            setupApp();
+        } else {
+            console.log('Pas de session valide');
+            setupLoginPage();
+        }
+    })
+    .catch(err => {
+        console.error('Erreur vérification session:', err);
+        setupLoginPage();
+    });
+
+    // Gérer le changement de sélection d'étiquettes
+    const labelSelection = document.getElementById('labelSelection');
+    if (labelSelection) {
+        labelSelection.addEventListener('change', updateLabelPreview);
+    }
+
     CURRENT_ZONE = 'NORD';
     
     window.addEventListener('resize', () => {
@@ -309,11 +362,15 @@ document.addEventListener('DOMContentLoaded', function() {
 });
 
 // ============ AUTHENTIFICATION ============
-function setupLoginPage() {
+async function setupLoginPage() {
     const form = document.getElementById('loginForm');
     const passwordInput = document.getElementById('loginPassword');
     const userNameGroup = document.getElementById('userNameGroup');
-    
+    const userNameInput = document.getElementById('userName');
+
+    // Charger le token CSRF immédiatement
+    await loadCsrfToken();
+
     if (passwordInput) {
         passwordInput.addEventListener('input', function() {
             if (this.value.length > 0) {
@@ -323,7 +380,18 @@ function setupLoginPage() {
             }
         });
     }
-    
+    // Charger l'IP du client
+    fetch(`${API_URL}/client-ip`, { credentials: 'include' })
+        .then(res => res.json())
+        .then(data => {
+            if (data.ip && userNameInput) {
+                //userNameInput.placeholder = `Identifiant (par défaut: ${data.ip})`;
+                // Ou pré-remplir le champ :
+                userNameInput.value = data.ip;
+            }
+        })
+        .catch(err => console.warn('Impossible de charger l\'IP:', err));
+ 
     if (form) {
         form.addEventListener('submit', handleLogin);
     }
@@ -331,6 +399,12 @@ function setupLoginPage() {
 
 function handleLogin(e) {
     e.preventDefault();
+    // Vérifier que le token CSRF est chargé
+    if (!CSRF_TOKEN) {
+        console.error('❌ Token CSRF non disponible');
+        alert('Erreur de sécurité. Veuillez recharger la page.');
+        return;
+    }
     document.body.classList.remove('guest-mode');
     
     const password = document.getElementById('loginPassword').value;
@@ -338,31 +412,37 @@ function handleLogin(e) {
     const submitBtn = e.target.querySelector('button[type="submit"]');
     const originalText = submitBtn.textContent;
     
-    // LOADING STATE
     submitBtn.disabled = true;
     submitBtn.textContent = '⏳ Connexion...';
     submitBtn.style.opacity = '0.6';
     
     fetch(`${API_URL}/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',  // IMPORTANT : envoie et reçoit les cookies
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': CSRF_TOKEN
+        },
         body: JSON.stringify({ password: password, userName: userName })
     })
     .then(res => {
         if (!res.ok) {
+            handleCsrfError(res);
             return res.json().then(data => {
                 throw new Error(data.error || 'Authentification échouée');
             });
         }
         return res.json();
     })
-    .then(data => {
-        setAuthToken(data.token);
+    //.then(data => {
+    .then(async data => {
+        // Recharger le token CSRF après connexion
+        await loadCsrfToken();
         
         if (data.role === 'admin') {
             IS_AUTHENTICATED = true;
             IS_GUEST = false;
-            USER_NAME = data.userName || '';
+            USER_NAME = data.userName;
             showAdminElements();
         } else {
             IS_AUTHENTICATED = false;
@@ -391,7 +471,6 @@ function handleLogin(e) {
         console.error('Erreur login:', err);
     })
     .finally(() => {
-        // RESET STATE
         submitBtn.disabled = false;
         submitBtn.innerHTML = originalText;
         submitBtn.classList.remove('btn-loading');
@@ -399,22 +478,38 @@ function handleLogin(e) {
 }
 
 function loginAsGuest() {
+    // Vérifier que le token CSRF est chargé
+    if (!CSRF_TOKEN) {
+        console.error('❌ Token CSRF non disponible');
+        alert('Erreur de sécurité. Veuillez recharger la page.');
+        return;
+    }
     const btn = event.target;
     const originalText = btn.textContent;
     
-    // LOADING STATE
     btn.disabled = true;
     btn.innerHTML = '⏳ Chargement...';
     btn.classList.add('btn-loading');
 
     fetch(`${API_URL}/login`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': CSRF_TOKEN
+        },
+        credentials: 'include',  // IMPORTANT
         body: JSON.stringify({ password: '' })
     })
-    .then(res => res.json())
-    .then(data => {
-        setAuthToken(data.token);
+    .then(res => {
+        if (!res.ok) {
+            handleCsrfError(res);
+            throw new Error('Erreur ' + res.status);
+        }
+        return res.json();
+    })
+    .then(async data => {
+        await loadCsrfToken();
+
         IS_AUTHENTICATED = false;
         IS_GUEST = true;
         ANONYMIZE_ENABLED = data.anonymize || false;
@@ -431,21 +526,71 @@ function loginAsGuest() {
         alert('Erreur de connexion');
     })
     .finally(() => {
-        // RESET STATE
         btn.disabled = false;
         btn.innerHTML = originalText;
         btn.classList.remove('btn-loading');
     });     
 }
 
-function logout() {
-    const token = getAuthToken();
-    if (token) {
-        fetch(`${API_URL}/logout`, {
-            method: 'POST',
-            headers: { 'Authorization': `Bearer ${token}` }
-        }).catch(err => console.error('Erreur logout:', err));
+// Utilisation : URL à mettre dans le QR code : http://adresseIP:5000/?guest=true
+function loginAsGuestAuto() {
+    console.log('Connexion automatique en mode guest...');
+    // Vérifier que le token CSRF est chargé
+    if (!CSRF_TOKEN) {
+        console.error('❌ Token CSRF non disponible');
+        alert('Erreur de sécurité. Veuillez recharger la page.');
+        return;
     }
+
+    fetch(`${API_URL}/login`, {
+        method: 'POST',
+        headers: { 
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': CSRF_TOKEN
+        },
+        credentials: 'include',
+        body: JSON.stringify({ password: '' })
+    })
+//    .then(res => res.json())
+    .then(res => {
+        if (!res.ok) {
+            handleCsrfError(res);
+            throw new Error('Erreur ' + res.status);
+        }
+        return res.json();
+    })
+    .then(async data => {
+        await loadCsrfToken();
+
+        IS_AUTHENTICATED = false;
+        IS_GUEST = true;
+        ANONYMIZE_ENABLED = data.anonymize || false;
+        applyDarkMode(data.darkMode || 'system');
+        console.log('Anonymisation activée:', ANONYMIZE_ENABLED);
+
+        hideAdminElements();
+        showLoginPage(false);
+        updateAuthStatus();
+        setupApp();
+    })
+    .catch(err => {
+        console.error('Erreur login guest auto:', err);
+        // En cas d'erreur, afficher la page de login normale
+        setupLoginPage();
+        alert('Erreur de connexion automatique');
+    });
+}
+
+function logout() {
+
+    fetch(`${API_URL}/logout`, {
+        method: 'POST',
+        credentials: 'include',  // IMPORTANT
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': CSRF_TOKEN  
+        }
+    }).catch(err => console.error('Erreur logout:', err));
     
     // Réinitialisation des filtres avec zones dynamiques
     if (ZONES_CONFIG && ZONES_CONFIG.length > 0) {
@@ -469,11 +614,11 @@ function logout() {
     // Réafficher tous les éléments admin
     showAdminElements();
 
-    clearAuthToken();
     IS_AUTHENTICATED = false;
     IS_GUEST = false;
     ANONYMIZE_ENABLED = false;
 
+    document.body.classList.remove('dark-mode');
     showLoginPage(true);
     document.getElementById('loginPassword').value = '';
     document.getElementById('globalSearch').value = '';
@@ -503,11 +648,11 @@ function updateAuthStatus() {
     const status = document.getElementById('authStatus');
     if (status) {
         if (IS_AUTHENTICATED) {
-            status.innerHTML = `🔓 Connecté - Mode modification${USER_NAME ? ` (${USER_NAME})` : ''}`;
-            status.style.color = '#2e7d32';
-        } else if (IS_GUEST) {
-            status.innerHTML = '👁️ Mode consultation (lecture seule)';
+            status.innerHTML = `🔓 Mode modification${USER_NAME ? ` (${USER_NAME})` : ''}`;
             status.style.color = '#e65100';
+        } else if (IS_GUEST) {
+            status.innerHTML = '👁️ Mode consultation';
+            status.style.color = '#2e7d32';
         }
     }
     
@@ -517,11 +662,8 @@ function updateAuthStatus() {
 // pour l'info sur le dernier import patients
 async function updateImportStatus() {
     try {
-        const token = getAuthToken();
-        if (!token) return;
-        
         const res = await fetch(`${API_URL}/clients/import-status`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            credentials: 'include'
         });
         
         if (!res.ok) return;
@@ -538,7 +680,8 @@ async function updateImportStatus() {
         } else {
             const importDate = new Date(data.lastImportDate);
             const daysSince = data.daysSinceImport;
-            
+            const hoursSince = data.hoursSinceImport;
+
             let message = '';
             let color = '#666';
             let title = '';
@@ -551,20 +694,16 @@ async function updateImportStatus() {
                 minute: '2-digit'
             });
 
-            if (daysSince === 0) {
-                message = '✓ Base patients mise à jour aujourd\'hui';
-                color = '#10b981';
-                title = `Dernier import: ${formattedDateTime}`;
-            } else if (daysSince === 1) {
-                message = '✓ Base patients mise à jour hier';
+            if (daysSince < 1) {
+                message = `Dernier import patient il y a ${hoursSince}h`;
                 color = '#10b981';
                 title = `Dernière mise à jour de la base patients: ${formattedDateTime}`;
             } else if (daysSince <= data.warningThreshold) {
-                message = `✓ Import il y a ${daysSince}j`;
-                color = '#10b981';
+                message = `✓ Denier import patients il y a ${daysSince}j`;
+                color = '#e6e600';
                 title = `Dernière mise à jour de la base patients: ${formattedDateTime}`;
             } else {
-                message = `⚠️ Import il y a ${daysSince}j`;
+                message = `⚠️ Base patients ancienne (${daysSince}j) - à rafraichir`;
                 color = '#f59e0b';
                 title = `Dernière mise à jour de la base patients: ${formattedDateTime} - Import recommandé`;
             }
@@ -731,7 +870,6 @@ function showAdminElements() {
 async function setupApp() {
     console.log('🚀 Setup de l\'application...');
     console.log('API_URL actuelle:', API_URL);
-    console.log('Token présent:', !!getAuthToken());
     
     try {
         // ÉTAPE 1 : Charger la configuration des zones
@@ -739,6 +877,10 @@ async function setupApp() {
         await loadZonesConfig();
         console.log('✓ Config zones chargée:', ZONES_CONFIG);
         
+        // ÉTAPE 1b : Charger le token CSRF
+        console.log('1️⃣b Chargement token CSRF...');
+        await loadCsrfToken();
+
         // ÉTAPE 2 : Générer l'interface
         console.log('2️⃣ Génération interface...');
         generateTabs();
@@ -787,7 +929,8 @@ async function setupApp() {
         } else {
             applyDarkMode(DARK_MODE_SETTING);
         }
-        
+        updateThemeIcon(); // Mettre à jour l'icône du toggle
+
         // ÉTAPE 7b : Charger statut import
         console.log('7️⃣b Chargement statut import...');
         updateImportStatus();
@@ -806,7 +949,13 @@ async function setupApp() {
             checkServerStatus();
             updateImportStatus();
         }, 120000);
-        
+
+        // ÉTAPE 10 : Vérification expiration session (si authentifié)
+        if (IS_AUTHENTICATED || IS_GUEST) {
+            console.log('9️⃣ Démarrage vérification expiration session...');
+            setInterval(checkSessionExpiration, 5 * 60 * 1000); // Toutes les 5 minutes
+        }
+
         console.log('✅ Application initialisée avec succès');
         
     } catch (err) {
@@ -896,14 +1045,19 @@ function createBackup() {
     btn.innerHTML = '⏳ Création...';
     btn.classList.add('btn-loading');
  
-    const token = getAuthToken();
-    
     fetch(`${API_URL}/backup`, {
         method: 'POST',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include',
+        headers: {
+            'Content-Type': 'application/json',
+            'X-CSRF-Token': CSRF_TOKEN
+        }
     })
     .then(res => {
-        if (!res.ok) throw new Error('Erreur ' + res.status);
+        if (!res.ok) {
+            handleCsrfError(res);
+            throw new Error('Erreur ' + res.status);
+        }
         return res.json();
     })
     .then(data => {
@@ -924,7 +1078,9 @@ function createBackup() {
 // ============ SERVEUR ============
 
 function checkServerStatus() {
-    fetch(`${API_URL}/health`)
+    fetch(`${API_URL}/health`, {
+        credentials: 'include'
+    }) 
         .then(res => {
             if (res.ok) {
                 document.getElementById('serverStatus').className = 'server-status online';
@@ -941,7 +1097,9 @@ function checkServerStatus() {
 }
 
 function loadData() {
-    fetch(`${API_URL}/lockers`)
+    fetch(`${API_URL}/lockers`, {
+        credentials: 'include'
+    }) 
         .then(res => {
             if (!res.ok) throw new Error('Erreur ' + res.status);
             return res.json();
@@ -1045,6 +1203,7 @@ function renderTable(zone) {
     const tbody = document.getElementById(`tbody-${zone}`);
     let lockers = DATA.filter(l => l.zone === zone);
     
+    // Appliquer le filtre selon la valeur du select
     const filter = CURRENT_FILTER[zone] || 'all';
     if (filter === 'occupied') {
         lockers = lockers.filter(l => l.occupied);
@@ -1056,11 +1215,9 @@ function renderTable(zone) {
         const duplicateInfo = detectDuplicates();
         lockers = lockers.filter(l => duplicateInfo.duplicates.has(l.number));
     }
-
     // Appliquer le tri selon la valeur du select
     const sortSelect = document.querySelector(`select[onchange="sortTable('${zone}', this.value)"]`);
     const sortValue = sortSelect ? sortSelect.value : 'number';
-    
     if (sortValue === 'name') {
         lockers.sort((a, b) => {
             const nameA = (a.name || '').toLowerCase();
@@ -1130,7 +1287,8 @@ function renderTable(zone) {
             <tr class="${duplicateClass}" title="${duplicateTitle}">
                 <td><strong>${locker.number}</strong></td>
                 <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeName(locker.name)}</span>` : '<span class="cell-empty">—</span>'}</td>
-                <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeFirstName(locker.firstName)}</span>` : '<span class="cell-empty">—</span>'}</td>               <td>${locker.occupied ? anonymizeName(locker.name) : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeFirstName(locker.firstName)}</span>` : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
                 <td class="hide-mobile">${locker.occupied ? formatDate(locker.birthDate) : '<span class="cell-empty">—</span>'}</td>
             </tr>
         `}).join('');
@@ -1453,6 +1611,7 @@ function openModal(zone) {
 
     // Réinitialiser (pas d'édition)
     EDITING_LOCKER_NUMBER = null;
+    EDITING_LOCKER_VERSION = null; 
     
     populateZoneSelect();
 
@@ -1484,6 +1643,7 @@ function openModalEdit(lockerNumber) {
     
     //Mémoriser le numéro original
     EDITING_LOCKER_NUMBER = lockerNumber;
+    EDITING_LOCKER_VERSION = locker.version || 0;
     
     document.getElementById('zone').value = locker.zone;
     document.getElementById('modalTitle').textContent = `Modifier ${locker.number}`;
@@ -1532,7 +1692,7 @@ async function handleFormSubmit(e) {
     const submitBtn = e.target.querySelector('button[type="submit"]');
     const originalText = submitBtn.textContent;
     
-    // LOADING STATE
+    // Loading state
     submitBtn.disabled = true;
     submitBtn.innerHTML = '⏳ Enregistrement...';
     submitBtn.classList.add('btn-loading');
@@ -1542,7 +1702,6 @@ async function handleFormSubmit(e) {
         const zone = document.getElementById('zone').value;
         const recoverable = document.getElementById('recoverable').checked;
         const comment = document.getElementById('comment').value;
-        const token = getAuthToken();
         
         // Détecter si le numéro de casier a changé
         const isLockerChanged = EDITING_LOCKER_NUMBER && EDITING_LOCKER_NUMBER !== newLockerNumber;
@@ -1563,10 +1722,17 @@ async function handleFormSubmit(e) {
             if (shouldReleaseOld) {
                 // Enregistrer le nouveau casier d'abord
                 try {
-                    await saveLocker(newLockerNumber, zone, recoverable, comment, token);
+                    // Sauvegarder le nouveau casier SANS vérification de version
+                    const oldVersion = EDITING_LOCKER_VERSION;
+                    EDITING_LOCKER_VERSION = null;  // Désactiver la vérification
+                    
+                    await saveLocker(newLockerNumber, zone, recoverable, comment);
+                    
+                    // Restaurer la version pour la libération
+                    EDITING_LOCKER_VERSION = oldVersion;
                     
                     // Puis libérer l'ancien casier
-                    await releaseLockerSilent(oldNumber, token);
+                    await releaseLockerSilent(oldNumber);
                     
                     closeModal();
                     loadData();
@@ -1583,7 +1749,9 @@ async function handleFormSubmit(e) {
                 
                 if (confirmKeepOld) {
                     try {
-                        await saveLocker(newLockerNumber, zone, recoverable, comment, token);
+                        // Sauvegarder SANS vérification de version
+                        EDITING_LOCKER_VERSION = null;
+                        await saveLocker(newLockerNumber, zone, recoverable, comment);
                         closeModal();
                         loadData();
                         showStatus(`✓ Nouveau casier ${newLockerNumber} créé (${oldNumber} toujours occupé)`, 'success');
@@ -1594,14 +1762,16 @@ async function handleFormSubmit(e) {
                 // Sinon, on ne fait rien (l'utilisateur annule tout)
             }
         } else {
-            // Pas de changement de numéro, comportement normal
+            // Pas de changement de numéro, comportement normal avec vérification de version
             try {
-                await saveLocker(newLockerNumber, zone, recoverable, comment, token);
+                await saveLocker(newLockerNumber, zone, recoverable, comment);
                 closeModal();
                 loadData();
                 
                 // Vérifier si l'IPP était valide
-                const result = await fetch(`${API_URL}/lockers/${newLockerNumber}`);
+                const result = await fetch(`${API_URL}/lockers/${newLockerNumber}`, {
+                    credentials: 'include'
+                });
                 const data = await result.json();
                 
                 if (data.ippValid === false) {
@@ -1610,7 +1780,23 @@ async function handleFormSubmit(e) {
                     showStatus('✓ Casier enregistré', 'success');
                 }
             } catch (err) {
-                showStatus('Erreur: ' + err.message, 'error');
+                // GÉRER SPÉCIFIQUEMENT LES CONFLITS
+                if (err.message.includes('conflit') || err.message.includes('version')) {
+                    const reload = confirm(
+                        '⚠️ CONFLIT DÉTECTÉ\n\n' +
+                        'Ce casier a été modifié par un autre utilisateur pendant que vous le modifiiez.\n\n' +
+                        'Voulez-vous recharger les données actuelles et réessayer ?'
+                    );
+                    
+                    if (reload) {
+                        closeModal();
+                        await loadData();
+                        // Rouvrir le modal avec les nouvelles données
+                        setTimeout(() => openModalEdit(newLockerNumber), 500);
+                    }
+                } else {
+                    showStatus('Erreur: ' + err.message, 'error');
+                }
             }
         }
     } catch (err) {
@@ -1628,14 +1814,18 @@ function releaseLocker(lockerNumber) {
     
     if (!confirm('Libérer ce casier ?')) return;
     
-    const token = getAuthToken();
-    
-    fetch(`${API_URL}/lockers/${lockerNumber}`, { 
+    const res = fetch(`${API_URL}/lockers/${lockerNumber}`, { 
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include',
+        headers: {
+            'X-CSRF-Token': CSRF_TOKEN
+        }
     })
     .then(res => {
-        if (!res.ok) throw new Error('Erreur ' + res.status);
+        if (!res.ok) {
+            handleCsrfError(res);
+            throw new Error('Erreur ' + res.status);
+        }
         loadData();
         showStatus('Casier libéré', 'success');
     })
@@ -1644,42 +1834,55 @@ function releaseLocker(lockerNumber) {
     });
 }
 
-// FONCTION HELPER : Enregistrer un casier (extraction du code existant)
-async function saveLocker(lockerNumber, zone, recoverable, comment, token) {
+// Enregistrer un casier (extraction du code existant)
+async function saveLocker(lockerNumber, zone, recoverable, comment) {
+
+    const bodyData = {
+        number: lockerNumber,
+        zone: zone,
+        name: document.getElementById('lastName').value,
+        firstName: document.getElementById('firstName').value,
+        code: document.getElementById('code').value,
+        birthDate: document.getElementById('birthDate').value,
+        comment: comment,
+        recoverable: recoverable
+    };
+
+    // Ajouter expectedVersion seulement si défini (pas null)
+    if (EDITING_LOCKER_VERSION !== null) {
+        bodyData.expectedVersion = EDITING_LOCKER_VERSION;
+    }
+
     const response = await fetch(`${API_URL}/lockers`, {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`
+            'X-CSRF-Token': CSRF_TOKEN
         },
-        body: JSON.stringify({
-            number: lockerNumber,
-            zone: zone,
-            name: document.getElementById('lastName').value,
-            firstName: document.getElementById('firstName').value,
-            code: document.getElementById('code').value,
-            birthDate: document.getElementById('birthDate').value,
-            comment: comment,
-            recoverable: recoverable
-        })
-    });
-    
+        credentials: 'include',
+        body: JSON.stringify(bodyData)
+    });    
+
     if (!response.ok) {
-        throw new Error('Erreur ' + response.status);
+        const error = await response.json();
+        throw new Error(error.error || 'Erreur ' + response.status);
     }
-    
     return response.json();
 }
 
-// FONCTION HELPER : Libérer un casier sans message
-async function releaseLockerSilent(lockerNumber, token) {
+// Libérer un casier sans message
+async function releaseLockerSilent(lockerNumber) {
     const response = await fetch(`${API_URL}/lockers/${lockerNumber}`, { 
         method: 'DELETE',
-        headers: { 'Authorization': `Bearer ${token}` }
+        credentials: 'include',
+        headers: {
+            'X-CSRF-Token': CSRF_TOKEN
+        }
     });
     
     if (!response.ok) {
-        throw new Error('Erreur libération casier ' + lockerNumber);
+        handleCsrfError(response);
+        throw new Error('Erreur libération casier ' + lockerNumber + ":\n" + response.status);
     }
     
     return response.json();
@@ -1718,7 +1921,8 @@ function exportData(format) {
                 exportBy: userName,
                 userRole: role,
                 totalLockers: occupied.length,
-                application: 'HADO - Casiers zone départ'
+                application: 'HADO - Casiers zone départ',
+                version: '1.0'
             },
             lockers: occupied
         };
@@ -1734,12 +1938,12 @@ function exportData(format) {
 
 async function logExport(format, count, userName, role) {
     try {
-        const token = getAuthToken();
         await fetch(`${API_URL}/exports/log`, {
             method: 'POST',
+            credentials: 'include',
             headers: { 
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
+                'X-CSRF-Token': CSRF_TOKEN
             },
             body: JSON.stringify({
                 format: format,
@@ -1837,12 +2041,12 @@ function importCSV() {
                 return;
             }
             
-            const token = getAuthToken();
             const res = await fetch(`${API_URL}/import`, {
                 method: 'POST',
+                credentials: 'include',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'X-CSRF-Token': CSRF_TOKEN
                 },
                 body: JSON.stringify({ data: data })
             });
@@ -1878,21 +2082,20 @@ function importCSV() {
     input.click();
 }
 
-// ============ IMPORT CLIENTS ============
-
-function importClients() {
+function importJSON() {
     if (!isEditAllowed()) return;
     
     const input = document.createElement('input');
     input.type = 'file';
-    input.accept = '.csv';
+    input.accept = '.json';
     
     input.onchange = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
         
-        // Trouver le bouton d'import
-        const importBtn = document.querySelector('button[onclick="importClients()"]');
+        // Trouver le bouton d'import JSON
+        const importBtn = Array.from(document.querySelectorAll('.admin-tools-content button'))
+            .find(btn => btn.textContent.includes('Import JSON'));
         const originalText = importBtn ? importBtn.innerHTML : '';
         
         // LOADING STATE
@@ -1901,38 +2104,66 @@ function importClients() {
             importBtn.innerHTML = '⏳ Import...';
             importBtn.classList.add('btn-loading');
         }
-
+      
         try {
-            console.log('📂 Lecture du fichier clients...');
+            console.log('📂 Lecture du fichier JSON...');
             const text = await file.text();
+            const jsonData = JSON.parse(text);
             
-            // Récupérer le format
-            const configResponse = await fetch(`${API_URL}/config/import-format`);
-            const config = await configResponse.json();
-            const formatName = config.clientImportFormat || 'LEGACY';
+            // Vérifier la structure
+            if (!jsonData.lockers && !Array.isArray(jsonData)) {
+                alert('❌ Format JSON invalide.\n\nLe fichier doit contenir un champ "lockers" (export moderne) ou être un tableau (export ancien).');
+                return;
+            }
             
-            console.log(`📋 Format: ${formatName}`);
+            // Supporter les deux formats
+            const data = jsonData.lockers || jsonData;
+            const metadata = jsonData.metadata;
             
-            //  ENVOYER LE CONTENU BRUT au serveur
-            const token = getAuthToken();
-            const res = await fetch(`${API_URL}/clients/import`, {
+            console.log(`📦 ${data.length} casiers trouvés dans le fichier`);
+            
+            if (metadata) {
+                const exportDate = new Date(metadata.exportDate).toLocaleString('fr-FR');
+                const confirmMsg = `📥 IMPORT JSON\n\n` +
+                    `Fichier : ${file.name}\n` +
+                    `Casiers : ${data.length}\n` +
+                    `Exporté le : ${exportDate}\n` +
+                    `Par : ${metadata.exportBy || 'Inconnu'}\n\n` +
+                    `⚠️ ATTENTION :\n` +
+                    `- Les casiers déjà occupés seront IGNORÉS\n` +
+                    `- Les casiers vides seront remplis\n\n` +
+                    `Voulez-vous continuer ?`;
+                
+                if (!confirm(confirmMsg)) return;
+            } else {
+                if (!confirm(`Importer ${data.length} casiers ?\n\n⚠️ Les casiers déjà occupés seront ignorés.`)) {
+                    return;
+                }
+            }
+            
+            const res = await fetch(`${API_URL}/import-json`, {
                 method: 'POST',
                 headers: { 
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${token}`
+                    'X-CSRF-Token': CSRF_TOKEN
                 },
+                credentials: 'include',
                 body: JSON.stringify({ 
-                    rawContent: text,  // Contenu brut
-                    format: formatName
+                    data: data,
+                    metadata: metadata
                 })
             });
             
             if (res.ok) {
                 const result = await res.json();
-                let message = `Import clients terminé !\n\n`;
+                
+                let message = `✅ Import JSON terminé !\n\n`;
                 message += `✓ Importés : ${result.imported}\n`;
-                if (result.filtered > 0) {
-                    message += `🔍 Filtrés : ${result.filtered}\n`;
+                if (result.skipped > 0) {
+                    message += `⏭️ Ignorés (déjà occupés) : ${result.skipped}\n`;
+                }
+                if (result.invalidIPP > 0) {
+                    message += `⚠️ IPP invalides : ${result.invalidIPP} (marqués récupérables)\n`;
                 }
                 if (result.errors > 0) {
                     message += `✗ Erreurs : ${result.errors}\n`;
@@ -1940,21 +2171,26 @@ function importClients() {
                 if (result.validationErrors > 0) {
                     message += `⚠️ Validation échouée : ${result.validationErrors}\n`;
                 }
-                message += `Total : ${result.total}`;
-                alert(message);
+                message += `\nTotal traité : ${result.total}`;
                 
-                updateImportStatus(); // Rafraîchir le statut d'import
-
+                alert(message);
+                loadData();
+                
             } else if (res.status === 401) {
                 alert('Session expirée. Veuillez vous reconnecter.');
                 logout();
             } else {
-                const errorData = await res.json();
-                throw new Error(errorData.error || 'Erreur serveur');
+                const error = await res.json();
+                throw new Error(error.error || 'Erreur serveur');
             }
+            
         } catch (err) {
-            alert('Erreur lors de l\'import clients : ' + err.message);
-            console.error('Erreur import clients:', err);
+            if (err instanceof SyntaxError) {
+                alert('❌ Erreur : Le fichier n\'est pas un JSON valide.\n\n' + err.message);
+            } else {
+                alert('❌ Erreur lors de l\'import : ' + err.message);
+            }
+            console.error('Erreur import JSON:', err);
         } finally {
             // RESET STATE
             if (importBtn) {
@@ -1968,6 +2204,176 @@ function importClients() {
     input.click();
 }
 
+// ============ IMPORT CLIENTS ============
+
+// Variables globales pour l'import
+let selectedImportFormat = null;
+let selectedImportMode = 'replace';
+
+async function importClients() {
+    if (!isEditAllowed()) return;
+    
+    try {
+        // Charger les formats disponibles
+        const configResponse = await fetch(`${API_URL}/config/import-format`, {
+            credentials: 'include'
+        });
+        const config = await configResponse.json();
+        
+        // Remplir le select des formats
+        const formatSelect = document.getElementById('importFormat');
+        formatSelect.innerHTML = '';
+        
+        // Format par défaut en premier
+        const defaultFormat = config.clientImportFormat || 'LEGACY';
+        const formats = config.availableFormats || ['LEGACY'];
+        
+        // Ajouter le format par défaut en premier
+        const defaultOption = document.createElement('option');
+        defaultOption.value = defaultFormat;
+        defaultOption.textContent = `${defaultFormat} (par défaut)`;
+        defaultOption.selected = true;
+        formatSelect.appendChild(defaultOption);
+        
+        // Ajouter les autres formats
+        formats.filter(f => f !== defaultFormat).forEach(format => {
+            const option = document.createElement('option');
+            option.value = format;
+            option.textContent = format;
+            formatSelect.appendChild(option);
+        });
+        
+        // Réinitialiser les sélections
+        selectedImportFormat = defaultFormat;
+        selectedImportMode = 'replace';
+        document.getElementById('importMode').value = 'replace';
+        
+        // Gérer l'affichage du warning
+        const modeSelect = document.getElementById('importMode');
+        const warning = document.getElementById('importWarning');
+        
+        modeSelect.onchange = function() {
+            selectedImportMode = this.value;
+            if (this.value === 'replace') {
+                warning.style.display = 'block';
+            } else {
+                warning.style.display = 'none';
+            }
+        };
+        
+        formatSelect.onchange = function() {
+            selectedImportFormat = this.value;
+        };
+        
+        // Afficher le warning initial
+        warning.style.display = 'block';
+        
+        // Ouvrir le modal
+        document.getElementById('importOptionsModal').classList.add('active');
+        
+    } catch (err) {
+        console.error('Erreur chargement formats:', err);
+        alert('Erreur lors du chargement des formats d\'import');
+    }
+}
+
+function closeImportOptions() {
+    document.getElementById('importOptionsModal').classList.remove('active');
+}
+
+function selectFileForImport() {
+    // Fermer le modal d'options
+    closeImportOptions();
+    
+    // Ouvrir le sélecteur de fichier
+    const fileInput = document.getElementById('clientFileInput');
+    fileInput.value = ''; // Reset
+    fileInput.onchange = handleClientFileSelected;
+    fileInput.click();
+}
+
+async function handleClientFileSelected(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Trouver le bouton d'import
+    const importBtn = document.querySelector('button[onclick="importClients()"]');
+    const originalText = importBtn ? importBtn.innerHTML : '';
+    
+    // LOADING STATE
+    if (importBtn) {
+        importBtn.disabled = true;
+        importBtn.innerHTML = '⏳ Import...';
+        importBtn.classList.add('btn-loading');
+    }
+    
+    try {
+        console.log('📂 Lecture du fichier patients...');
+        console.log('Format sélectionné:', selectedImportFormat);
+        console.log('Mode sélectionné:', selectedImportMode);
+        
+        const text = await file.text();
+        
+        const res = await fetch(`${API_URL}/clients/import`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': CSRF_TOKEN
+            },
+            body: JSON.stringify({ 
+                rawContent: text,
+                format: selectedImportFormat,
+                mode: selectedImportMode  // NOUVEAU
+            })
+        });
+        
+        if (res.ok) {
+            const result = await res.json();
+            let message = `Import patients terminé !\n\n`;
+            message += `✓ Importés : ${result.imported}\n`;
+            if (result.skipped > 0) {
+                message += `⏭️ Ignorés (doublons) : ${result.skipped}\n`;
+            }
+            if (result.filtered > 0) {
+                message += `🔍 Filtrés : ${result.filtered}\n`;
+            }
+            if (result.errors > 0) {
+                message += `✗ Erreurs : ${result.errors}\n`;
+            }
+            if (result.validationErrors > 0) {
+                message += `⚠️ Validation échouée : ${result.validationErrors}\n`;
+            }
+            message += `Total : ${result.total}`;
+            
+            if (selectedImportMode === 'merge') {
+                message += `\n\nMode fusionnement : ${result.totalInDb} patients en base`;
+            }
+            
+            alert(message);
+            
+            // Rafraîchir le statut d'import
+            updateImportStatus();
+        } else if (res.status === 401) {
+            alert('Session expirée. Veuillez vous reconnecter.');
+            logout();
+        } else {
+            const errorData = await res.json();
+            throw new Error(errorData.error || 'Erreur serveur');
+        }
+    } catch (err) {
+        alert('Erreur lors de l\'import patients : ' + err.message);
+        console.error('Erreur import patients:', err);
+    } finally {
+        // RESET STATE
+        if (importBtn) {
+            importBtn.disabled = false;
+            importBtn.innerHTML = originalText;
+            importBtn.classList.remove('btn-loading');
+        }
+    }
+}
+
 // ============ RECHERCHE CLIENT ============
 async function searchClient() {
     const ipp = document.getElementById('code').value.trim();
@@ -1978,7 +2384,9 @@ async function searchClient() {
     }
     
     try {
-        const res = await fetch(`${API_URL}/clients/${ipp}`);
+        const res = await fetch(`${API_URL}/clients/${ipp}`, {
+            credentials: 'include'
+        });
         
         if (res.ok) {
             const client = await res.json();
@@ -1989,7 +2397,7 @@ async function searchClient() {
             
             showStatus('✓ Client trouvé et champs remplis', 'success');
         } else if (res.status === 404) {
-            showStatus('⚠️ N°IPP non trouvé dans la base clients', 'error');
+            showStatus('⚠️ N°IPP non trouvé dans la base patients', 'error');
         } else {
             showStatus('⚠️ Erreur lors de la recherche', 'error');
         }
@@ -2152,7 +2560,7 @@ function showHomonymsPanel() {
     alert(message);
 }
 
-// ============ STATS CLIENTS ============
+// ============ STATS PATIENTS ============
 
 async function showClientsStats() {
     const panel = document.getElementById('clientsStatsPanel');
@@ -2163,9 +2571,8 @@ async function showClientsStats() {
     content.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 40px;">⏳ Chargement des statistiques...</p>';
     
     try {
-        const token = getAuthToken();
         const res = await fetch(`${API_URL}/clients/stats`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            credentials: 'include'
         });
         
         if (!res.ok) {
@@ -2176,7 +2583,7 @@ async function showClientsStats() {
         renderClientsStats(data);
         
     } catch (err) {
-        console.error('Erreur chargement stats clients:', err);
+        console.error('Erreur chargement stats patients:', err);
         content.innerHTML = `
             <div style="display: flex; flex-direction: column; align-items: center; padding: 60px;">
                 <div class="spinner"></div>
@@ -2202,7 +2609,7 @@ function renderClientsStats(data) {
         <div class="stats-grid">
             <div class="stat-card">
                 <div class="stat-value">${data.total}</div>
-                <div class="stat-label">Clients total</div>
+                <div class="stat-label">Patients total</div>
             </div>
     `;
     
@@ -2278,11 +2685,11 @@ function renderClientsStats(data) {
         `;
     }
     
-    // Aperçu des 10 premiers clients
+    // Aperçu des 10 premiers patients
     if (data.preview && data.preview.length > 0) {
         html += `
             <div class="clients-preview-section">
-                <h3>Aperçu des données (10 premiers clients)</h3>
+                <h3>Aperçu des données (10 premiers patients)</h3>
                 <div style="overflow-x: auto;">
                     <table class="clients-preview-table">
                         <thead>
@@ -2325,7 +2732,7 @@ function renderClientsStats(data) {
                 <p style="font-size: 18px; margin-bottom: 10px;">📭</p>
                 <p>Aucun client dans la base de données</p>
                 <button class="btn-primary" onclick="closeClientsStats(); importClients();" style="margin-top: 20px;">
-                    Importer des clients
+                    Importer des patients
                 </button>
             </div>
         `;
@@ -2354,9 +2761,8 @@ async function showRestorePanel() {
     content.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 40px;">⏳ Chargement des backups...</p>';
     
     try {
-        const token = getAuthToken();
         const res = await fetch(`${API_URL}/backups`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            credentials: 'include'
         });
         
         if (!res.ok) {
@@ -2594,12 +3000,12 @@ async function confirmRestore() {
     `;
     
     try {
-        const token = getAuthToken();
         const res = await fetch(`${API_URL}/restore`, {
             method: 'POST',
+            credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`
+                'X-CSRF-Token': CSRF_TOKEN
             },
             body: JSON.stringify({
                 filename: selectedBackupFile,
@@ -2663,9 +3069,8 @@ async function showConnectionStats() {
     content.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 40px;">⏳ Chargement des statistiques...</p>';
     
     try {
-        const token = getAuthToken();
         const res = await fetch(`${API_URL}/stats/connections/summary`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+            credentials: 'include'
         });
         
         if (!res.ok) {
@@ -2834,9 +3239,721 @@ function renderConnectionStats(data) {
         `;
     }
     
+// AJOUTER : 15 dernières connexions
+    if (data.recentConnections && data.recentConnections.length > 0) {
+        html += `
+            <div style="margin-top: 32px;">
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">15 dernières connexions</h3>
+                <div style="overflow-x: auto;">
+                    <table class="clients-preview-table">
+                        <thead>
+                            <tr>
+                                <th>Date & Heure</th>
+                                <th>Rôle</th>
+                                <th>Utilisateur</th>
+                                <th>Adresse IP</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        data.recentConnections.forEach(conn => {
+            // Si c'est une connexion agrégée (sans timestamp exact)
+            if (conn.date && !conn.timestamp) {
+                const dateObj = new Date(conn.date + 'T00:00:00');
+                const formattedDate = dateObj.toLocaleDateString('fr-FR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric'
+                });
+                
+                const roleClass = conn.role === 'admin' ? 'admin-col' : 'guest-col';
+                const roleIcon = conn.role === 'admin' ? '🔒' : '👁️';
+                
+                html += `
+                    <tr>
+                        <td style="white-space: nowrap;">${formattedDate}</td>
+                        <td class="${roleClass}" style="text-align: center;">${roleIcon} ${conn.role}</td>
+                        <td colspan="2" style="text-align: center; color: var(--text-tertiary); font-size: 12px;">${conn.count} connexion(s) ce jour</td>
+                    </tr>
+                `;
+            } else {
+                // Si c'est une connexion individuelle (avec timestamp)
+                const timestamp = new Date(conn.timestamp);
+                const formattedDateTime = timestamp.toLocaleString('fr-FR', {
+                    day: '2-digit',
+                    month: '2-digit',
+                    year: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                    second: '2-digit'
+                });
+                
+                const roleClass = conn.role === 'admin' ? 'admin-col' : 'guest-col';
+                const roleIcon = conn.role === 'admin' ? '🔒' : '👁️';
+                
+                html += `
+                    <tr>
+                        <td style="white-space: nowrap;">${formattedDateTime}</td>
+                        <td class="${roleClass}" style="text-align: center;">${roleIcon} ${conn.role}</td>
+                        <td>${conn.userName || '—'}</td>
+                        <td style="font-family: monospace; font-size: 12px;">${conn.ipAddress || '—'}</td>
+                    </tr>
+                `;
+            }
+        });
+        
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    }
+    
     content.innerHTML = html;
 }
 
 function closeConnectionStats() {
     document.getElementById('connectionStatsPanel').classList.remove('active');
+}
+
+// Gestionnaire global d'erreurs CSRF
+/* Exemple d'utilisation dans les fetch :
+fetch(url, options)
+    .then(res => {
+        if (!res.ok) {
+            handleCsrfError(res);
+            throw new Error('Erreur ' + res.status);
+        }
+        return res.json();
+    }) */
+function handleCsrfError(response) {
+    if (response.status === 403) {
+        response.json().then(data => {
+            if (data.error && data.error.includes('CSRF')) {
+                alert('⚠️ Erreur de sécurité : token CSRF invalide.\n\nLa page va se recharger.');
+                window.location.reload();
+            }
+        }).catch(() => {});
+    }
+}
+
+// Fonction pour vérifier le temps restant dans la session
+async function checkSessionExpiration() {
+  try {
+    const res = await fetch(`${API_URL}/session/time-remaining`, {
+      credentials: 'include'
+    });
+    
+    if (res.ok) {
+      const data = await res.json();
+      
+      // Avertir si moins de 10 minutes restantes
+      if (data.expiresInMinutes < 10 && data.expiresInMinutes > 0) {
+        console.warn(`⏰ Session expire dans ${data.expiresInMinutes} minutes`);
+        
+        // Afficher une notification (optionnel)
+        if (data.expiresInMinutes === 5) {
+          if (confirm('⏰ Votre session expire dans 5 minutes.\n\nVoulez-vous prolonger votre session ?')) {
+            // Faire une requête pour renouveler
+            loadData(); // N'importe quelle requête authentifiée
+          }
+        }
+      }
+    }
+  } catch (err) {
+    console.error('Erreur vérification expiration:', err);
+  }
+}
+
+// ============ STATS MODIFICATIONS ============
+
+async function showModificationStats() {
+    const panel = document.getElementById('modificationStatsPanel');
+    const content = document.getElementById('modificationStatsContent');
+    
+    // Afficher le panel
+    panel.classList.add('active');
+    content.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 40px;">⏳ Chargement des statistiques...</p>';
+    
+    try {
+        const res = await fetch(`${API_URL}/stats/modifications`, {
+            credentials: 'include'
+        });
+        
+        if (!res.ok) {
+            throw new Error('Erreur ' + res.status);
+        }
+        
+        const data = await res.json();
+        renderModificationStats(data);
+        
+    } catch (err) {
+        console.error('Erreur chargement stats modifications:', err);
+        content.innerHTML = `
+            <div style="display: flex; flex-direction: column; align-items: center; padding: 60px;">
+                <div class="spinner"></div>
+                <p style="margin-top: 20px; font-weight: 600; color: var(--text-primary);">Erreur de chargement...</p>
+            </div>
+        `;
+    }
+}
+
+function renderModificationStats(data) {
+    const content = document.getElementById('modificationStatsContent');
+    
+    let html = '';
+    
+    // Cartes récapitulatives
+    html += `
+        <div class="stats-summary">
+            <div class="summary-card today">
+                <div class="value">${data.today}</div>
+                <div class="label">Aujourd'hui</div>
+            </div>
+            <div class="summary-card week">
+                <div class="value">${data.week}</div>
+                <div class="label">Cette semaine</div>
+            </div>
+            <div class="summary-card month">
+                <div class="value">${data.month}</div>
+                <div class="label">Ce mois</div>
+            </div>
+            <div class="summary-card total">
+                <div class="value">${data.total}</div>
+                <div class="label">Total</div>
+            </div>
+        </div>
+    `;
+    
+    // Répartition par type d'action
+    if (data.byAction && data.byAction.length > 0) {
+        html += `
+            <div style="margin-bottom: 24px;">
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">Répartition par type</h3>
+                <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+        `;
+        
+        const maxCount = Math.max(...data.byAction.map(a => a.count));
+        const actionColors = {
+            'ATTRIBUTION': '#10b981',
+            'MODIFICATION': '#3b82f6',
+            'LIBÉRATION': '#ef4444'
+        };
+        
+        data.byAction.forEach(action => {
+            const percentage = (action.count / data.total * 100).toFixed(1);
+            const barWidth = (action.count / maxCount * 100).toFixed(1);
+            const color = actionColors[action.action] || '#667eea';
+            
+            html += `
+                <div style="margin-bottom: 8px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 4px; font-size: 13px;">
+                        <span style="font-weight: 600;">${action.action}</span>
+                        <span style="color: var(--text-secondary);">${action.count} (${percentage}%)</span>
+                    </div>
+                    <div style="background: var(--border-light); border-radius: 4px; height: 8px; overflow: hidden;">
+                        <div style="background: ${color}; height: 100%; width: ${barWidth}%; transition: width 0.3s;"></div>
+                    </div>
+                </div>
+            `;
+        });
+        
+        html += `
+                </div>
+            </div>
+        `;
+    }
+    
+    // Utilisateurs les plus actifs
+    if (data.topUsers && data.topUsers.length > 0) {
+        html += `
+            <div style="margin-bottom: 24px;">
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">Utilisateurs les plus actifs</h3>
+                <div style="background: var(--bg-secondary); border: 1px solid var(--border-color); border-radius: 8px; padding: 12px;">
+        `;
+        
+        data.topUsers.forEach((user, index) => {
+            const medal = index === 0 ? '🥇' : index === 1 ? '🥈' : index === 2 ? '🥉' : '👤';
+            html += `
+                <div style="display: flex; justify-content: space-between; align-items: center; padding: 8px; ${index < data.topUsers.length - 1 ? 'border-bottom: 1px solid var(--border-light);' : ''}">
+                    <span style="font-size: 14px;">${medal} <strong>${user.userName}</strong></span>
+                    <span style="background: var(--primary-color); color: white; padding: 2px 8px; border-radius: 12px; font-size: 12px; font-weight: 600;">${user.count}</span>
+                </div>
+            `;
+        });
+        
+        html += `
+                </div>
+            </div>
+        `;
+    }
+    
+    // Graphique des 7 derniers jours
+    if (data.dailyActivity && data.dailyActivity.length > 0) {
+        html += `
+            <div class="chart-container" style="margin-bottom: 24px;">
+                <h3>Activité des 7 derniers jours</h3>
+        `;
+        
+        // Générer les 7 derniers jours même si pas de données
+        const dates = [];
+        for (let i = 6; i >= 0; i--) {
+            const date = new Date();
+            date.setDate(date.getDate() - i);
+            dates.push(date.toISOString().split('T')[0]);
+        }
+        
+        const activityMap = {};
+        data.dailyActivity.forEach(item => {
+            activityMap[item.date] = item.count;
+        });
+        
+        const maxCount = Math.max(...dates.map(date => activityMap[date] || 0), 1);
+        
+        dates.forEach(date => {
+            const count = activityMap[date] || 0;
+            const dateObj = new Date(date + 'T00:00:00');
+            const formattedDate = dateObj.toLocaleDateString('fr-FR', { 
+                weekday: 'short', 
+                day: '2-digit', 
+                month: '2-digit' 
+            });
+            
+            const barWidth = maxCount > 0 ? (count / maxCount * 100) : 0;
+            
+            html += `
+                <div class="chart-bar">
+                    <div class="date">${formattedDate}</div>
+                    <div class="bars">
+                        ${count > 0 ? `<div class="bar" style="width: ${barWidth}%; background: var(--primary-color);" title="${count} modifications">${count}</div>` : '<div style="color: var(--text-tertiary); font-size: 12px;">Aucune modification</div>'}
+                    </div>
+                    <div style="width: 40px; text-align: right; font-weight: 600; color: var(--text-secondary);">${count}</div>
+                </div>
+            `;
+        });
+        
+        html += `
+            </div>
+        `;
+    }
+    
+    // 10 dernières modifications
+    if (data.recentModifications && data.recentModifications.length > 0) {
+        html += `
+            <div>
+                <h3 style="font-size: 15px; font-weight: 600; margin-bottom: 12px;">10 dernières modifications</h3>
+                <div style="overflow-x: auto;">
+                    <table class="clients-preview-table">
+                        <thead>
+                            <tr>
+                                <th>Casier</th>
+                                <th>Action</th>
+                                <th>Patient</th>
+                                <th>N°IPP</th>
+                                <th>Zone</th>
+                                <th>Par</th>
+                                <th>Quand</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+        `;
+        
+        data.recentModifications.forEach(mod => {
+            const timestamp = new Date(mod.timestamp);
+            const formattedDate = timestamp.toLocaleDateString('fr-FR', {
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit'
+            });
+            
+            const actionColor = mod.action === 'ATTRIBUTION' ? '#10b981' : 
+                               mod.action === 'MODIFICATION' ? '#3b82f6' : '#ef4444';
+            
+            const patientInfo = mod.name ? `${anonymizeName(mod.name)} ${anonymizeFirstName(mod.firstName)}` : '—';
+            
+            html += `
+                <tr>
+                    <td><strong>${mod.lockerNumber}</strong></td>
+                    <td><span style="color: ${actionColor}; font-weight: 600;">${mod.action}</span></td>
+                    <td>${patientInfo}</td>
+                    <td>${mod.code || '—'}</td>
+                    <td>${mod.zone || '—'}</td>
+                    <td><span style="font-size: 12px;">${mod.userName || 'Inconnu'}</span></td>
+                    <td style="font-size: 12px; white-space: nowrap;">${formattedDate}</td>
+                </tr>
+            `;
+        });
+        
+        html += `
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    } else {
+        html += `
+            <div style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                <p style="font-size: 18px; margin-bottom: 10px;">📭</p>
+                <p>Aucune modification enregistrée</p>
+            </div>
+        `;
+    }
+    
+    content.innerHTML = html;
+}
+
+function closeModificationStats() {
+    document.getElementById('modificationStatsPanel').classList.remove('active');
+}
+
+// ============ CONFIG ANONYMISATION ============
+
+async function showAnonymizationConfig() {
+    const modal = document.getElementById('anonymizationConfigModal');
+    
+    // Charger la configuration actuelle
+    try {
+        const res = await fetch(`${API_URL}/config/anonymization`, {
+            credentials: 'include'
+        });
+        
+        if (!res.ok) {
+            throw new Error('Erreur ' + res.status);
+        }
+        
+        const data = await res.json();
+        
+        // Remplir le formulaire
+        document.getElementById('anonymizeGuest').checked = data.anonymizeGuest;
+        document.getElementById('anonymizeAdmin').checked = data.anonymizeAdmin;
+        
+        // Afficher les valeurs par défaut
+        document.getElementById('guestDefault').textContent = data.anonymizeGuestDefault ? 'Activée' : 'Désactivée';
+        document.getElementById('adminDefault').textContent = data.anonymizeAdminDefault ? 'Activée' : 'Désactivée';
+        
+        // Effacer le message de status
+        document.getElementById('anonymizationStatus').innerHTML = '';
+        
+        modal.classList.add('active');
+        
+    } catch (err) {
+        console.error('Erreur chargement config anonymisation:', err);
+        alert('Erreur lors du chargement de la configuration');
+    }
+}
+
+function closeAnonymizationConfig() {
+    document.getElementById('anonymizationConfigModal').classList.remove('active');
+}
+
+// Gérer la soumission du formulaire
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('anonymizationForm');
+    if (form) {
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const originalText = submitBtn.textContent;
+            const statusEl = document.getElementById('anonymizationStatus');
+            
+            // LOADING STATE
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '⏳ Application...';
+            submitBtn.classList.add('btn-loading');
+            
+            try {
+                const anonymizeGuest = document.getElementById('anonymizeGuest').checked;
+                const anonymizeAdmin = document.getElementById('anonymizeAdmin').checked;
+                
+                const res = await fetch(`${API_URL}/config/anonymization`, {
+                    method: 'POST',
+                    headers: { 
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    credentials: 'include',
+                    body: JSON.stringify({
+                        anonymizeGuest: anonymizeGuest,
+                        anonymizeAdmin: anonymizeAdmin
+                    })
+                });
+                
+                if (!res.ok) {
+                    throw new Error('Erreur ' + res.status);
+                }
+                
+                const data = await res.json();
+                
+                // Mettre à jour l'état local
+                ANONYMIZE_ENABLED = IS_GUEST ? anonymizeGuest : anonymizeAdmin;
+                
+                // Afficher le message de succès
+                statusEl.className = 'status-message status-success';
+                statusEl.textContent = '✓ Configuration appliquée ! Rechargez la page pour voir les changements.';
+                
+                // Proposer de recharger
+                setTimeout(() => {
+                    if (confirm('Configuration appliquée.\n\nVoulez-vous recharger la page pour appliquer les changements ?')) {
+                        window.location.reload();
+                    }
+                }, 1000);
+                
+            } catch (err) {
+                console.error('Erreur sauvegarde config:', err);
+                statusEl.className = 'status-message status-error';
+                statusEl.textContent = '✗ Erreur : ' + err.message;
+            } finally {
+                // RESET STATE
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+                submitBtn.classList.remove('btn-loading');
+            }
+        });
+    }
+});
+
+// ============ IMPRESSION ÉTIQUETTES ============
+
+function showLabelPrintDialog() {
+    const modal = document.getElementById('labelPrintModal');
+    
+    // Remplir le sélecteur de zones
+    const zoneSelect = document.getElementById('labelZone');
+    zoneSelect.innerHTML = ZONES_CONFIG.map(zone => 
+        `<option value="${zone.name}">${zone.name}</option>`
+    ).join('');
+    
+    // Réinitialiser
+    document.getElementById('labelFormat').value = '5x15';
+    document.getElementById('labelSelection').value = 'all';
+    document.getElementById('zoneSelector').style.display = 'none';
+    document.getElementById('rangeSelector').style.display = 'none';
+    document.getElementById('labelAnonymize').checked = false;
+    
+    updateLabelPreview();
+    modal.classList.add('active');
+}
+
+function closeLabelPrintDialog() {
+    document.getElementById('labelPrintModal').classList.remove('active');
+}
+
+function updateLabelPreview() {
+    const selection = document.getElementById('labelSelection').value;
+    
+    // Afficher/masquer les options
+    document.getElementById('zoneSelector').style.display = selection === 'zone' ? 'block' : 'none';
+    document.getElementById('rangeSelector').style.display = selection === 'range' ? 'block' : 'none';
+    
+    // Calculer le nombre d'étiquettes
+    const lockers = getSelectedLockersForLabels();
+    document.getElementById('labelCount').textContent = lockers.length;
+}
+
+function getSelectedLockersForLabels() {
+    const selection = document.getElementById('labelSelection').value;
+    let lockers = DATA.filter(l => l.occupied);
+    
+    if (selection === 'zone') {
+        const zone = document.getElementById('labelZone').value;
+        lockers = lockers.filter(l => l.zone === zone);
+    } else if (selection === 'range') {
+        const start = document.getElementById('labelRangeStart').value.trim().toUpperCase();
+        const end = document.getElementById('labelRangeEnd').value.trim().toUpperCase();
+        
+        if (start && end) {
+            lockers = lockers.filter(l => {
+                const num = l.number;
+                return num >= start && num <= end;
+            });
+        }
+    }
+    
+    // Trier par numéro
+    lockers.sort((a, b) => a.number.localeCompare(b.number));
+    
+    return lockers;
+}
+
+function openLabelPrintWindow() {
+    const format = document.getElementById('labelFormat').value;
+    const anonymize = document.getElementById('labelAnonymize').checked;
+    const lockers = getSelectedLockersForLabels();
+    
+    if (lockers.length === 0) {
+        alert('Aucun casier sélectionné');
+        return;
+    }
+    
+    // Créer une nouvelle fenêtre pour l'impression
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    
+    // Générer le HTML
+    const html = generateLabelHTML(lockers, format, anonymize);
+    
+    printWindow.document.write(html);
+    printWindow.document.close();
+    
+    // Attendre le chargement puis imprimer
+    printWindow.onload = function() {
+        setTimeout(() => {
+            printWindow.print();
+        }, 250);
+    };
+}
+
+function generateLabelHTML(lockers, format, anonymize) {
+    const [cols, rows] = format === '5x15' ? [5, 15] : [3, 9];
+    const perPage = cols * rows;
+    
+    // Dimensions calculées (A4 = 210mm × 297mm)
+    const pageWidth = 210; // mm
+    const pageHeight = 297; // mm
+    const marginTop = 10; // mm
+    const marginBottom = 10; // mm
+    const marginLeft = 6; // mm
+    const marginRight = 6; // mm
+    
+    const usableWidth = pageWidth - marginLeft - marginRight;
+    const usableHeight = pageHeight - marginTop - marginBottom;
+    
+    const labelWidth = usableWidth / cols;
+    const labelHeight = usableHeight / rows;
+    
+    let html = `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Étiquettes casiers</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        @page {
+            size: A4;
+            margin: 0;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            background: white;
+        }
+        
+        .page {
+            width: ${pageWidth}mm;
+            height: ${pageHeight}mm;
+            padding: ${marginTop}mm ${marginRight}mm ${marginBottom}mm ${marginLeft}mm;
+            page-break-after: always;
+            position: relative;
+        }
+        
+        .page:last-child {
+            page-break-after: auto;
+        }
+        
+        .label-grid {
+            display: grid;
+            grid-template-columns: repeat(${cols}, ${labelWidth}mm);
+            grid-template-rows: repeat(${rows}, ${labelHeight}mm);
+            width: 100%;
+            height: 100%;
+        }
+        
+        .label {
+            border: 1px solid #ddd;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            padding: 2mm;
+            overflow: hidden;
+            text-align: center;
+        }
+        
+        .label-locker {
+            font-size: ${format === '5x15' ? '10' : '12'}pt;
+            font-weight: bold;
+            margin-bottom: 1mm;
+        }
+        
+        .label-name {
+            font-size: ${format === '5x15' ? '9' : '11'}pt;
+            font-weight: bold;
+            margin-bottom: 0.5mm;
+        }
+        
+        .label-info {
+            font-size: ${format === '5x15' ? '7' : '9'}pt;
+            color: #333;
+            line-height: 1.3;
+        }
+        
+        .label-zone {
+            font-size: ${format === '5x15' ? '6' : '8'}pt;
+            color: #666;
+            margin-top: 1mm;
+        }
+        
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+            
+            .label {
+                border: 1px solid #000;
+            }
+        }
+    </style>
+</head>
+<body>
+`;
+    
+    // Générer les pages
+    for (let i = 0; i < lockers.length; i += perPage) {
+        const pageLockers = lockers.slice(i, i + perPage);
+        
+        html += `<div class="page"><div class="label-grid">`;
+        
+        // Remplir la page
+        for (let j = 0; j < perPage; j++) {
+            if (j < pageLockers.length) {
+                const locker = pageLockers[j];
+                const name = anonymize ? anonymizeName(locker.name) : locker.name;
+                const firstName = anonymize ? anonymizeFirstName(locker.firstName) : locker.firstName;
+                
+                html += `
+                    <div class="label">
+                        <div class="label-locker">${locker.number}</div>
+                        <div class="label-name">${name} ${firstName}</div>
+                        <div class="label-info">
+                            IPP: ${locker.code}<br>
+                            ${locker.birthDate ? formatDate(locker.birthDate) : ''}
+                        </div>
+                        <div class="label-zone">Zone ${locker.zone}</div>
+                    </div>
+                `;
+            } else {
+                // Étiquette vide pour compléter la grille
+                html += `<div class="label"></div>`;
+            }
+        }
+        
+        html += `</div></div>`;
+    }
+    
+    html += `
+</body>
+</html>
+`;
+    
+    return html;
 }

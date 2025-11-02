@@ -1,4 +1,4 @@
-@media (max-width: 768px) {
+@media screen and (max-width: 768px) {
     .container {
         padding: 10px;
     }
@@ -47,6 +47,7 @@
     /* Adapter les onglets pour mobile */
     .tabs {
         overflow-x: auto;
+        padding: 13px 2px; 
         -webkit-overflow-scrolling: touch;
     }
 

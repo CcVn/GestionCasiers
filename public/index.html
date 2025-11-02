@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' 'unsafe-eval';">
-    <title>PUI - Casiers zone départ</title>
+    <title>Ardon - Casiers PUI zone départ</title>
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/mobile.css">
     <link rel="stylesheet" href="css/print.css">
@@ -13,16 +13,22 @@
 <body>
     <div id="loginPage" class="login-container active">
         <div class="login-box">
-            <h1>PUI - Casiers zone départ</h1>
+            <h1>Ardon - Casiers PUI zone départ</h1>
             <form id="loginForm">
-                <div class="form-group" id="userNameGroup" style="display: none;">
-                    <input type="text" id="userName" placeholder="Votre nom ou initiales" autocomplete="off">
+                <button type="button" class="btn-primary" style="width: 100%; margin-top: 10px; font-size: 1.25rem; height: 75px; " onclick="loginAsGuest()">Chercher un casier</button>
+                <div class="separator"></div>
+                <div id="login_admin">
+                    <p style="font-size: 16px; margin-bottom: 1rem;"><strong>Modification des casiers par la PUI</strong></p>
+                    <div class="form-group" id="userNameGroup" style="display: none;">
+                        <p><small style="color: var(--text-secondary);">Identifiant libre: nom, initiales, ... Adresse réseau par défaut</small></p>
+                        <input type="text" id="userName" placeholder="Identifiant (optionnel, IP par défaut)" autocomplete="off">
+                    </div>
+                    <div class="form-group">
+                        <!-- <p><small style="color: var(--text-secondary);">Mot de passe requis.</small></p> -->
+                        <input type="password" id="loginPassword" placeholder="Mot de passe requis" autocomplete="off">
+                    </div>
                 </div>
-                <div class="form-group">
-                    <input type="password" id="loginPassword" placeholder="Mot de passe (optionnel)" autocomplete="off">
-                </div>
-                <button type="submit" class="btn-primary" style="width: 100%;">Se connecter</button>
-                <button type="button" class="btn-secondary" style="width: 100%; margin-top: 10px;" onclick="loginAsGuest()">Visualiser les casiers</button>
+                <button type="submit" class="btn-secondary" style="width: 100%;">Modifier les casiers</button>
             </form>
         </div>
     </div>
@@ -31,13 +37,16 @@
         <header>
             <div class="header-info">
                 <div>
-                    <h1>PUI - Casiers zone départ</h1>
+                    <h1>Ardon - Casiers PUI zone départ</h1>
                     <div style="display: flex; gap: 20px; align-items: center;">
                         <div id="authStatus" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
                         <div class="admin-only" id="importStatus" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
                     </div>
                 </div>
-                <div style="display: flex; gap: 15px; align-items: center;">
+                <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
+                    <button class="btn-theme-toggle" onclick="toggleDarkModeQuick()" id="btnThemeToggle" title="Changer le thème">
+                        <span class="theme-icon">☀️</span>
+                    </button>
                     <div id="serverStatus" class="server-status offline">⚪ Vérification...</div>
                     <button class="btn-secondary btn-small" onclick="logout()">Déconnexion</button>
                 </div>
@@ -56,34 +65,56 @@
                 <button class="btn-secondary btn-small" onclick="toggleAdminTools()" style="padding: 4px 8px; font-size: 11px;">Fermer</button>
             </div>
             <div class="admin-tools-content">
-                <button class="btn-secondary" onclick="importCSV()" title="Importer des données casiers depuis un CSV">
-                    ⬆️ Import casiers
-                </button>
-                <button class="btn-secondary" onclick="exportData('json')" title="Exporter les casiers au format JSON">
-                    ⬇ Export JSON
-                </button>
-                <button class="btn-secondary" onclick="exportData('csv')" title="Exporter les casiers au format CSV">
-                    ⬇ Export CSV
-                </button>
-                <button class="btn-secondary" onclick="createBackup()" title="Créer un backup manuel de la base Sqlite">
-                    💾 Backup base
-                </button>
-                <button class="btn-secondary" onclick="showRestorePanel()" title="Restaurer la base depuis un backup">
-                    🔄 Restore base
-                </button>
-                <button class="btn-secondary" onclick="showDuplicatesPanel()" title="Afficher la liste des doublons détectés">
-                    ⚠️ Analyse doublons
-                </button>
-                <button class="btn-secondary" onclick="showHomonymsPanel()" title="Afficher la liste des homonymes détectés">
-                    👥 Analyse homonymes
-                </button>
-                <button class="btn-secondary" onclick="showClientsStats()" title="Afficher les statistiques de la base clients">
-                    📊 Stats clients
-                </button>
-                <button class="btn-secondary" onclick="showConnectionStats()" title="Afficher les statistiques de connexion">
-                    📈 Stats connexions
-                </button>
-                
+                <div class="admin-tools-group" id="blocBackups" title="Sauvegarde de la base">
+                    <button class="btn-secondary" onclick="createBackup()" title="Créer un backup manuel de la base Sqlite">
+                        💾 Sauver la base
+                    </button>
+                    <button class="btn-secondary" onclick="showRestorePanel()" title="Restaurer la base depuis un backup">
+                        🔄 Restaurer la base
+                    </button>
+                </div>
+                <div class="admin-tools-group" id="blocAnalyseCasiers" title="Analyse des casiers">
+                    <button class="btn-secondary" onclick="showDuplicatesPanel()" title="Afficher la liste des doublons détectés">
+                        ⚠️ Doublons
+                    </button>
+                    <button class="btn-secondary" onclick="showHomonymsPanel()" title="Afficher la liste des homonymes détectés">
+                        👥 Homonymes
+                    </button>
+                </div>
+                <div class="admin-tools-group" id="blocStats" title="Statistiques">
+                    <button class="btn-secondary" onclick="showClientsStats()" title="Afficher les statistiques de la base patients">
+                        📊 Stats patients
+                    </button>
+                    <button class="btn-secondary" onclick="showConnectionStats()" title="Afficher les statistiques de connexion">
+                        📈 Stats connexions
+                    </button>
+                    <button class="btn-secondary" onclick="showModificationStats()" title="Afficher les statistiques de modifications">
+                        📝 Stats modifications
+                    </button>
+                </div>
+                <div class="admin-tools-group" id="blocSettings" title="Réglages">
+                    <button class="btn-secondary" onclick="showAnonymizationConfig()" title="Configurer l'anonymisation">
+                        🎭 Config anonymisation
+                    </button>
+                    <button class="btn-secondary" onclick="showLabelPrintDialog()" title="Imprimer des étiquettes">
+                        🏷️ Étiquettes
+                    </button>
+                </div>
+                <div class="admin-tools-group" id="blocImportExport" title="Import / export des casiers">
+                    <button class="btn-secondary" onclick="importCSV()" title="Importer des données casiers depuis un CSV">
+                        ⬆️ Import casiers
+                    </button>
+                    <button class="btn-secondary" onclick="exportData('csv')" title="Exporter les casiers au format CSV">
+                        ⬇ Export CSV
+                    </button>
+                    <button class="btn-secondary" onclick="importJSON()" title="Importer des casiers depuis un fichier JSON">
+                        ⬆️ Import JSON
+                    </button>
+                    <button class="btn-secondary" onclick="exportData('json')" title="Exporter les casiers au format JSON">
+                        ⬇ Export JSON
+                    </button>
+                </div>
+
                 <!-- Dark Mode Toggle -->
                 <div class="dark-mode-selector" title="Changer le mode d'affichage">
                     <button class="mode-btn" data-mode="inactive" onclick="setDarkMode('inactive')">
@@ -116,6 +147,7 @@
         </footer>        
     </div>
 
+    <!-- Modal Attribuer casier -->
     <div id="modal" class="modal">
         <div class="modal-content">
             <div class="modal-header" id="modalTitle">Attribuer un casier</div>
@@ -170,11 +202,55 @@
         </div>
     </div>
 
-<!-- Panel stats clients -->
+    <!-- Modal options d'import clients -->
+    <div id="importOptionsModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">📥 Options d'import clients</div>
+            
+            <form id="importOptionsForm">
+                <div class="form-group">
+                    <label for="importFormat">Format du fichier</label>
+                    <select id="importFormat" required>
+                        <!-- Sera rempli dynamiquement -->
+                    </select>
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                        Le format par défaut est configuré dans les paramètres serveur
+                    </small>
+                </div>
+                
+                <div class="form-group">
+                    <label for="importMode">Mode d'import</label>
+                    <select id="importMode" required>
+                        <option value="replace">🔄 Remplacer (vider puis importer)</option>
+                        <option value="merge">➕ Fusionner (ajouter sans supprimer)</option>
+                    </select>
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                        Mode "Fusionner" : les doublons (même IPP) seront ignorés
+                    </small>
+                </div>
+                
+                <div id="importWarning" style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin: 16px 0; display: none;">
+                    <strong style="color: #92400e;">⚠️ Attention :</strong>
+                    <p style="margin: 4px 0 0 0; font-size: 13px; color: #78350f;">
+                        Le mode "Remplacer" va supprimer tous les clients existants avant l'import.
+                    </p>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="closeImportOptions()">Annuler</button>
+                    <button type="button" class="btn-primary" onclick="selectFileForImport()">Choisir le fichier</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    
+    <input type="file" id="clientFileInput" accept=".csv" style="display: none;">
+
+<!-- Panel stats patients -->
     <div id="clientsStatsPanel" class="clients-stats-panel">
         <div class="clients-stats-content">
             <div class="clients-stats-header">
-                <h2>📊 Base de données clients</h2>
+                <h2>📊 Base de données patients</h2>
                 <button class="btn-secondary" onclick="closeClientsStats()">✕</button>
             </div>
             
@@ -217,6 +293,141 @@
             
             <div id="connectionStatsContent">
                 <p style="text-align: center; color: var(--text-secondary);">Chargement...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Panel stats modifications -->
+    <div id="modificationStatsPanel" class="modification-stats-panel">
+        <div class="modification-stats-content">
+            <div class="modification-stats-header">
+                <h2>📝 Statistiques de modifications</h2>
+                <button class="btn-secondary" onclick="closeModificationStats()">✕</button>
+            </div>
+            
+            <div id="modificationStatsContent">
+                <p style="text-align: center; color: var(--text-secondary);">Chargement...</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal configuration anonymisation -->
+    <div id="anonymizationConfigModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">🎭 Configuration de l'anonymisation</div>
+            
+            <div style="padding: 20px;">
+                <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin-bottom: 20px;">
+                    <strong style="color: #92400e;">⚠️ Configuration temporaire</strong>
+                    <p style="margin: 4px 0 0 0; font-size: 13px; color: #78350f;">
+                        Ces paramètres sont perdus au redémarrage du serveur.<br>
+                        Pour une configuration permanente, modifiez le fichier .env
+                    </p>
+                </div>
+                
+                <form id="anonymizationForm">
+                    <div style="background: var(--bg-secondary); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                        <h3 style="font-size: 14px; font-weight: 600; margin: 0 0 12px 0; color: var(--text-primary);">
+                            👁️ Mode Guest (consultation)
+                        </h3>
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="anonymizeGuest" style="margin-right: 10px; width: auto; cursor: pointer;">
+                            <span>Activer l'anonymisation en mode guest</span>
+                        </label>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin: 8px 0 0 0;">
+                            Si activé : <strong>DUP</strong> devient <strong>DUP</strong>, <strong>Jacques</strong> devient <strong>JA</strong>
+                        </p>
+                        <p style="font-size: 11px; color: var(--text-tertiary); margin: 4px 0 0 0;">
+                            Valeur par défaut (.env) : <strong id="guestDefault">—</strong>
+                        </p>
+                    </div>
+                    
+                    <div style="background: var(--bg-secondary); border-radius: 8px; padding: 16px; margin-bottom: 20px;">
+                        <h3 style="font-size: 14px; font-weight: 600; margin: 0 0 12px 0; color: var(--text-primary);">
+                            🔒 Mode Admin (modification)
+                        </h3>
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="anonymizeAdmin" style="margin-right: 10px; width: auto; cursor: pointer;">
+                            <span>Activer l'anonymisation en mode admin</span>
+                        </label>
+                        <p style="font-size: 12px; color: var(--text-secondary); margin: 8px 0 0 0;">
+                            Si activé : noms/prénoms partiellement masqués même en modification
+                        </p>
+                        <p style="font-size: 11px; color: var(--text-tertiary); margin: 4px 0 0 0;">
+                            Valeur par défaut (.env) : <strong id="adminDefault">—</strong>
+                        </p>
+                    </div>
+                    
+                    <div id="anonymizationStatus" class="status-message" style="margin-bottom: 16px;"></div>
+                    
+                    <div class="modal-footer">
+                        <button type="button" class="btn-secondary" onclick="closeAnonymizationConfig()">Annuler</button>
+                        <button type="submit" class="btn-primary">Appliquer</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal impression étiquettes -->
+    <div id="labelPrintModal" class="modal">
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">🏷️ Impression d'étiquettes</div>
+            
+            <div style="padding: 20px;">
+                <div class="form-group">
+                    <label>Format d'étiquette</label>
+                    <select id="labelFormat" onchange="updateLabelPreview()">
+                        <option value="5x15">5 × 15 étiquettes (75 par page)</option>
+                        <option value="3x9">3 × 9 étiquettes (27 par page)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label>Sélection des casiers</label>
+                    <select id="labelSelection" onchange="updateLabelPreview()">
+                        <option value="all">Tous les casiers occupés</option>
+                        <option value="zone">Par zone</option>
+                        <option value="range">Plage de numéros</option>
+                    </select>
+                </div>
+                
+                <!-- Options selon sélection -->
+                <div id="zoneSelector" class="form-group" style="display: none;">
+                    <label>Zone</label>
+                    <select id="labelZone" onchange="updateLabelPreview()">
+                        <!-- Sera rempli dynamiquement -->
+                    </select>
+                </div>
+                
+                <div id="rangeSelector" style="display: none;">
+                    <div class="form-group">
+                        <label>Du casier</label>
+                        <input type="text" id="labelRangeStart" placeholder="Ex: N01" oninput="updateLabelPreview()">
+                    </div>
+                    <div class="form-group">
+                        <label>Au casier</label>
+                        <input type="text" id="labelRangeEnd" placeholder="Ex: N75" oninput="updateLabelPreview()">
+                    </div>
+                </div>
+                
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="labelAnonymize" onchange="updateLabelPreview()" style="margin-right: 10px; width: auto;">
+                        <span>Anonymiser les noms/prénoms</span>
+                    </label>
+                </div>
+                
+                <div style="background: var(--bg-secondary); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
+                    <div style="font-size: 13px; color: var(--text-secondary);">
+                        <strong>Aperçu :</strong> <span id="labelCount">0</span> étiquette(s) sélectionnée(s)
+                    </div>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="closeLabelPrintDialog()">Annuler</button>
+                    <button type="button" class="btn-primary" onclick="openLabelPrintWindow()">🖨️ Imprimer</button>
+                </div>
             </div>
         </div>
     </div>

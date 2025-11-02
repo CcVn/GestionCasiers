@@ -17,8 +17,10 @@
     --shadow: rgba(0,0,0,0.05);
     --shadow-hover: rgba(0,0,0,0.1);
     --input-bg: #ffffff;
-    --button-secondary-bg: #f0f0f0;
-    --button-secondary-hover: #e0e0e0;
+    --button-primary-bg: #1a73e8;
+    --button-primary-hover: #174ea6;
+    --button-secondary-bg: #0066cc;
+    --button-secondary-hover: #0052a3;
 }
 
 body.dark-mode {
@@ -34,8 +36,8 @@ body.dark-mode {
     --shadow: rgba(0,0,0,0.3);
     --shadow-hover: rgba(0,0,0,0.5);
     --input-bg: #363636;
-    --button-secondary-bg: #404040;
-    --button-secondary-hover: #4a4a4a;
+    --button-secondary-bg: #404040; /*#9400da*/
+    --button-secondary-hover: #4a4a4a; /*#8500de*/
 }
 
 body {
@@ -64,6 +66,12 @@ h1 {
     font-size: 28px;
     margin-bottom: 15px;
     font-weight: 600;
+}
+
+.separator {
+    height: 1px;
+    background-color: #ddd;
+    margin: 1.5rem 0;
 }
 
 .header-info {
@@ -123,7 +131,7 @@ h1 {
     border: 1px solid var(--border-color);
     border-radius: 6px;
     font-size: 14px;
-    background: var(--input-bg);
+    background: #e6f2ff;  /* background: var(--input-bg); */
     color: var(--text-primary);
 }
 
@@ -215,21 +223,29 @@ button {
 }
 
 .btn-primary {
-    background: #0066cc;
+    background: var(--button-primary-bg);
     color: white;
+    font-size: 1rem;
+    height: 50px; /* Hauteur augmentée */
+    margin-bottom: 1rem; /* Espace sous le bouton */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
 }
 
 .btn-primary:hover {
-    background: #0052a3;
+    background: var(--button-primary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
 }
 
 .btn-secondary {
     background: var(--button-secondary-bg);
-    color: var(--text-primary);
+    color: white;
 }
 
 .btn-secondary:hover {
     background: var(--button-secondary-hover);
+    transform: translateY(-1px);
+    box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
 }
 
 .btn-small {
@@ -391,7 +407,7 @@ tr:hover {
 }
 
 .form-group {
-    margin-bottom: 15px;
+    margin-bottom: 5px;
 }
 
 label {

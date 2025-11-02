@@ -37,12 +37,15 @@
     /* Optimiser l'affichage des tables */
     table {
         page-break-inside: avoid;
-        font-size: 12pt;
+        font-size: 10pt;
+        width: 100%;
+        border-collapse: collapse;
     }
 
     th, td {
         padding: 8px;
-        border: 1px solid #ddd;
+        text-align: left;
+        border: 1px solid #ddd !important; /* Bordures légères pour l'impression */
     }
 
     /* Éviter les sauts de page inutiles */
@@ -50,15 +53,17 @@
         page-break-inside: avoid;
     }
 
+    th {
+        background-color: #a3d1ff !important; /* #d9efff ou #a3d1ff  */
+    }
+
     tr:nth-child(even) {
         background-color: #ffffff !important; /* Blanc pour économiser l'encre */
     }
 
     tr:nth-child(odd) {
-        background-color: #efefef !important; /* Gris clair pour l'impression */
+        background-color: #ccffff !important; /* Bleu clair pour l'impression */
+        border-bottom: 1px solid #e6f2ff;
     }
 
-    td, th {
-        border: 1px solid #ddd !important; /* Bordures légères pour l'impression */
-    }
 }

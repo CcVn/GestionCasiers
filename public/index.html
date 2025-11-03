@@ -15,7 +15,7 @@
         <div class="login-box">
             <h1>Ardon - Casiers PUI zone départ</h1>
             <form id="loginForm">
-                <button type="button" class="btn-primary" style="width: 100%; margin-top: 10px; font-size: 1.25rem; height: 75px; " onclick="loginAsGuest()">Chercher un casier</button>
+                <button type="button" class="btn-primary" style="width: 100%; margin-top: 10px; font-size: 1.25rem; height: 75px; " onclick="loginAsGuest()">👁️ Chercher un casier</button>
                 <div class="separator"></div>
                 <div id="login_admin">
                     <p style="font-size: 16px; margin-bottom: 1rem;"><strong>Modification des casiers par la PUI</strong></p>
@@ -28,7 +28,7 @@
                         <input type="password" id="loginPassword" placeholder="Mot de passe requis" autocomplete="off">
                     </div>
                 </div>
-                <button type="submit" class="btn-secondary" style="width: 100%;">Modifier les casiers</button>
+                <button type="submit" class="btn-secondary" style="width: 100%;">🔐 Modifier les casiers</button>
             </form>
         </div>
     </div>
@@ -53,7 +53,7 @@
             </div>
             <div class="search-bar">
                 <input type="text" id="globalSearch" placeholder="Rechercher par nom, prénom ou IPP...">
-                <button class="btn-secondary admin-only" onclick="importClients()" title="Importer les admissions depuis un export MH">⬆️ Import patients</button>
+                <button class="btn-clearsearch" onclick="clearSearch()" style="background: #ff0000 !important;" title="Vider la recherche"> ✕ </button>
                 <button class="btn-settings admin-only" onclick="toggleAdminTools()" title="Outils d'administration" id="btnSettings">⚙️</button>
             </div>
         </header>
@@ -65,73 +65,104 @@
                 <button class="btn-secondary btn-small" onclick="toggleAdminTools()" style="padding: 4px 8px; font-size: 11px;">Fermer</button>
             </div>
             <div class="admin-tools-content">
-                <div class="admin-tools-group" id="blocBackups" title="Sauvegarde de la base">
-                    <button class="btn-secondary" onclick="createBackup()" title="Créer un backup manuel de la base Sqlite">
-                        💾 Sauver la base
-                    </button>
-                    <button class="btn-secondary" onclick="showRestorePanel()" title="Restaurer la base depuis un backup">
-                        🔄 Restaurer la base
-                    </button>
-                </div>
-                <div class="admin-tools-group" id="blocAnalyseCasiers" title="Analyse des casiers">
-                    <button class="btn-secondary" onclick="showDuplicatesPanel()" title="Afficher la liste des doublons détectés">
-                        ⚠️ Doublons
-                    </button>
-                    <button class="btn-secondary" onclick="showHomonymsPanel()" title="Afficher la liste des homonymes détectés">
-                        👥 Homonymes
-                    </button>
-                </div>
-                <div class="admin-tools-group" id="blocStats" title="Statistiques">
-                    <button class="btn-secondary" onclick="showClientsStats()" title="Afficher les statistiques de la base patients">
-                        📊 Stats patients
-                    </button>
-                    <button class="btn-secondary" onclick="showConnectionStats()" title="Afficher les statistiques de connexion">
-                        📈 Stats connexions
-                    </button>
-                    <button class="btn-secondary" onclick="showModificationStats()" title="Afficher les statistiques de modifications">
-                        📝 Stats modifications
-                    </button>
-                </div>
-                <div class="admin-tools-group" id="blocSettings" title="Réglages">
-                    <button class="btn-secondary" onclick="showAnonymizationConfig()" title="Configurer l'anonymisation">
-                        🎭 Config anonymisation
-                    </button>
-                    <button class="btn-secondary" onclick="showLabelPrintDialog()" title="Imprimer des étiquettes">
-                        🏷️ Étiquettes
-                    </button>
-                </div>
-                <div class="admin-tools-group" id="blocImportExport" title="Import / export des casiers">
-                    <button class="btn-secondary" onclick="importCSV()" title="Importer des données casiers depuis un CSV">
-                        ⬆️ Import casiers
-                    </button>
-                    <button class="btn-secondary" onclick="exportData('csv')" title="Exporter les casiers au format CSV">
-                        ⬇ Export CSV
-                    </button>
-                    <button class="btn-secondary" onclick="importJSON()" title="Importer des casiers depuis un fichier JSON">
-                        ⬆️ Import JSON
-                    </button>
-                    <button class="btn-secondary" onclick="exportData('json')" title="Exporter les casiers au format JSON">
-                        ⬇ Export JSON
-                    </button>
-                </div>
-
-                <!-- Dark Mode Toggle -->
-                <div class="dark-mode-selector" title="Changer le mode d'affichage">
-                    <button class="mode-btn" data-mode="inactive" onclick="setDarkMode('inactive')">
-                        <span class="icon">☀️</span>
-                        <span class="label">Clair</span>
-                    </button>
-                    <button class="mode-btn" data-mode="system" onclick="setDarkMode('system')">
-                        <span class="icon">💻</span>
-                        <span class="label">Auto</span>
-                    </button>
-                    <button class="mode-btn" data-mode="active" onclick="setDarkMode('active')">
-                        <span class="icon">🌙</span>
-                        <span class="label">Sombre</span>
-                    </button>
-                </div>
-
-
+                <fieldset id="blocPatients" class="group-box">
+                    <legend>Patients</legend>
+                    <div class="buttons-container" title="Patients">
+                       <button class="btn-secondary" onclick="importClients()" title="Importer les patients présents depuis un export MH ou Winpharm">
+                            ⬆️ Import patients
+                       </button>
+                       <button class="btn-secondary" onclick="showAnonymizationConfig()" title="Configurer l'anonymisation">
+                            🎭 Anonymisation
+                        </button>
+                        <button class="btn-secondary" onclick="deleteClients()" title="Vider la base patients">
+                            🧹 Vider les données
+                        </button>
+                    </div>
+                </fieldset>
+                <fieldset id="blocAnalyseCasiers" class="group-box">
+                    <legend>Contrôle des casiers</legend>
+                    <div class="buttons-container" title="Contrôle des casiers">
+                        <button class="btn-secondary" onclick="showDuplicatesPanel()" title="Afficher la liste des doublons détectés">
+                            ⚠️ Doublons
+                        </button>
+                        <button class="btn-secondary" onclick="showHomonymsPanel()" title="Afficher la liste des homonymes détectés">
+                            👥 Homonymes
+                        </button>
+                    </div>
+                </fieldset>
+                <fieldset id="blocStats" class="group-box">
+                    <legend>Statistiques</legend>
+                    <div class="buttons-container" title="Statistiques">
+                        <button class="btn-secondary" onclick="showConnectionStats()" title="Afficher les statistiques de connexion">
+                            📈 Connexions
+                        </button>
+                        <button class="btn-secondary" onclick="showModificationStats()" title="Afficher les statistiques de modifications">
+                            📝 Casiers
+                        </button>
+                        <button class="btn-secondary" onclick="showClientsStats()" title="Afficher les statistiques de la base patients">
+                            📊 Patients
+                        </button>
+                    </div>
+                </fieldset>
+                <fieldset id="blocExport" class="group-box">
+                    <legend>Export des casiers</legend>
+                    <div class="buttons-container" title="Export des casiers">
+                        <button class="btn-secondary" onclick="exportData('csv')" title="Exporter les casiers au format CSV">
+                            ⬇ CSV
+                        </button>
+                        <button class="btn-secondary" onclick="exportData('json')" title="Exporter les casiers au format JSON">
+                            ⬇ JSON
+                        </button>
+                    </div>
+                </fieldset>
+                <fieldset id="bloctImport" class="group-box">
+                    <legend>Import des casiers</legend>
+                    <div class="buttons-container" title="Import des casiers">
+                        <button class="btn-secondary" onclick="importCSV()" title="Importer des données casiers depuis un CSV">
+                            ⬆️ CSV
+                        </button>
+                        <button class="btn-secondary" onclick="importJSON()" title="Importer des casiers depuis un fichier JSON">
+                            ⬆️ JSON
+                        </button>
+                    </div>
+                </fieldset>
+                <fieldset id="blocBackups" class="group-box">
+                    <legend>Base de données SQLite</legend>
+                    <div class="buttons-container">
+                        <button class="btn-secondary" onclick="createBackup()" title="Créer un backup manuel de la base Sqlite">
+                            💾 Sauvegarder
+                        </button>
+                        <button class="btn-secondary" onclick="showRestorePanel()" title="Restaurer la base depuis un backup">
+                            🔄 Restaurer
+                        </button>
+                    </div>
+                </fieldset>
+                <fieldset class="group-box">
+                    <legend>Outils</legend>
+                    <div class="buttons-container" id="blocSettings" title="Outils">
+                        <button class="btn-secondary" onclick="showLabelPrintDialog()" title="Imprimer des étiquettes">
+                            🏷️ Étiquettes
+                        </button>
+                    </div>
+                </fieldset>
+                <fieldset id="blocInterface" class="group-box">
+                    <legend>Interface</legend>
+                    <!-- Dark Mode Toggle -->
+                    <div class="dark-mode-selector" title="Changer le mode d'affichage">
+                        <button class="mode-btn" data-mode="inactive" title="Thème clair" onclick="setDarkMode('inactive')">
+                            <span class="icon">☀️</span>
+                            <span class="label">Clair</span>
+                        </button>
+                        <button class="mode-btn" data-mode="system" title="Thème de l'OS" onclick="setDarkMode('system')">
+                            <span class="icon">💻</span>
+                            <span class="label">Auto</span>
+                        </button>
+                        <button class="mode-btn" data-mode="active" title="Thème sombre" onclick="setDarkMode('active')">
+                            <span class="icon">🌙</span>
+                            <span class="label">Sombre</span>
+                        </button>
+                    </div>
+                </fieldset>
             </div>
         </div>
 
@@ -378,7 +409,7 @@
                 <div class="form-group">
                     <label>Format d'étiquette</label>
                     <select id="labelFormat" onchange="updateLabelPreview()">
-                        <option value="5x15">5 × 15 étiquettes (75 par page)</option>
+                        <option value="5x13">5 × 13 étiquettes (65 par page)</option>
                         <option value="3x9">3 × 9 étiquettes (27 par page)</option>
                     </select>
                 </div>
@@ -431,7 +462,39 @@
             </div>
         </div>
     </div>
-
+    <!-- Modal impression étiquette unique -->
+    <div id="singleLabelModal" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">🏷️ Imprimer étiquettes</div>
+            
+            <div style="padding: 20px;">
+                <div id="singleLabelInfo" style="background: var(--bg-secondary); padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                    <!-- Sera rempli dynamiquement -->
+                </div>
+                
+                <div class="form-group">
+                    <label>Format d'étiquette</label>
+                    <select id="singleLabelFormat">
+                        <option value="3x9">3 × 9 (27 étiquettes)</option>
+                        <option value="5x13">5 × 13 (65 étiquettes)</option>
+                    </select>
+                </div>
+                
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="singleLabelAnonymize" style="margin-right: 10px; width: auto;">
+                        <span>Anonymiser les noms/prénoms</span>
+                    </label>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="closeSingleLabelModal()">Annuler</button>
+                    <button type="button" class="btn-primary" onclick="confirmPrintSingleLabel()">🖨️ Imprimer</button>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script src="/js/admintools.js"></script>
     <script src="app.js"></script>
     <script>
         // Fonction pour toggle le container des outils admin

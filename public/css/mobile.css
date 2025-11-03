@@ -120,4 +120,10 @@
         padding: 6px 12px;
         text-align: center;
     }
+
+    .tab-search {
+        font-size: 16px !important;
+        padding: 8px 16px !important;
+        margin-left: 8px !important;
+    }
 }

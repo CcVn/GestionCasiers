@@ -14,6 +14,31 @@
     display: block;
 }
 
+.group-box {
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 5px;
+    margin-bottom: 5px;
+    width: fit-content; /* ou une largeur fixe */
+}
+
+.group-box legend {
+      padding: 0 5px;
+      border-radius: 8px;
+      font-weight: bold shadow;
+      font-size: 0.9em;
+      text-shadow: 1px 1px 0 #444;
+      /* color: #e6e6e6; */
+      opacity: 0.5; /* 50% de transparence */
+      margin-left: 10px;
+}
+
+.buttons-container {
+  display: flex;
+  gap: 6px; /* Espace entre les boutons */
+  padding: 3px;
+}
+
 @keyframes slideDown {
     from {
         opacity: 0;

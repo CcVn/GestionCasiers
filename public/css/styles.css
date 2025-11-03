@@ -81,21 +81,69 @@ h1 {
     margin-bottom: 15px;
 }
 
-.server-status {
+.server-status2 {
     padding: 8px 16px;
     border-radius: 20px;
     font-weight: 500;
     font-size: 13px;
 }
 
-.server-status.online {
+.server-status2.online {
     background: #e8f5e9;
     color: #2e7d32;
 }
 
-.server-status.offline {
+.server-status2.offline {
     background: #ffebee;
     color: #c62828;
+}
+
+.server-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.server-status .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.server-status.online {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.server-status.online .status-dot {
+    background: #10b981;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+    animation: pulse-green 2s infinite;
+}
+
+.server-status.offline {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.server-status.offline .status-dot {
+    background: #ef4444;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+}
+
+@keyframes pulse-green {
+    0%, 100% {
+        opacity: 1;
+    }
+    50% {
+        opacity: 0.5;
+    }
 }
 
 .zone-counter {
@@ -238,11 +286,22 @@ button {
 }
 
 .btn-secondary {
+    font-size: 0.9em;
     background: var(--button-secondary-bg);
     color: white;
 }
-
+.btn-activesearch {
+    display: none;
+    background: #fef3c7;
+    border: 1px solid #f59e0b;
+    padding: 6px 12px;
+    border-radius: 6px;
+    font-size: 12px;
+    color: #92400e;
+    font-weight: 600;
+}
 .btn-secondary:hover {
+    font-size: 0.9em;
     background: var(--button-secondary-hover);
     transform: translateY(-1px);
     box-shadow: 0 6px 12px rgba(0, 0, 0, 0.2);
@@ -672,6 +731,29 @@ tr.duplicate-row td:first-child strong::after {
     background: #ff9800;
     border-radius: 50%;
     margin-left: 6px;
+}
+
+/* Onglet de recherche */
+.tab-search {
+    font-size: 18px !important;
+    padding: 10px 20px !important;
+    background: var(--primary-color) !important;
+    color: white !important;
+    border-radius: 8px;
+}
+
+.tab-search:hover {
+    background: #5a67d8 !important;
+}
+
+.tab-search.active {
+    background: #4c51bf !important;
+    box-shadow: 0 4px 8px rgba(102, 126, 234, 0.3);
+}
+
+/* Compteur de résultats de recherche */
+#counter-SEARCH {
+    background: #667eea !important;
 }
 
 /* Loading states */

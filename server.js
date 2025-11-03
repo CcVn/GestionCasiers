@@ -97,11 +97,12 @@ function parseZonesConfig() {
         prefix: prefixes[index]
     }));
     
-    console.log('📋 Configuration des zones:');
-    zones.forEach(z => {
+    if (!isProduction) {
+      console.log('📋 Configuration des zones:');
+      zones.forEach(z => {
         console.log(`   - ${z.name}: ${z.count} casiers (${z.prefix}01-${z.prefix}${String(z.count).padStart(2, '0')})`);
-    });
-    
+      });      
+    } 
     return zones;
 }
 const ZONES_CONFIG = parseZonesConfig();
@@ -122,34 +123,33 @@ const csrf = require('csurf');
 // ============ CONFIGURATION ============
 
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
-const ADMIN_PASSWORD_LEGACY = process.env.ADMIN_PASSWORD; // Pour migration
+//const ADMIN_PASSWORD_LEGACY = process.env.ADMIN_PASSWORD; // Pour migration
 
 // Vérifier qu'un mot de passe est configuré
-if (!ADMIN_PASSWORD_HASH && !ADMIN_PASSWORD_LEGACY) {
+if (!ADMIN_PASSWORD_HASH) {
     console.error('❌ ERREUR: Aucun mot de passe admin configuré !');
     console.error('   Définissez ADMIN_PASSWORD_HASH dans le fichier .env');
     console.error('   Utilisez: node generate-password.js pour générer un hash');
     process.exit(1);
 }
 
-if (ADMIN_PASSWORD_LEGACY && !ADMIN_PASSWORD_HASH) {
+/*if (ADMIN_PASSWORD_LEGACY && !ADMIN_PASSWORD_HASH) {
     console.warn('⚠️  ATTENTION: ADMIN_PASSWORD en clair détecté !');
     console.warn('   Utilisez: node generate-password.js pour générer un hash');
     console.warn('   Puis ajoutez ADMIN_PASSWORD_HASH dans .env');
-}
-console.log('🔐 Authentification configurée');
+} */
+if (!isProduction) console.log('🔐 Authentification configurée');
 
 const ANONYMIZE_GUEST = process.env.ANONYMIZE_GUEST === 'true';
 const ANONYMIZE_ADMIN = process.env.ANONYMIZE_ADMIN === 'true';
 // Configuration anonymisation (peut être overridée à chaud)
 let ANONYMIZE_GUEST_RUNTIME = ANONYMIZE_GUEST;
 let ANONYMIZE_ADMIN_RUNTIME = ANONYMIZE_ADMIN;
+if (!isProduction) console.log('👁️ Anonymisation guest:', ANONYMIZE_GUEST);
+if (!isProduction) console.log('🔓 Anonymisation admin:', ANONYMIZE_ADMIN);
 
 const DARK_MODE = process.env.DARK_MODE || 'system';
-console.log('🔐 Mot de passe admin configuré');
-console.log('👁️ Anonymisation guest:', ANONYMIZE_GUEST);
-console.log('🔓 Anonymisation admin:', ANONYMIZE_ADMIN);
-console.log('🌓 Mode sombre:', DARK_MODE);
+if (!isProduction) console.log('🌓 Mode sombre:', DARK_MODE);
 
 const CLIENT_IMPORT_WARNING_DAYS = parseInt(process.env.CLIENT_IMPORT_WARNING_DAYS) || 4;
 const BACKUP_FREQUENCY_HOURS = parseInt(process.env.BACKUP_FREQUENCY_HOURS) || 24;
@@ -234,7 +234,7 @@ function getClientIP(req) {
     return forwarded.split(',')[0].trim();
   }
   
-  //console.log('Adresse IP entrante: ', req.ip);
+  if (!isProduction) console.log('Adresse IP entrante: ', req.ip);
   // Fallback sur l'IP directe
   return req.ip || req.connection.remoteAddress || 'unknown';
 }
@@ -359,7 +359,7 @@ if (!fs.existsSync(publicPath)) {
   console.warn('⚠️  ATTENTION: Dossier "public" introuvable à :', publicPath);
   console.warn('   Créez le dossier "public" et y mettre le fichier index.html');
 } else {
-  console.log('✓ Dossier public trouvé:', publicPath);
+  if (!isProduction) console.log('✓ Dossier public trouvé:', publicPath);
 }
 
 app.use(express.static('public'));
@@ -374,7 +374,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
     console.error('✗ Erreur SQLite:', err.message);
     process.exit(1);
   } else {
-    console.log('✓ SQLite connecté');
+    if (!isProduction) console.log('✓ SQLite connecté');
     initializeDatabase();
   }
 });
@@ -444,7 +444,7 @@ function initializeDatabase() {
         db.run(`ALTER TABLE lockers ADD COLUMN updatedBy TEXT DEFAULT ''`, () => {});
         db.run(`ALTER TABLE lockers ADD COLUMN Hospi BOOLEAN DEFAULT ''`, () => {});
         db.run(`ALTER TABLE lockers ADD COLUMN Stup BOOLEAN DEFAULT ''`, () => {});
-        console.log('✓ Table casiers créée/vérifiée');
+        if (!isProduction) console.log('✓ Table casiers créée/vérifiée');
       }
     });
 
@@ -462,7 +462,9 @@ function initializeDatabase() {
       )
     `, (err) => {
       if (err) console.error('Erreur création table patients:', err);
-      else console.log('✓ Table patients créée/vérifiée');
+      else {
+        if (!isProduction) console.log('✓ Table patients créée/vérifiée');
+      }
     });
 
     // Créer la table d'historique
@@ -478,7 +480,9 @@ function initializeDatabase() {
       )
     `, (err) => {
       if (err) console.error('Erreur création table locker_history:', err);
-      else console.log('✓ Table locker_history créée/vérifiée');
+      else {
+        if (!isProduction) console.log('✓ Table locker_history créée/vérifiée');
+      }
     });
 
     // Créer la table des statistiques de connexion
@@ -492,7 +496,9 @@ function initializeDatabase() {
       )
     `, (err) => {
       if (err) console.error('Erreur création table connection_stats:', err);
-      else console.log('✓ Table connection_stats créée/vérifiée');
+      else {
+        if (!isProduction) console.log('✓ Table connection_stats créée/vérifiée');
+      }
     });
 
     // Créer la table des logs de connexion individuels
@@ -506,7 +512,9 @@ function initializeDatabase() {
       )
     `, (err) => {
       if (err) console.error('Erreur création table connection_logs:', err);
-      else console.log('✓ Table connection_logs créée/vérifiée');
+      else {
+        if (!isProduction) console.log('✓ Table connection_logs créée/vérifiée');
+      }
     });
 
     // Créer la table des logs d'export
@@ -521,7 +529,9 @@ function initializeDatabase() {
       )
     `, (err) => {
       if (err) console.error('Erreur création table export_logs:', err);
-      else console.log('✓ Table export_logs créée/vérifiée');
+      else {
+        if (!isProduction) console.log('✓ Table export_logs créée/vérifiée');
+      }
     });
 
     // Créer la table des imports patients
@@ -534,7 +544,9 @@ function initializeDatabase() {
       )
     `, (err) => {
       if (err) console.error('Erreur création table client_imports:', err);
-      else console.log('✓ Table client_imports créée/vérifiée');
+      else {
+        if (!isProduction) console.log('✓ Table client_imports créée/vérifiée');
+      }
     });
 
     // Initialiser les casiers si la table est vide
@@ -542,7 +554,7 @@ function initializeDatabase() {
         if (err) {
             console.error('Erreur lecture table:', err);
         } else if (row.count === 0) {
-            console.log('🔧 Initialisation des casiers...');
+            if (!isProduction) console.log('🔧 Initialisation des casiers...');
             const lockers = [];
             
             // Générer les casiers pour chaque zone
@@ -560,11 +572,18 @@ function initializeDatabase() {
             });
             
             stmt.finalize(() => {
-                console.log(`✓ ${lockers.length} casiers initialisés`);
+                if (!isProduction) console.log(`✓ ${lockers.length} casiers initialisés`);
             });
         }
     });
   });
+}
+
+// pour le bouton Vider base clients
+async function deleteClients() {
+      // Supprimer tous les clients existants
+      await dbRun('DELETE FROM clients');
+      if (!isProduction) console.log('Base patients vidée!');
 }
 
 // ============ MIDDLEWARE D'AUTHENTIFICATION ============
@@ -613,19 +632,19 @@ function cleanupExpiredSessions() {
   }
   
   if (cleaned > 0) {
-    console.log(`🧹 ${cleaned} session(s) expirée(s) nettoyée(s)`);
+       if (!isProduction) console.log(`🧹 ${cleaned} session(s) expirée(s) nettoyée(s)`);
   }
 }
 
 // Lancer le nettoyage périodique
 setInterval(cleanupExpiredSessions, SESSION_CLEANUP_INTERVAL_MS);
-console.log(`✓ Nettoyage automatique des sessions activé (toutes les ${SESSION_CLEANUP_INTERVAL_MS / 60000} minutes)`);
+if (!isProduction) console.log(`✓ Nettoyage automatique des sessions activé (toutes les ${SESSION_CLEANUP_INTERVAL_MS / 60000} minutes)`);
 
 // ============ CONFIGURATION DES FORMATS D'IMPORT ============
 
 // Configuration des formats d'import
 const IMPORT_FORMATS = {
-    'LEGACY': {
+    'BASIQUE': {
         separator: ',',
         mapping: {
             'IPP': 'ipp',
@@ -788,8 +807,10 @@ function parseClientsWithFormat(fileContent, formatName) {
         throw new Error(`Format d'import "${formatName}" non reconnu`);
     }
     
-    console.log(`📥 Import avec format: ${formatName}`);
-    console.log(`   Séparateur: "${format.separator}"`);
+    if (!isProduction) {
+      console.log(`📥 Import avec format: ${formatName}`);
+      console.log(`   Séparateur: "${format.separator}"`);
+    }
     
     const lines = fileContent.split('\n').filter(line => line.trim());
     
@@ -798,7 +819,7 @@ function parseClientsWithFormat(fileContent, formatName) {
     }
     
     const headers = parseCsvLine(lines[0], format.separator);
-    console.log(`   Headers trouvés: ${headers.join(', ')}`);
+    if (!isProduction) console.log(`   Headers trouvés: ${headers.join(', ')}`);
     
     const dataLines = lines.slice(1 + format.skipRows);
     let imported = 0;
@@ -859,11 +880,13 @@ function parseClientsWithFormat(fileContent, formatName) {
         }
     }
     
-    console.log(`✓ Parsing terminé:`);
-    console.log(`  - Importés: ${imported}`);
-    console.log(`  - Filtrés: ${filtered}`);
-    console.log(`  - Erreurs: ${errors}`);
-    
+    if (!isProduction) {
+      console.log(`✓ Parsing terminé:`);
+      console.log(`  - Importés: ${imported}`);
+      console.log(`  - Filtrés: ${filtered}`);
+      console.log(`  - Erreurs: ${errors}`);
+    }
+
     return {
         clients: clients,
         stats: {
@@ -932,7 +955,7 @@ app.post('/api/login', loginLimiter, csrfProtection, async (req, res) => {
         isAdmin: true,
         userName: finalUserName
       });
-      console.log(finalUserName)
+      if (!isProduction) console.log ("Username: ", finalUserName)
 
       // Stocker le token dans un cookie httpOnly
       res.cookie('auth_token', token, {
@@ -1075,7 +1098,7 @@ app.get('/api/lockers/:number', async (req, res) => {
 app.post('/api/lockers', requireAuth, csrfProtection, async (req, res) => {
   try {
 
-    console.log('📝 POST /api/lockers - Body:', req.body);
+    if (!isProduction) console.log('📝 POST /api/lockers - Body:', req.body);
     
     // VALIDATION ZOD
     const validationResult = lockerSchema.safeParse(req.body);
@@ -1531,7 +1554,7 @@ app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, asyn
         
         // rawContent fourni → parser avec le format
         if (rawContent) {
-            const formatName = format || process.env.CLIENT_IMPORT_FORMAT || 'LEGACY';
+            const formatName = format || process.env.CLIENT_IMPORT_FORMAT || 'BASIQUE';
             const result = parseClientsWithFormat(rawContent, formatName);
             clients = result.clients;
             stats = result.stats;
@@ -1549,8 +1572,10 @@ app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, asyn
             });
         }
 
-        console.log('Import de', clients.length, 'patients...');
-        console.log('Mode:', mode || 'replace');
+        if (!isProduction) {
+          console.log('Import de', clients.length, 'patients...');
+          console.log('Mode:', mode || 'replace');
+        }
 
         // VALIDATION ZOD - Valider chaque client avant import
         const validatedClients = [];
@@ -1576,7 +1601,7 @@ app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, asyn
         // MODE REPLACE : Supprimer tous les clients existants
         if (!mode || mode === 'replace') {
             await dbRun('DELETE FROM clients');
-            console.log('Base patients vidée (mode replace)');
+            if (!isProduction) console.log('Base patients vidée (mode replace)');
         }
 
         let importedCount = 0;
@@ -1612,7 +1637,7 @@ app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, asyn
         }
 
         stmt.finalize(async () => {
-            console.log('Import terminé:', importedCount, 'importés,', skippedCount, 'ignorés,', errorCount, 'erreurs,', validationErrors, 'validations échouées');
+            if (!isProduction) console.log('Import terminé:', importedCount, 'importés,', skippedCount, 'ignorés,', errorCount, 'erreurs,', validationErrors, 'validations échouées');
             
             const token = req.headers['authorization']?.replace('Bearer ', '');
             const session = sessions.get(token);
@@ -1645,7 +1670,7 @@ app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, asyn
 
 // GET format d'import configuré
 app.get('/api/config/import-format', (req, res) => {
-    const format = process.env.CLIENT_IMPORT_FORMAT || 'LEGACY';
+    const format = process.env.CLIENT_IMPORT_FORMAT || 'BASIQUE';
     res.json({
         clientImportFormat: format,
         availableFormats: Object.keys(IMPORT_FORMATS)
@@ -1684,12 +1709,12 @@ app.post('/api/config/anonymization', requireAuth, csrfProtection, (req, res) =>
   
   if (typeof anonymizeGuest === 'boolean') {
     ANONYMIZE_GUEST_RUNTIME = anonymizeGuest;
-    console.log('🔧 Anonymisation guest modifiée:', anonymizeGuest);
+    if (!isProduction) console.log('🔧 Anonymisation guest modifiée:', anonymizeGuest);
   }
   
   if (typeof anonymizeAdmin === 'boolean') {
     ANONYMIZE_ADMIN_RUNTIME = anonymizeAdmin;
-    console.log('🔧 Anonymisation admin modifiée:', anonymizeAdmin);
+    if (!isProduction) console.log('🔧 Anonymisation admin modifiée:', anonymizeAdmin);
   }
   
   res.json({
@@ -1797,9 +1822,11 @@ app.post('/api/import-json', requireAuth, importLimiter, csrfProtection, async (
       return res.status(400).json({ error: 'Données JSON invalides - champ "data" requis et doit être un tableau' });
     }
     
-    console.log(`📥 Import JSON - ${data.length} casiers à importer`);
-    if (metadata) {
-      console.log(`   Metadata: exporté le ${metadata.exportDate} par ${metadata.exportBy}`);
+    if (!isProduction) {
+      console.log(`📥 Import JSON - ${data.length} casiers à importer`);
+      if (metadata) {
+        console.log(`   Metadata: exporté le ${metadata.exportDate} par ${metadata.exportBy}`);
+      }
     }
 
     const token = req.cookies.auth_token;
@@ -1865,7 +1892,7 @@ app.post('/api/import-json', requireAuth, importLimiter, csrfProtection, async (
       }
     }
 
-    console.log(`✓ Import JSON terminé: ${imported} importés, ${skipped} ignorés, ${errors} erreurs`);
+    if (!isProduction) console.log(`✓ Import JSON terminé: ${imported} importés, ${skipped} ignorés, ${errors} erreurs`);
 
     res.json({
       success: true,
@@ -1893,7 +1920,7 @@ app.post('/api/clients/import', requireAuth, csrfProtection, async (req, res) =>
       return res.status(400).json({ error: 'Données invalides' });
     }
 
-    console.log('Import de', data.length, 'clients...');
+    if (!isProduction) console.log('Import de', data.length, 'clients...');
 
     // Supprimer tous les clients existants
     await dbRun('DELETE FROM clients');
@@ -1930,7 +1957,7 @@ app.post('/api/clients/import', requireAuth, csrfProtection, async (req, res) =>
     }
 
     stmt.finalize(async () => {
-      console.log('Import terminé:', imported, 'clients importés,', errors, 'erreurs');
+      if (!isProduction) console.log('Import terminé:', imported, 'clients importés,', errors, 'erreurs');
       
       // Enregistrer l'import
       const token = req.headers['authorization']?.replace('Bearer ', '');
@@ -2103,15 +2130,15 @@ app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req,
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
     const safetyBackupPath = path.join(backupDir, `backup_before_restore_${timestamp}.db`);
     
-    console.log('🔒 Création backup de sécurité...');
+    if (!isProduction) console.log('🔒 Création backup de sécurité...');
     fs.copyFileSync(dbPath, safetyBackupPath);
-    console.log('✓ Backup de sécurité créé:', path.basename(safetyBackupPath));
+    if (!isProduction) console.log('✓ Backup de sécurité créé:', path.basename(safetyBackupPath));
     
     let restorePath;
     
     // Si c'est un fichier uploadé (base64)
     if (fileData) {
-      console.log('📤 Restauration depuis fichier uploadé...');
+      if (!isProduction) console.log('📤 Restauration depuis fichier uploadé...');
       
       // Décoder base64
       const buffer = Buffer.from(fileData, 'base64');
@@ -2123,7 +2150,7 @@ app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req,
       
     } else if (filename) {
       // Restauration depuis un backup existant
-      console.log('📁 Restauration depuis backup existant:', filename);
+      if (!isProduction) console.log('📁 Restauration depuis backup existant:', filename);
       restorePath = path.join(backupDir, filename);
       
       if (!fs.existsSync(restorePath)) {
@@ -2134,7 +2161,7 @@ app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req,
     }
     
     // Vérifier que c'est bien une base SQLite valide
-    console.log('🔍 Vérification du fichier...');
+    if (!isProduction) console.log('🔍 Vérification du fichier...');
     const fileBuffer = fs.readFileSync(restorePath);
     const header = fileBuffer.toString('utf8', 0, 16);
     
@@ -2144,7 +2171,7 @@ app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req,
     }
     
     // Fermer la connexion actuelle
-    console.log('🔌 Fermeture connexion base actuelle...');
+    if (!isProduction) console.log('🔌 Fermeture connexion base actuelle...');
     await new Promise((resolve, reject) => {
       db.close((err) => {
         if (err) reject(err);
@@ -2153,7 +2180,7 @@ app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req,
     });
     
     // Remplacer la base de données
-    console.log('🔄 Remplacement de la base...');
+    if (!isProduction) console.log('🔄 Remplacement de la base...');
     fs.copyFileSync(restorePath, dbPath);
     
     // Nettoyer le fichier temporaire si nécessaire
@@ -2161,9 +2188,11 @@ app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req,
       fs.unlinkSync(restorePath);
     }
     
-    console.log('✅ Base restaurée avec succès');
-    console.log('⚠️ REDÉMARRAGE DU SERVEUR NÉCESSAIRE');
-    
+    if (!isProduction) {
+      console.log('✅ Base restaurée avec succès');
+      console.log('⚠️ REDÉMARRAGE DU SERVEUR NÉCESSAIRE');
+    }
+
     res.json({
       success: true,
       message: 'Base restaurée avec succès. Redémarrage du serveur nécessaire.',
@@ -2172,12 +2201,12 @@ app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req,
     
     // Redémarrer le serveur après un court délai
     setTimeout(() => {
-      console.log('🔄 Redémarrage du serveur...');
+      if (!isProduction) console.log('🔄 Redémarrage du serveur...');
       process.exit(0);
     }, 1000);
     
   } catch (err) {
-    console.error('❌ Erreur restauration:', err);
+    if (!isProduction) console.error('❌ Erreur restauration:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2214,7 +2243,7 @@ app.post('/api/backup', requireAuth, backupLimiter, csrfProtection, async (req, 
     if (files.length > BACKUP_RETENTION_COUNT) {
       files.slice(BACKUP_RETENTION_COUNT).forEach(f => {
         fs.unlinkSync(f.path);
-        console.log('Backup supprimé:', f.name);
+        if (!isProduction) console.log('Backup supprimé:', f.name);
       });
     }
     
@@ -2233,7 +2262,7 @@ app.post('/api/backup', requireAuth, backupLimiter, csrfProtection, async (req, 
 // Backup automatique au démarrage et périodique
 function setupAutoBackup() {
   if (BACKUP_FREQUENCY_HOURS === 0) {
-    console.log('⏭️  Backups automatiques désactivés');
+    if (!isProduction) console.log('⏭️  Backups automatiques désactivés');
     return;
   }
   
@@ -2248,7 +2277,7 @@ function setupAutoBackup() {
       const backupPath = path.join(backupDir, `backup_auto_${timestamp}.db`);
       
       fs.copyFileSync(dbPath, backupPath);
-      console.log('✓ Backup automatique créé:', path.basename(backupPath));
+      if (!isProduction) console.log('✓ Backup automatique créé:', path.basename(backupPath));
       
       // Nettoyer les vieux backups
       const files = fs.readdirSync(backupDir)
@@ -2263,7 +2292,7 @@ function setupAutoBackup() {
       if (files.length > BACKUP_RETENTION_COUNT) {
         files.slice(BACKUP_RETENTION_COUNT).forEach(f => {
           fs.unlinkSync(f.path);
-          console.log('Backup supprimé:', f.name);
+          if (!isProduction) console.log('Backup supprimé:', f.name);
         });
       }
     } catch (err) {
@@ -2278,28 +2307,22 @@ function setupAutoBackup() {
   const intervalMs = BACKUP_FREQUENCY_HOURS * 60 * 60 * 1000;
   setInterval(createBackup, intervalMs);
   
-  console.log(`✓ Backups automatiques activés (toutes les ${BACKUP_FREQUENCY_HOURS}h, ${BACKUP_RETENTION_COUNT} fichiers conservés)`);
+  if (!isProduction) console.log(`✓ Backups automatiques activés (toutes les ${BACKUP_FREQUENCY_HOURS}h, ${BACKUP_RETENTION_COUNT} fichiers conservés)`);
 }
 
 //-------------------------------------------
-// Route → affichage étiquettes
-/* avc sqlite
-app.get("/etiquettes", async (req, res) => {
-
-  const mydb = await open({
-    filename: path.join(__dirname, "db.sqlite3"),
-    driver: sqlite3.Database
-  });
-
-  const casiers = await mydb.all(
-    `SELECT number, name, firstName, birthDate, code, zone 
-      FROM lockers 
-      WHERE occupied>0
-      ORDER BY number`
-  );
-  res.render("labels", { casiers });
-});
-*/
+// Route → affichage étiquettes; npm install ejs
+// app.get("/etiquettes", async (req, res) => {
+//   db.all(`SELECT number, name, firstName, birthDate, code, zone 
+//       FROM lockers 
+//       WHERE occupied>0
+//       ORDER BY number`, [], (err, rows) => {
+//     if (err) {
+//       return console.error(err.message);
+//     }
+//     res.render('etiquettes', { lockers : rows });
+//   });
+// });
 
 // Health check
 app.get('/api/health', (req, res) => {
@@ -2349,9 +2372,10 @@ app.get('/api/client-ip', (req, res) => {
 // Route par défaut pour servir index.html
 app.get('/', (req, res) => {
   const filePath = path.join(__dirname, 'public', 'index.html');
-  console.log('Tentative d\'accès à :', filePath);
-  console.log('Fichier existe?', fs.existsSync(filePath));
-  
+  if (!isProduction) {
+    console.log('Tentative d\'accès à :', filePath);
+    console.log('Fichier existe?', fs.existsSync(filePath));
+  }
   if (fs.existsSync(filePath)) {
     res.sendFile(filePath);
   } else {
@@ -2370,12 +2394,15 @@ const PORT = process.env.PORT || 5000;
 const LOCAL_IP = getLocalIP();
 
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`✓ Serveur démarré`);
-  console.log(`  - Local:    http://localhost:${PORT}`);
-  console.log(`  - Réseau:   http://${LOCAL_IP}:${PORT}`);
-  console.log(`✓ Base de données: ${dbPath}`);
-  console.log(`✓ Prêt pour accès réseau`);
   
+  if (!isProduction) {
+    console.log(`✓ Serveur démarré`);
+    console.log(`  - Local:    http://localhost:${PORT}`);
+    console.log(`  - Réseau:   http://${LOCAL_IP}:${PORT}`);
+    console.log(`✓ Base de données: ${dbPath}`);
+    console.log(`✓ Prêt pour accès réseau`);
+  }
+
   // Configurer les backups automatiques
   setupAutoBackup();
 });

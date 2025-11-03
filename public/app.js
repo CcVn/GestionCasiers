@@ -8,10 +8,8 @@ let IS_MOBILE = false;
 let ANONYMIZE_ENABLED = false;
 let USER_NAME = '';
 let DARK_MODE_SETTING = 'system'
-let ADVANCED_RESEARCH = true;
 let EDITING_LOCKER_NUMBER = null; // Mémoriser le casier en cours d'édition
 let EDITING_LOCKER_VERSION = null; // Mémoriser la version du casier en cours d'édition
-
 
 // ============ CONFIG DES ZONES ============
 
@@ -42,21 +40,37 @@ async function loadZonesConfig() {
 function generateTabs() {
     const tabsContainer = document.querySelector('.tabs');
     if (!tabsContainer) return;
-    //const colors = (process.env.ZONE_COLORS || '#3b82f6,#10b981,#f59e0b,#ef4444').split(',');
-    //const colors = '#3b82f6,#10b981,#f59e0b,#ef4444'.split(',');
-    //ajouter ça dans le button: style="--zone-color: ${colors[index] || '#667eea'}
 
-    tabsContainer.innerHTML = ZONES_CONFIG.map((zone, index) => `
+    // Générer les onglets de zones
+    let tabsHTML = ZONES_CONFIG.map((zone, index) => `
         <button class="tab-button ${index === 0 ? 'active' : ''}" data-zone="${zone.name}">
             Zone ${zone.name}
         </button>
     `).join('');
     
+    // AJOUTER l'onglet de recherche à la fin
+    tabsHTML += `
+        <button class="tab-button tab-search" data-zone="SEARCH" style="margin-left: auto;" title="Résultats de recherche">
+            🔍
+        </button>
+    `;
+    
+    tabsContainer.innerHTML = tabsHTML;
+    
     // Ajouter les event listeners
     document.querySelectorAll('.tab-button').forEach(btn => {
         btn.addEventListener('click', function() {
-            switchTab(this.dataset.zone);
-            loadData();
+            const clickedZone = this.dataset.zone;
+            switchTab(clickedZone);
+            
+            // NE PAS recharger si c'est l'onglet SEARCH
+            // NE PAS recharger s'il y a une recherche active (les tables sont déjà filtrées)
+            const searchInput = document.getElementById('globalSearch');
+            const hasActiveSearch = searchInput && searchInput.value.trim() !== '';
+            
+            if (clickedZone !== 'SEARCH' && !hasActiveSearch) {
+                loadData();
+            }
         });
     });
 }
@@ -66,7 +80,6 @@ function generateContentSections() {
     const container = document.getElementById('appContainer');
     if (!container) return;
     
-    // Trouver l'emplacement après les onglets
     const tabsElement = container.querySelector('.tabs');
     const footerElement = container.querySelector('.app-footer');
     
@@ -74,7 +87,7 @@ function generateContentSections() {
     const oldSections = container.querySelectorAll('.content-section');
     oldSections.forEach(section => section.remove());
     
-    // Générer les nouvelles sections
+    // Générer les sections pour chaque zone
     ZONES_CONFIG.forEach((zone, index) => {
         const section = document.createElement('div');
         section.id = `content-${zone.name}`;
@@ -90,7 +103,11 @@ function generateContentSections() {
                     <span class="zone-counter admin-only" id="counter-${zone.name}">0/${zone.count}</span>
                 </h2>
                 <div class="controls">
-                    <button class="btn-primary admin-only" onclick="openModal('${zone.name}')">➕ Attribuer</button>
+                    <!-- Indicateur de recherche active -->
+                    <button id="search-indicator-${zone.name}" onclick="clearSearch()" class= "btn-activesearch">
+                        ✕ Reset
+                    </button>
+                    <button class="btn-secondary admin-only" onclick="openModal('${zone.name}')">➕ Attribuer</button>
                     <select class="admin-only" onchange="filterTable('${zone.name}', this.value)" id="filter-${zone.name}">
                         <option value="all">Tous</option>
                         <option value="occupied">Occupés</option>
@@ -124,9 +141,45 @@ function generateContentSections() {
             </div>
         `;
         
-        // Insérer avant le footer
         container.insertBefore(section, footerElement);
     });
+    
+    // AJOUTER la section de recherche
+    const searchSection = document.createElement('div');
+    searchSection.id = 'content-SEARCH';
+    searchSection.className = 'content-section';
+    
+    searchSection.innerHTML = `
+        <div class="section-header">
+            <h2 style="font-size: 18px; font-weight: 600;">
+                🔍 Résultats de recherche
+                <span id="counter-SEARCH" class="zone-counter" style="background: #667eea;">0 résultat(s)</span>
+            </h2>
+            <div class="controls">
+                <button class="btn-secondary" onclick="clearSearch()" style="background: #fef3c7; border: 1px solid #f59e0b; padding: 6px 12px; border-radius: 6px; font-size: 12px; color: #92400e; font-weight: 600;">✕ Effacer la recherche</button>
+            </div>
+        </div>
+        <div class="table-container">
+            <table id="table-SEARCH">
+                <thead>
+                    <tr>
+                        <th>N° Casier</th>
+                        <th>Zone</th>
+                        <th>Nom</th>
+                        <th>Prénom</th>
+                        <th>N°IPP</th>
+                        <th class="hide-mobile">DDN</th>
+                        <th class="hide-mobile admin-only">Statut</th>
+                        <th class="hide-mobile admin-only">Commentaire</th>
+                        <th class="hide-mobile admin-only">Actions</th>
+                    </tr>
+                </thead>
+                <tbody id="tbody-SEARCH"></tbody>
+            </table>
+        </div>
+    `;
+    
+    container.insertBefore(searchSection, footerElement);
     
     // Initialiser les filtres par défaut
     CURRENT_FILTER = {};
@@ -144,7 +197,7 @@ function anonymizeName(name) {
 
 function anonymizeFirstName(firstName) {
     if (!ANONYMIZE_ENABLED || !firstName) return firstName;
-    return firstName.substring(0, 2).toUpperCase();
+    return firstName.substring(0, 2);
 }
 
 // Autre fonction utilitaire sur format de date
@@ -1076,24 +1129,24 @@ function createBackup() {
 }
 
 // ============ SERVEUR ============
-
-function checkServerStatus() {
-    fetch(`${API_URL}/health`, {
-        credentials: 'include'
-    }) 
-        .then(res => {
-            if (res.ok) {
-                document.getElementById('serverStatus').className = 'server-status online';
-                document.getElementById('serverStatus').textContent = '🟢 Connecté';
-            } else {
-                throw new Error('Not OK');
-            }
-        })
-        .catch(err => {
-            document.getElementById('serverStatus').className = 'server-status offline';
-            document.getElementById('serverStatus').textContent = '🔴 Déconnecté';
-            console.error('Serveur indisponible:', err);
-        });
+async function checkServerStatus() {
+    const statusEl = document.getElementById('serverStatus');
+    if (!statusEl) return;
+    
+    try {
+        const res = await fetch(`${API_URL}/health`, { credentials: 'include' });
+        
+        if (res.ok) {
+            statusEl.className = 'server-status online';
+            statusEl.innerHTML = '<span class="status-dot"></span> Connecté';
+        } else {
+            throw new Error('Not OK');
+        }
+    } catch (err) {
+        statusEl.className = 'server-status offline';
+        statusEl.innerHTML = '<span class="status-dot"></span> Déconnecté';
+        console.error('Serveur indisponible:', err);
+    }
 }
 
 function loadData() {
@@ -1172,21 +1225,29 @@ function switchTab(zone) {
     document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
     
-    document.querySelector(`[data-zone="${zone}"]`).classList.add('active');
-    document.getElementById(`content-${zone}`).classList.add('active');
+    const tabButton = document.querySelector(`[data-zone="${zone}"]`);
+    const contentSection = document.getElementById(`content-${zone}`);
+    
+    if (tabButton) tabButton.classList.add('active');
+    if (contentSection) contentSection.classList.add('active');
 }
 
 // ============ AFFICHAGE TABLEAU ============
 
 function renderAllTables() {
-    if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
-        console.log('⚠️ ZONES_CONFIG non chargée');
-        return;
-    }
+    // Vérifier s'il y a une recherche active
+    const searchInput = document.getElementById('globalSearch');
+    const searchQuery = searchInput ? searchInput.value.trim() : '';
     
-    ZONES_CONFIG.forEach(zone => {
-        renderTable(zone.name);
-    });
+    if (searchQuery) {
+        // Si recherche active, lancer la recherche
+        searchLockers(searchQuery);
+    } else {
+        // Sinon, affichage normal
+        ZONES_CONFIG.forEach(zone => {
+            renderTable(zone.name);
+        });
+    }
 }
 
 // Modifier le modal pour supporter les zones dynamiques
@@ -1314,6 +1375,7 @@ function renderTable(zone) {
                         <button class="btn-secondary" onclick="toggleDropdown(event)">⋮</button>
                         <div class="dropdown-menu">
                             <button onclick="openModalEdit('${locker.number}')">Modifier</button>
+                            <button onclick="printSingleLockerLabels('${locker.number}')">🏷️ Imprimer étiquettes</button>
                             <button class="btn-delete" onclick="releaseLocker('${locker.number}')">Libérer</button>
                         </div>
                     </div>
@@ -1514,46 +1576,65 @@ function detectHomonyms() {
 //========================================
 function searchLockers(query) {
     if (!query || query.trim() === '') {
-        renderAllTables();
+        renderAllTables(); // Recherche vide : afficher toutes les tables normalement
         return;
     }
     
     const searchTerm = query.toLowerCase().trim();
     
-    // Recherche globale
-    const results = DATA.filter(l => {
+    // Recherche globale pour tous les résultats
+    const allResults = DATA.filter(l => {
         const searchText = (l.name + ' ' + l.firstName + ' ' + l.code).toLowerCase();
         return searchText.includes(searchTerm);
     });
     
-    const duplicateInfo = detectDuplicates();
-    const homonymInfo = detectHomonyms();
-    const homonymNumbers = homonymInfo.homonyms;
-
-    console.log(`🔍 Recherche "${query}" : ${results.length} résultat(s)`);
+    console.log(`🔍 Recherche "${query}" : ${allResults.length} résultat(s)`);
     
-    if (results.length === 0) {
-        ZONES_CONFIG.forEach(zone => {
-            const tbody = document.getElementById(`tbody-${zone.name}`);
-            if (tbody) {
-                const colspan = IS_GUEST ? '5' : '8';
-                tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align: center; padding: 30px; color: var(--text-tertiary);">Aucun résultat pour "${query}"</td></tr>`;
-            }
-        });
-        return;
+    // Mettre à jour le compteur de l'onglet SEARCH
+    const counterSearch = document.getElementById('counter-SEARCH');
+    if (counterSearch) {
+        counterSearch.textContent = `${allResults.length} résultat(s)`;
     }
     
-    // Basculer sur la zone du premier résultat
-    const firstZone = results[0].zone;
-    switchTab(firstZone);
+    // Basculer sur l'onglet SEARCH
+    switchTab('SEARCH');
     
-    // Vider les autres zones
+    // Afficher tous les résultats dans l'onglet SEARCH
+    renderSearchResults('SEARCH', allResults, searchTerm);
+    
+    // Mettre à jour aussi les tables de chaque zone avec résultats filtrés
     ZONES_CONFIG.forEach(zone => {
-        if (zone.name !== firstZone) {
-            const tbody = document.getElementById(`tbody-${zone.name}`);
-            if (tbody) tbody.innerHTML = '';
+        const zoneResults = allResults.filter(l => l.zone === zone.name);
+        renderSearchResults(zone.name, zoneResults, searchTerm);
+        
+        // Mettre à jour le compteur de la zone
+        const counter = document.getElementById(`counter-${zone.name}`);
+        if (counter) {
+            const zoneConfig = ZONES_CONFIG.find(z => z.name === zone.name);
+            counter.textContent = `${zoneResults.length}/${zoneConfig.count}`;
+            counter.style.background = '#f59e0b'; // Orange pour indiquer recherche active
         }
     });
+
+    // Afficher les indicateurs de recherche active
+    ZONES_CONFIG.forEach(zone => {
+        const indicator = document.getElementById(`search-indicator-${zone.name}`);
+        if (indicator) {
+            indicator.style.display = 'block';
+        }
+    });
+}
+
+function renderSearchResults(zone, results, searchTerm) {
+    const tbody = document.getElementById(`tbody-${zone}`);
+    if (!tbody) return;
+    
+    if (results.length === 0) {
+        const colspan = IS_GUEST ? (zone === 'SEARCH' ? '6' : '5') : (zone === 'SEARCH' ? '9' : '8');
+        tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align: center; padding: 30px; color: var(--text-tertiary);">
+        Aucun résultat</td></tr>`;
+        return;
+    }
     
     // Fonction highlight
     const highlight = (text, search) => {
@@ -1568,23 +1649,23 @@ function searchLockers(query) {
         else return '<span class="status-occupied" title="Occupé"></span>';
     };
     
-    // Afficher TOUS les résultats dans la zone du premier résultat
-    const tbody = document.getElementById(`tbody-${firstZone}`);
-    
+    // Afficher les résultats
     if (IS_GUEST) {
         tbody.innerHTML = results.map(locker => `
             <tr>
                 <td><strong>${locker.number}</strong></td>
+                ${zone === 'SEARCH' ? `<td><span style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">${locker.zone}</span></td>` : ''}
                 <td>${locker.occupied ? highlight(anonymizeName(locker.name), searchTerm) : '<span class="cell-empty">—</span>'}</td>
                 <td>${locker.occupied ? highlight(anonymizeFirstName(locker.firstName), searchTerm) : '<span class="cell-empty">—</span>'}</td>
                 <td>${locker.occupied ? highlight(locker.code, searchTerm) : '<span class="cell-empty">—</span>'}</td>
-                <td class="hide-mobile">${locker.occupied ? locker.birthDate : '<span class="cell-empty">—</span>'}</td>
+                <td class="hide-mobile">${locker.occupied ? formatDate(locker.birthDate) : '<span class="cell-empty">—</span>'}</td>
             </tr>
         `).join('');
     } else {
         tbody.innerHTML = results.map(locker => `
             <tr>
                 <td><strong>${locker.number}</strong></td>
+                ${zone === 'SEARCH' ? `<td><span style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">${locker.zone}</span></td>` : ''}
                 <td>${locker.occupied ? highlight(anonymizeName(locker.name), searchTerm) : '<span class="cell-empty">—</span>'}</td>
                 <td>${locker.occupied ? highlight(anonymizeFirstName(locker.firstName), searchTerm) : '<span class="cell-empty">—</span>'}</td>
                 <td>${locker.occupied ? highlight(locker.code, searchTerm) : '<span class="cell-empty">—</span>'}</td>
@@ -1596,6 +1677,7 @@ function searchLockers(query) {
                         <button class="btn-secondary" onclick="toggleDropdown(event)">⋮</button>
                         <div class="dropdown-menu">
                             <button onclick="openModalEdit('${locker.number}')">Modifier</button>
+                            <button onclick="printSingleLockerLabels('${locker.number}')">🏷️ Imprimer étiquettes</button>
                             <button class="btn-delete" onclick="releaseLocker('${locker.number}')">Libérer</button>
                         </div>
                     </div>
@@ -1603,6 +1685,36 @@ function searchLockers(query) {
             </tr>
         `).join('');
     }
+}
+
+function clearSearch() {
+    // Effacer le champ de recherche
+    const searchInput = document.getElementById('globalSearch');
+    if (searchInput) {
+        searchInput.value = '';
+    }
+    
+    // Restaurer les compteurs normaux
+    ZONES_CONFIG.forEach(zone => {
+        const counter = document.getElementById(`counter-${zone.name}`);
+        if (counter) {
+            counter.style.background = ''; // Retirer la couleur orange
+        }
+    });
+
+    // Masquer les indicateurs de recherche
+    ZONES_CONFIG.forEach(zone => {
+        const indicator = document.getElementById(`search-indicator-${zone.name}`);
+        if (indicator) {
+            indicator.style.display = 'none';
+        }
+    });
+    
+    // Recharger toutes les tables normalement
+    renderAllTables();
+    
+    // Revenir sur le premier onglet
+    switchTab(ZONES_CONFIG[0].name);
 }
 
 // ============ MODAL ============
@@ -2225,8 +2337,8 @@ async function importClients() {
         formatSelect.innerHTML = '';
         
         // Format par défaut en premier
-        const defaultFormat = config.clientImportFormat || 'LEGACY';
-        const formats = config.availableFormats || ['LEGACY'];
+        const defaultFormat = config.clientImportFormat || 'BASIQUE';
+        const formats = config.availableFormats || ['BASIQUE'];
         
         // Ajouter le format par défaut en premier
         const defaultOption = document.createElement('option');
@@ -3728,7 +3840,7 @@ function showLabelPrintDialog() {
     ).join('');
     
     // Réinitialiser
-    document.getElementById('labelFormat').value = '5x15';
+    document.getElementById('labelFormat').value = '3x9';
     document.getElementById('labelSelection').value = 'all';
     document.getElementById('zoneSelector').style.display = 'none';
     document.getElementById('rangeSelector').style.display = 'none';
@@ -3807,16 +3919,16 @@ function openLabelPrintWindow() {
 }
 
 function generateLabelHTML(lockers, format, anonymize) {
-    const [cols, rows] = format === '5x15' ? [5, 15] : [3, 9];
+    const [cols, rows] = format === '5x13' ? [5, 13] : [3, 9];
     const perPage = cols * rows;
     
     // Dimensions calculées (A4 = 210mm × 297mm)
     const pageWidth = 210; // mm
     const pageHeight = 297; // mm
-    const marginTop = 10; // mm
-    const marginBottom = 10; // mm
-    const marginLeft = 6; // mm
-    const marginRight = 6; // mm
+    const marginTop = format === '5x13' ? 8 : 15; // mm
+    const marginBottom = format === '5x13' ? 8 : 15; // mm
+    const marginLeft = format === '5x13' ? 5 : 6; // mm
+    const marginRight = format === '5x13' ? 5 : 6; // mm
     
     const usableWidth = pageWidth - marginLeft - marginRight;
     const usableHeight = pageHeight - marginTop - marginBottom;
@@ -3868,7 +3980,7 @@ function generateLabelHTML(lockers, format, anonymize) {
         }
         
         .label {
-            border: 1px solid #ddd;
+            border: 1px solid transparent;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -3878,26 +3990,26 @@ function generateLabelHTML(lockers, format, anonymize) {
             text-align: center;
         }
         
-        .label-locker {
-            font-size: ${format === '5x15' ? '10' : '12'}pt;
+        .label-name {
+            font-size: ${format === '5x13' ? '10' : '12'}pt;
             font-weight: bold;
             margin-bottom: 1mm;
         }
         
-        .label-name {
-            font-size: ${format === '5x15' ? '9' : '11'}pt;
+        .label-locker {
+            font-size: ${format === '5x13' ? '9' : '11'}pt;
             font-weight: bold;
             margin-bottom: 0.5mm;
         }
         
         .label-info {
-            font-size: ${format === '5x15' ? '7' : '9'}pt;
+            font-size: ${format === '5x13' ? '7' : '9'}pt;
             color: #333;
             line-height: 1.3;
         }
         
         .label-zone {
-            font-size: ${format === '5x15' ? '6' : '8'}pt;
+            font-size: ${format === '5x13' ? '6' : '8'}pt;
             color: #666;
             margin-top: 1mm;
         }
@@ -3932,13 +4044,12 @@ function generateLabelHTML(lockers, format, anonymize) {
                 
                 html += `
                     <div class="label">
-                        <div class="label-locker">${locker.number}</div>
+                        <div class="label-info">IPP: ${locker.code}</div>
                         <div class="label-name">${name} ${firstName}</div>
                         <div class="label-info">
-                            IPP: ${locker.code}<br>
-                            ${locker.birthDate ? formatDate(locker.birthDate) : ''}
+                            DDN: ${locker.birthDate ? formatDate(locker.birthDate) : ''}
                         </div>
-                        <div class="label-zone">Zone ${locker.zone}</div>
+                        <div class="label-locker">${locker.number}</div>
                     </div>
                 `;
             } else {
@@ -3956,4 +4067,78 @@ function generateLabelHTML(lockers, format, anonymize) {
 `;
     
     return html;
+}
+
+// ============ IMPRESSION ÉTIQUETTES POUR UN CASIER ============
+
+let CURRENT_LOCKER_FOR_PRINT = null;
+
+function printSingleLockerLabels(lockerNumber) {
+    const locker = DATA.find(l => l.number === lockerNumber);
+    
+    if (!locker) {
+        alert('Casier non trouvé');
+        return;
+    }
+    
+    if (!locker.occupied) {
+        alert('Ce casier est vide, impossible d\'imprimer des étiquettes.');
+        return;
+    }
+    
+    CURRENT_LOCKER_FOR_PRINT = locker;
+    
+    // Remplir les infos
+    const infoDiv = document.getElementById('singleLabelInfo');
+    infoDiv.innerHTML = `
+        <div style="font-size: 14px;">
+            <strong style="font-size: 16px;">${locker.number} - Zone ${locker.zone}</strong><br>
+            <span style="color: var(--text-secondary);">
+                ${locker.name} ${locker.firstName}<br>
+                IPP: ${locker.code} | ${locker.birthDate ? formatDate(locker.birthDate) : ''}
+            </span>
+        </div>
+    `;
+    
+    // Réinitialiser
+    document.getElementById('singleLabelFormat').value = '3x9';
+    document.getElementById('singleLabelAnonymize').checked = false;
+    
+    // Ouvrir le modal
+    document.getElementById('singleLabelModal').classList.add('active');
+}
+
+function closeSingleLabelModal() {
+    document.getElementById('singleLabelModal').classList.remove('active');
+    CURRENT_LOCKER_FOR_PRINT = null;
+}
+
+function confirmPrintSingleLabel() {
+    if (!CURRENT_LOCKER_FOR_PRINT) return;
+    
+    const format = document.getElementById('singleLabelFormat').value;
+    const anonymize = document.getElementById('singleLabelAnonymize').checked;
+    const count = format === '3x9' ? 27 : 75;
+    
+    // Créer un tableau avec le même casier répété
+    const lockers = Array(count).fill(CURRENT_LOCKER_FOR_PRINT);
+    
+    // Fermer le modal
+    closeSingleLabelModal();
+    
+    // Créer une nouvelle fenêtre pour l'impression
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    
+    // Générer le HTML
+    const html = generateLabelHTML(lockers, format, anonymize);
+    
+    printWindow.document.write(html);
+    printWindow.document.close();
+    
+    // Attendre le chargement puis imprimer
+    printWindow.onload = function() {
+        setTimeout(() => {
+            printWindow.print();
+        }, 250);
+    };
 }

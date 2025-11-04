@@ -1887,7 +1887,7 @@ async function handleFormSubmit(e) {
                 const data = await result.json();
                 
                 if (data.ippValid === false) {
-                    showStatus('⚠️ Casier enregistré mais N°IPP non trouvé dans la base clients (marqué récupérable)', 'error');
+                    showStatus('⚠️ Casier enregistré mais N°IPP non trouvé dans la base patients (marqué récupérable)', 'error');
                 } else {
                     showStatus('✓ Casier enregistré', 'success');
                 }
@@ -2483,6 +2483,55 @@ async function handleClientFileSelected(e) {
             importBtn.innerHTML = originalText;
             importBtn.classList.remove('btn-loading');
         }
+    }
+}
+
+// ============ VIDER LA BASE PATIENTS ============
+
+async function clearClientsDatabase() {
+    const confirmFirst = confirm(
+        '⚠️ ATTENTION - SUPPRESSION DÉFINITIVE\n\n' +
+        'Vous allez supprimer TOUS les patients de la base de données.\n\n' +
+        'Cette action est IRRÉVERSIBLE.\n\n' +
+        'Voulez-vous continuer ?'
+    );
+    
+    if (!confirmFirst) return;
+    
+    // Double confirmation
+    const confirmSecond = confirm(
+        '⚠️ DERNIÈRE CONFIRMATION\n\n' +
+        'Êtes-vous ABSOLUMENT CERTAIN de vouloir vider la base patients ?\n\n' +
+        'Tous les patients seront supprimés définitivement.\n\n' +
+        'Tapez OK pour confirmer.'
+    );
+    
+    if (!confirmSecond) return;
+    
+    try {
+        const res = await fetch(`${API_URL}/clients/clear`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRF-Token': CSRF_TOKEN
+            },
+            credentials: 'include'
+        });
+        
+        if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.error || 'Erreur serveur');
+        }
+        
+        const data = await res.json();
+        
+        alert(`✓ Base patients vidée avec succès\n\n${data.deleted} client(s) supprimé(s)`);
+        
+        updateImportStatus(); // Rafraîchir le statut d'import
+        closeImportOptions(); // Fermer le modal
+        
+    } catch (err) {
+        console.error('Erreur suppression clients:', err);
+        alert('❌ Erreur : ' + err.message);
     }
 }
 

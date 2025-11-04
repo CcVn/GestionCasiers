@@ -21,7 +21,7 @@
                     <p style="font-size: 16px; margin-bottom: 1rem;"><strong>Modification des casiers par la PUI</strong></p>
                     <div class="form-group" id="userNameGroup" style="display: none;">
                         <p><small style="color: var(--text-secondary);">Identifiant libre: nom, initiales, ... Adresse réseau par défaut</small></p>
-                        <input type="text" id="userName" placeholder="Identifiant (optionnel, IP par défaut)" autocomplete="off">
+                        <input type="text" id="userName" placeholder="Identifiant (optionnel, adresse IP par défaut)" autocomplete="off">
                     </div>
                     <div class="form-group">
                         <!-- <p><small style="color: var(--text-secondary);">Mot de passe requis.</small></p> -->
@@ -74,9 +74,7 @@
                        <button class="btn-secondary" onclick="showAnonymizationConfig()" title="Configurer l'anonymisation">
                             🎭 Anonymisation
                         </button>
-                        <button class="btn-secondary" onclick="deleteClients()" title="Vider la base patients">
-                            🧹 Vider les données
-                        </button>
+                        <!--<button class="btn-secondary" onclick="clearClientsDatabase()" title="Vider la base patients">🧹 Vider la base</button> -->
                     </div>
                 </fieldset>
                 <fieldset id="blocAnalyseCasiers" class="group-box">
@@ -272,6 +270,16 @@
                     <button type="button" class="btn-primary" onclick="selectFileForImport()">Choisir le fichier</button>
                 </div>
             </form>
+            <!-- Bouton effacer la base patients -->
+            <div style="border-top: 1px solid var(--border-color); margin-top: 20px; padding-top: 20px;">
+                <button type="button" class="btn-secondary" onclick="clearClientsDatabase()" style="width: 100%; background: #fee2e2; color: #991b1b; border-color: #fecaca;">
+                    🗑️ Vider la base clients
+                </button>
+                <p style="font-size: 11px; color: var(--text-tertiary); margin: 8px 0 0 0; text-align: center;">
+                    Supprime tous les clients de la base de données
+                </p>
+            </div>
+
         </div>
     </div>
     
@@ -494,7 +502,7 @@
             </div>
         </div>
     </div>
-    <script src="/js/admintools.js"></script>
+<!--    <script src="/js/admintools.js"></script> -->
     <script src="app.js"></script>
     <script>
         // Fonction pour toggle le container des outils admin

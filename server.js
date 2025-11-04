@@ -579,13 +579,6 @@ function initializeDatabase() {
   });
 }
 
-// pour le bouton Vider base clients
-async function deleteClients() {
-      // Supprimer tous les clients existants
-      await dbRun('DELETE FROM clients');
-      if (!isProduction) console.log('Base patients vidée!');
-}
-
 // ============ MIDDLEWARE D'AUTHENTIFICATION ============
 
 function requireAuth(req, res, next) {
@@ -1666,6 +1659,35 @@ app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, asyn
         console.error('Erreur import patients:', err);
         res.status(500).json({ error: err.message });
     }
+});
+
+// DELETE vider la base clients
+app.delete('/api/clients/clear', requireAuth, csrfProtection, async (req, res) => {
+  try {
+    const token = req.cookies.auth_token;
+    const session = sessions.get(token);
+    const isAdmin = session?.isAdmin;
+    
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+    }
+    
+    console.log('🗑️ Suppression de tous les clients...');
+    
+    const result = await dbRun('DELETE FROM clients');
+    const count = result.changes || 0;
+    
+    console.log(`✓ ${count} clients supprimés`);
+    
+    res.json({
+      success: true,
+      deleted: count,
+      message: 'Base clients vidée avec succès'
+    });
+  } catch (err) {
+    console.error('Erreur suppression clients:', err);
+    res.status(500).json({ error: err.message });
+  }
 });
 
 // GET format d'import configuré

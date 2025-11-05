@@ -1,5 +1,5 @@
 // Charger les variables d'environnement DE .env EN PREMIER
-require('dotenv').config();
+require('dotenv').config({path: './config.env'});
 
 const isProduction = process.env.NODE_ENV === 'production';
 const { z } = require('zod');
@@ -7,8 +7,6 @@ const { z } = require('zod');
 // ============ SCHÉMAS DE VALIDATION ZOD ============
 
 // Schéma pour créer/modifier un casier
-
-
 const lockerSchema = z.object({
     number: z.string().min(1, 'Numéro de casier requis').regex(/^[A-Z]+\d{1,3}$/, 'Format numéro invalide'),
     zone: z.string().min(1, 'Zone requise'),
@@ -49,9 +47,12 @@ const importCasierSchema = z.object({
 const restoreSchema = z.object({
     filename: z.string().optional(),
     fileData: z.string().optional()
-}).refine(data => data.filename || data.fileData, {
-    message: 'Un fichier ou un nom de backup doit être fourni'
-});
+}).refine(
+    data => data.filename || data.fileData,
+    {
+        message: 'Un fichier ou un nom de backup doit être fourni'
+    }
+);
 
 // Schéma pour login
 const loginSchema = z.object({
@@ -76,37 +77,6 @@ const loginSchema = z.object({
     path: ['userName']
 });
 
-// Parser la configuration des zones
-function parseZonesConfig() {
-//    const names = (process.env.ZONE_NAMES || 'NORD,SUD,PCA').split(',').map(s => s.trim());
-//    const counts = (process.env.ZONE_COUNTS || '75,75,40').split(',').map(s => parseInt(s.trim()));
-//    const prefixes = (process.env.ZONE_PREFIXES || 'N,S,P').split(',').map(s => s.trim());
-    const names = (process.env.ZONE_NAMES).split(',').map(s => s.trim());
-    const counts = (process.env.ZONE_COUNTS).split(',').map(s => parseInt(s.trim()));
-    const prefixes = (process.env.ZONE_PREFIXES).split(',').map(s => s.trim());
-    
-    if (names.length !== counts.length || names.length !== prefixes.length) {
-        console.error('❌ ERREUR: Configuration des zones invalide');
-        console.error('   ZONE_NAMES, ZONE_COUNTS et ZONE_PREFIXES doivent avoir le même nombre d\'éléments');
-        process.exit(1);
-    }
-    
-    const zones = names.map((name, index) => ({
-        name: name,
-        count: counts[index],
-        prefix: prefixes[index]
-    }));
-    
-    if (!isProduction) {
-      console.log('📋 Configuration des zones:');
-      zones.forEach(z => {
-        console.log(`   - ${z.name}: ${z.count} casiers (${z.prefix}01-${z.prefix}${String(z.count).padStart(2, '0')})`);
-      });      
-    } 
-    return zones;
-}
-const ZONES_CONFIG = parseZonesConfig();
-
 const express = require('express');
 const sqlite3 = require('sqlite3').verbose();
 const cors = require('cors');
@@ -121,6 +91,8 @@ const cookieParser = require('cookie-parser');
 const csrf = require('csurf');
 
 // ============ CONFIGURATION ============
+
+const VERBOSE = true  // console.log ou non?
 
 const ADMIN_PASSWORD_HASH = process.env.ADMIN_PASSWORD_HASH;
 //const ADMIN_PASSWORD_LEGACY = process.env.ADMIN_PASSWORD; // Pour migration
@@ -138,18 +110,18 @@ if (!ADMIN_PASSWORD_HASH) {
     console.warn('   Utilisez: node generate-password.js pour générer un hash');
     console.warn('   Puis ajoutez ADMIN_PASSWORD_HASH dans .env');
 } */
-if (!isProduction) console.log('🔐 Authentification configurée');
+if (!isProduction && VERBOSE) console.log('🔐 Authentification configurée');
 
 const ANONYMIZE_GUEST = process.env.ANONYMIZE_GUEST === 'true';
 const ANONYMIZE_ADMIN = process.env.ANONYMIZE_ADMIN === 'true';
 // Configuration anonymisation (peut être overridée à chaud)
 let ANONYMIZE_GUEST_RUNTIME = ANONYMIZE_GUEST;
 let ANONYMIZE_ADMIN_RUNTIME = ANONYMIZE_ADMIN;
-if (!isProduction) console.log('👁️ Anonymisation guest:', ANONYMIZE_GUEST);
-if (!isProduction) console.log('🔓 Anonymisation admin:', ANONYMIZE_ADMIN);
+if (!isProduction && VERBOSE) console.log('👁️ Anonymisation guest:', ANONYMIZE_GUEST);
+if (!isProduction && VERBOSE) console.log('🔓 Anonymisation admin:', ANONYMIZE_ADMIN);
 
 const DARK_MODE = process.env.DARK_MODE || 'system';
-if (!isProduction) console.log('🌓 Mode sombre:', DARK_MODE);
+if (!isProduction && VERBOSE) console.log('🌓 Mode sombre:', DARK_MODE);
 
 const CLIENT_IMPORT_WARNING_DAYS = parseInt(process.env.CLIENT_IMPORT_WARNING_DAYS) || 4;
 const BACKUP_FREQUENCY_HOURS = parseInt(process.env.BACKUP_FREQUENCY_HOURS) || 24;
@@ -159,9 +131,36 @@ const BACKUP_RETENTION_COUNT = parseInt(process.env.BACKUP_RETENTION_COUNT) || 7
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; // 8 heures (journée de travail)
 const SESSION_CLEANUP_INTERVAL_MS = 30 * 60 * 1000; // Nettoyer toutes les 30 minutes
 
+// Parser la configuration des zones
+function parseZonesConfig() {
+    const names = (process.env.ZONE_NAMES).split(',').map(s => s.trim());
+    const counts = (process.env.ZONE_COUNTS).split(',').map(s => parseInt(s.trim()));
+    const prefixes = (process.env.ZONE_PREFIXES).split(',').map(s => s.trim());
+    
+    if (names.length !== counts.length || names.length !== prefixes.length) {
+        console.error('❌ ERREUR: Configuration des zones invalide');
+        console.error('   ZONE_NAMES, ZONE_COUNTS et ZONE_PREFIXES doivent avoir le même nombre d\'éléments');
+        process.exit(1);
+    }
+    
+    const zones = names.map((name, index) => ({
+        name: name,
+        count: counts[index],
+        prefix: prefixes[index]
+    }));
+    
+    if (!isProduction && VERBOSE) {
+      console.log('📋 Configuration des zones:');
+      zones.forEach(z => {
+        console.log(`   - ${z.name}: ${z.count} casiers (${z.prefix}01-${z.prefix}${String(z.count).padStart(2, '0')})`);
+      });      
+    } 
+    return zones;
+}
+const ZONES_CONFIG = parseZonesConfig();
+
 // Gestion des sessions en mémoire
 const sessions = new Map();
-
 
 // Fonction pour enregistrer une connexion dans les stats
 async function recordConnection(role, userName = null, ipAddress = null) {
@@ -186,7 +185,7 @@ async function recordConnection(role, userName = null, ipAddress = null) {
       );
     }
     
-    // AJOUTER : Log individuel
+    // Log individuel
     await dbRun(
       'INSERT INTO connection_logs (role, userName, ipAddress) VALUES (?, ?, ?)',
       [role, userName || null, ipAddress || null]
@@ -195,6 +194,7 @@ async function recordConnection(role, userName = null, ipAddress = null) {
     console.error('Erreur enregistrement stats connexion:', err);
   }
 }
+
 // Fonction pour enregistrer une modification dans l'historique
 async function recordHistory(lockerNumber, action, userName, userRole, details = '') {
   try {
@@ -234,7 +234,7 @@ function getClientIP(req) {
     return forwarded.split(',')[0].trim();
   }
   
-  if (!isProduction) console.log('Adresse IP entrante: ', req.ip);
+  if (!isProduction && VERBOSE) console.log('Adresse IP entrante: ', req.ip);
   // Fallback sur l'IP directe
   return req.ip || req.connection.remoteAddress || 'unknown';
 }
@@ -359,11 +359,12 @@ if (!fs.existsSync(publicPath)) {
   console.warn('⚠️  ATTENTION: Dossier "public" introuvable à :', publicPath);
   console.warn('   Créez le dossier "public" et y mettre le fichier index.html');
 } else {
-  if (!isProduction) console.log('✓ Dossier public trouvé:', publicPath);
+  if (!isProduction && VERBOSE) console.log('✓ Dossier public trouvé:', publicPath);
 }
 
 app.use(express.static('public'));
 
+// ====================== BASE SQLITE3 ================================
 // Chemin de la base de données
 const dbPath = path.join(__dirname, 'app.db');
 const DB_EXISTS = fs.existsSync(dbPath);
@@ -374,7 +375,7 @@ const db = new sqlite3.Database(dbPath, (err) => {
     console.error('✗ Erreur SQLite:', err.message);
     process.exit(1);
   } else {
-    if (!isProduction) console.log('✓ SQLite connecté');
+    if (!isProduction && VERBOSE) console.log('✓ SQLite connecté');
     initializeDatabase();
   }
 });
@@ -444,7 +445,7 @@ function initializeDatabase() {
         db.run(`ALTER TABLE lockers ADD COLUMN updatedBy TEXT DEFAULT ''`, () => {});
         db.run(`ALTER TABLE lockers ADD COLUMN Hospi BOOLEAN DEFAULT ''`, () => {});
         db.run(`ALTER TABLE lockers ADD COLUMN Stup BOOLEAN DEFAULT ''`, () => {});
-        if (!isProduction) console.log('✓ Table casiers créée/vérifiée');
+        if (!isProduction && VERBOSE) console.log('✓ Table casiers créée/vérifiée');
       }
     });
 
@@ -463,7 +464,7 @@ function initializeDatabase() {
     `, (err) => {
       if (err) console.error('Erreur création table patients:', err);
       else {
-        if (!isProduction) console.log('✓ Table patients créée/vérifiée');
+        if (!isProduction && VERBOSE) console.log('✓ Table patients créée/vérifiée');
       }
     });
 
@@ -481,7 +482,7 @@ function initializeDatabase() {
     `, (err) => {
       if (err) console.error('Erreur création table locker_history:', err);
       else {
-        if (!isProduction) console.log('✓ Table locker_history créée/vérifiée');
+        if (!isProduction && VERBOSE) console.log('✓ Table locker_history créée/vérifiée');
       }
     });
 
@@ -497,7 +498,7 @@ function initializeDatabase() {
     `, (err) => {
       if (err) console.error('Erreur création table connection_stats:', err);
       else {
-        if (!isProduction) console.log('✓ Table connection_stats créée/vérifiée');
+        if (!isProduction && VERBOSE) console.log('✓ Table connection_stats créée/vérifiée');
       }
     });
 
@@ -513,7 +514,7 @@ function initializeDatabase() {
     `, (err) => {
       if (err) console.error('Erreur création table connection_logs:', err);
       else {
-        if (!isProduction) console.log('✓ Table connection_logs créée/vérifiée');
+        if (!isProduction && VERBOSE) console.log('✓ Table connection_logs créée/vérifiée');
       }
     });
 
@@ -530,7 +531,7 @@ function initializeDatabase() {
     `, (err) => {
       if (err) console.error('Erreur création table export_logs:', err);
       else {
-        if (!isProduction) console.log('✓ Table export_logs créée/vérifiée');
+        if (!isProduction && VERBOSE) console.log('✓ Table export_logs créée/vérifiée');
       }
     });
 
@@ -545,7 +546,7 @@ function initializeDatabase() {
     `, (err) => {
       if (err) console.error('Erreur création table client_imports:', err);
       else {
-        if (!isProduction) console.log('✓ Table client_imports créée/vérifiée');
+        if (!isProduction && VERBOSE) console.log('✓ Table client_imports créée/vérifiée');
       }
     });
 
@@ -554,7 +555,7 @@ function initializeDatabase() {
         if (err) {
             console.error('Erreur lecture table:', err);
         } else if (row.count === 0) {
-            if (!isProduction) console.log('🔧 Initialisation des casiers...');
+            if (!isProduction && VERBOSE) console.log('🔧 Initialisation des casiers...');
             const lockers = [];
             
             // Générer les casiers pour chaque zone
@@ -572,7 +573,7 @@ function initializeDatabase() {
             });
             
             stmt.finalize(() => {
-                if (!isProduction) console.log(`✓ ${lockers.length} casiers initialisés`);
+                if (!isProduction && VERBOSE) console.log(`✓ ${lockers.length} casiers initialisés`);
             });
         }
     });
@@ -598,17 +599,20 @@ function requireAuth(req, res, next) {
     return res.status(401).json({ error: 'Session expirée' });
   }
   
-  // OPTION A : Renouveler la session à chaque requête (rolling session)
-  session.createdAt = now;
-  sessions.set(token, session);
-  
-  // OPTION B : Renouveler seulement si proche de l'expiration (50% du temps écoulé)
-  // const halfDuration = SESSION_DURATION_MS / 2;
-  // if (now - session.createdAt > halfDuration) {
-  //   session.createdAt = now;
-  //   sessions.set(token, session);
-  // }
-  
+  // Renouveler la session
+  if (true) {
+    // OPTION A : Renouveler la session à chaque requête (rolling session)
+    session.createdAt = now;
+    sessions.set(token, session);
+  } else {
+    // OPTION B : Renouveler seulement si proche de l'expiration (50% du temps écoulé)
+    const halfDuration = SESSION_DURATION_MS / 2;
+    if (now - session.createdAt > halfDuration) {
+      session.createdAt = now;
+      sessions.set(token, session);
+    }
+  }
+
   next();
 }
 
@@ -625,13 +629,13 @@ function cleanupExpiredSessions() {
   }
   
   if (cleaned > 0) {
-       if (!isProduction) console.log(`🧹 ${cleaned} session(s) expirée(s) nettoyée(s)`);
+       if (!isProduction && VERBOSE) console.log(`🧹 ${cleaned} session(s) expirée(s) nettoyée(s)`);
   }
 }
 
 // Lancer le nettoyage périodique
 setInterval(cleanupExpiredSessions, SESSION_CLEANUP_INTERVAL_MS);
-if (!isProduction) console.log(`✓ Nettoyage automatique des sessions activé (toutes les ${SESSION_CLEANUP_INTERVAL_MS / 60000} minutes)`);
+if (!isProduction && VERBOSE) console.log(`✓ Nettoyage automatique des sessions activé (toutes les ${SESSION_CLEANUP_INTERVAL_MS / 60000} minutes)`);
 
 // ============ CONFIGURATION DES FORMATS D'IMPORT ============
 
@@ -800,7 +804,7 @@ function parseClientsWithFormat(fileContent, formatName) {
         throw new Error(`Format d'import "${formatName}" non reconnu`);
     }
     
-    if (!isProduction) {
+    if (!isProduction && VERBOSE) {
       console.log(`📥 Import avec format: ${formatName}`);
       console.log(`   Séparateur: "${format.separator}"`);
     }
@@ -812,7 +816,7 @@ function parseClientsWithFormat(fileContent, formatName) {
     }
     
     const headers = parseCsvLine(lines[0], format.separator);
-    if (!isProduction) console.log(`   Headers trouvés: ${headers.join(', ')}`);
+    if (!isProduction && VERBOSE) console.log(`   Headers trouvés: ${headers.join(', ')}`);
     
     const dataLines = lines.slice(1 + format.skipRows);
     let imported = 0;
@@ -873,7 +877,7 @@ function parseClientsWithFormat(fileContent, formatName) {
         }
     }
     
-    if (!isProduction) {
+    if (!isProduction && VERBOSE) {
       console.log(`✓ Parsing terminé:`);
       console.log(`  - Importés: ${imported}`);
       console.log(`  - Filtrés: ${filtered}`);
@@ -895,8 +899,20 @@ function parseClientsWithFormat(fileContent, formatName) {
 
 // Route pour obtenir la configuration des zones
 app.get('/api/config/zones', (req, res) => {
+
+    //console.log('Valeur brute de ZONE_COLORS:', JSON.stringify(process.env.ZONE_COLORS));
+    const rawColors = ('#E7180B,#31C950,#8A0194,#193CB8'); //'#3b82f6,#10b981,#f59e0b,#ef4444'
+    const colors = (process.env.ZONE_COLORS || rawColors).trim().split(',');
+
+    const zonesWithColors = ZONES_CONFIG.map((zone, index) => ({
+        name: zone.name,
+        count: zone.count,
+        prefix: zone.prefix,
+        color: colors[index] || '#667eea'
+    }));
+
     res.json({
-        zones: ZONES_CONFIG,
+        zones: zonesWithColors,
         total: ZONES_CONFIG.reduce((sum, z) => sum + z.count, 0)
     });
 });
@@ -948,7 +964,7 @@ app.post('/api/login', loginLimiter, csrfProtection, async (req, res) => {
         isAdmin: true,
         userName: finalUserName
       });
-      if (!isProduction) console.log ("Username: ", finalUserName)
+      if (!isProduction && VERBOSE) console.log ("Username: ", finalUserName)
 
       // Stocker le token dans un cookie httpOnly
       res.cookie('auth_token', token, {
@@ -1091,7 +1107,7 @@ app.get('/api/lockers/:number', async (req, res) => {
 app.post('/api/lockers', requireAuth, csrfProtection, async (req, res) => {
   try {
 
-    if (!isProduction) console.log('📝 POST /api/lockers - Body:', req.body);
+    if (!isProduction && VERBOSE) console.log('📝 POST /api/lockers - Body:', req.body);
     
     // VALIDATION ZOD
     const validationResult = lockerSchema.safeParse(req.body);
@@ -1565,7 +1581,7 @@ app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, asyn
             });
         }
 
-        if (!isProduction) {
+        if (!isProduction && VERBOSE) {
           console.log('Import de', clients.length, 'patients...');
           console.log('Mode:', mode || 'replace');
         }
@@ -1594,12 +1610,12 @@ app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, asyn
         // MODE REPLACE : Supprimer tous les clients existants
         if (!mode || mode === 'replace') {
             await dbRun('DELETE FROM clients');
-            if (!isProduction) console.log('Base patients vidée (mode replace)');
+            if (!isProduction && VERBOSE) console.log('Base patients vidée (mode replace)');
         }
 
         let importedCount = 0;
         let errorCount = 0;
-        let skippedCount = 0;  // NOUVEAU
+        let skippedCount = 0;
 
         // MODE MERGE : Utiliser INSERT OR IGNORE (SQLite)
         const sqlQuery = (mode === 'merge') 
@@ -1614,11 +1630,11 @@ app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, asyn
                 
                 stmt.run(ipp, name, firstName, birthName, birthDate, sex, zone, entryDate, function(err) {
                     if (err) {
-                        console.error('Erreur insertion patient:', err);
                         errorCount++;
+                        console.error('Erreur insertion patient N°' + (errorCount+skippedCount+importedCount) + ' with IPP='+ ipp +' :', err);
                     } else if (this.changes === 0 && mode === 'merge') {
-                        // INSERT OR IGNORE n'a pas inséré = doublon
-                        skippedCount++;
+                        skippedCount++; // INSERT OR IGNORE n'a pas inséré = doublon
+                        console.warn('Patient N°' + (errorCount+skippedCount+importedCount) + ' with IPP='+ ipp +' ignoré : doublon');
                     } else {
                         importedCount++;
                     }
@@ -1630,7 +1646,7 @@ app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, asyn
         }
 
         stmt.finalize(async () => {
-            if (!isProduction) console.log('Import terminé:', importedCount, 'importés,', skippedCount, 'ignorés,', errorCount, 'erreurs,', validationErrors, 'validations échouées');
+            if (!isProduction && VERBOSE) console.log('Import terminé:', importedCount, 'importés,', skippedCount, 'ignorés,', errorCount, 'erreurs,', validationErrors, 'validations échouées');
             
             const token = req.headers['authorization']?.replace('Bearer ', '');
             const session = sessions.get(token);
@@ -1667,25 +1683,73 @@ app.delete('/api/clients/clear', requireAuth, csrfProtection, async (req, res) =
     const token = req.cookies.auth_token;
     const session = sessions.get(token);
     const isAdmin = session?.isAdmin;
-    
     if (!isAdmin) {
       return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
     }
     
     console.log('🗑️ Suppression de tous les clients...');
     
-    const result = await dbRun('DELETE FROM clients');
-    const count = result.changes || 0;
+    // Supprimer les clients
+    const resultClients = await dbRun('DELETE FROM clients');
+    const countClients = resultClients.changes || 0;
+    console.log(`✓ ${countClients} clients supprimés`);
     
-    console.log(`✓ ${count} clients supprimés`);
+    // Supprimer aussi l'historique des imports ? pour détection mise à jour... bof bof...
+/*    const resultImports = await dbRun('DELETE FROM client_imports');
+    const countImports = resultImports.changes || 0;
+    console.log(`✓ ${countImports} historique(s) d'import supprimé(s)`);*/
     
     res.json({
       success: true,
-      deleted: count,
+      deleted: countClients,
+      //importsDeleted: countImports,
       message: 'Base clients vidée avec succès'
     });
   } catch (err) {
     console.error('Erreur suppression clients:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE vider tous les casiers
+app.delete('/api/lockers/clear', requireAuth, csrfProtection, async (req, res) => {
+  try {
+    const token = req.cookies.auth_token;
+    const session = sessions.get(token);
+    const isAdmin = session?.isAdmin;
+    
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+    }
+    
+    const userName = session?.userName || 'Inconnu';
+    
+    console.log('🗑️ Libération de tous les casiers...');
+    
+    // Libérer tous les casiers (pas DELETE, juste UPDATE)
+    const result = await dbRun(
+      `UPDATE lockers 
+       SET occupied = 0, recoverable = 0, name = '', firstName = '', code = '', 
+           birthDate = '', comment = '', updatedAt = CURRENT_TIMESTAMP, 
+           updatedBy = ?, version = version + 1
+       WHERE occupied = 1`,
+      [userName]
+    );
+    
+    const count = result.changes || 0;
+    
+    // Logger dans l'historique
+    await recordHistory('ALL', 'CLEAR_ALL', userName, 'admin', `${count} casiers libérés`);
+    
+    console.log(`✓ ${count} casiers libérés`);
+    
+    res.json({
+      success: true,
+      cleared: count,
+      message: 'Tous les casiers ont été libérés'
+    });
+  } catch (err) {
+    console.error('Erreur libération casiers:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1731,12 +1795,12 @@ app.post('/api/config/anonymization', requireAuth, csrfProtection, (req, res) =>
   
   if (typeof anonymizeGuest === 'boolean') {
     ANONYMIZE_GUEST_RUNTIME = anonymizeGuest;
-    if (!isProduction) console.log('🔧 Anonymisation guest modifiée:', anonymizeGuest);
+    if (!isProduction && VERBOSE) console.log('🔧 Anonymisation guest modifiée:', anonymizeGuest);
   }
   
   if (typeof anonymizeAdmin === 'boolean') {
     ANONYMIZE_ADMIN_RUNTIME = anonymizeAdmin;
-    if (!isProduction) console.log('🔧 Anonymisation admin modifiée:', anonymizeAdmin);
+    if (!isProduction && VERBOSE) console.log('🔧 Anonymisation admin modifiée:', anonymizeAdmin);
   }
   
   res.json({
@@ -1771,10 +1835,28 @@ app.get('/api/exports/history', async (req, res) => {
 // POST import CSV casiers
 app.post('/api/import', requireAuth, importLimiter, csrfProtection, async (req, res) => {
   try {
-    const { data } = req.body;
+    const { data, mode } = req.body;
     
     if (!data || !Array.isArray(data)) {
       return res.status(400).json({ error: 'Données invalides' });
+    }
+
+    const token = req.cookies.auth_token;
+    const session = sessions.get(token);
+    const userName = session?.userName || 'Inconnu';
+
+    // MODE REPLACE : Libérer tous les casiers d'abord
+    if (mode === 'replace') {
+      console.log('🗑️ Mode remplacement : libération de tous les casiers...');
+      await dbRun(
+        `UPDATE lockers 
+         SET occupied = 0, recoverable = 0, name = '', firstName = '', code = '', 
+             birthDate = '', comment = '', updatedAt = CURRENT_TIMESTAMP, 
+             updatedBy = ?, version = version + 1
+         WHERE occupied = 1`,
+        [userName]
+      );
+      await recordHistory('ALL', 'CLEAR_BEFORE_IMPORT', userName, 'admin', 'Tous les casiers libérés avant import');
     }
 
     let imported = 0;
@@ -1844,10 +1926,10 @@ app.post('/api/import-json', requireAuth, importLimiter, csrfProtection, async (
       return res.status(400).json({ error: 'Données JSON invalides - champ "data" requis et doit être un tableau' });
     }
     
-    if (!isProduction) {
-      console.log(`📥 Import JSON - ${data.length} casiers à importer`);
+    if (!isProduction && VERBOSE) {
+      if (!isProduction && VERBOSE) console.log(`📥 Import JSON - ${data.length} casiers à importer`);
       if (metadata) {
-        console.log(`   Metadata: exporté le ${metadata.exportDate} par ${metadata.exportBy}`);
+        if (!isProduction && VERBOSE) console.log(`   Metadata: exporté le ${metadata.exportDate} par ${metadata.exportBy}`);
       }
     }
 
@@ -1914,7 +1996,7 @@ app.post('/api/import-json', requireAuth, importLimiter, csrfProtection, async (
       }
     }
 
-    if (!isProduction) console.log(`✓ Import JSON terminé: ${imported} importés, ${skipped} ignorés, ${errors} erreurs`);
+    if (!isProduction && VERBOSE) console.log(`✓ Import JSON terminé: ${imported} importés, ${skipped} ignorés, ${errors} erreurs`);
 
     res.json({
       success: true,
@@ -1942,7 +2024,7 @@ app.post('/api/clients/import', requireAuth, csrfProtection, async (req, res) =>
       return res.status(400).json({ error: 'Données invalides' });
     }
 
-    if (!isProduction) console.log('Import de', data.length, 'clients...');
+    if (!isProduction && VERBOSE) console.log('Import de', data.length, 'clients...');
 
     // Supprimer tous les clients existants
     await dbRun('DELETE FROM clients');
@@ -1979,7 +2061,7 @@ app.post('/api/clients/import', requireAuth, csrfProtection, async (req, res) =>
     }
 
     stmt.finalize(async () => {
-      if (!isProduction) console.log('Import terminé:', imported, 'clients importés,', errors, 'erreurs');
+      if (!isProduction && VERBOSE) console.log('Import terminé:', imported, 'clients importés,', errors, 'erreurs');
       
       // Enregistrer l'import
       const token = req.headers['authorization']?.replace('Bearer ', '');
@@ -2009,10 +2091,18 @@ app.post('/api/clients/import', requireAuth, csrfProtection, async (req, res) =>
 // GET statut import clients
 app.get('/api/clients/import-status', async (req, res) => {
   try {
+
     const lastImport = await dbGet(
       'SELECT * FROM client_imports ORDER BY importDate DESC LIMIT 1'
     );
+    console.log(lastImport)
     
+    const rows = await dbGet(
+      'SELECT COUNT(*)=0 AS is_empty FROM clients'
+    );
+    const isempty = rows[0].is_empty
+    console.log(isempty)
+
     if (!lastImport) {
       return res.json({
         hasImport: false,
@@ -2132,16 +2222,24 @@ app.get('/api/backups', requireAuth, backupLimiter, async (req, res) => {
 // POST restaurer un backup
 app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req, res) => {
   try {
+    if (!isProduction && VERBOSE) console.log('📥 Requête restore reçue:', req.body);
+    
     // VALIDATION ZOD
     const validationResult = restoreSchema.safeParse(req.body);
     if (!validationResult.success) {
+      console.error('❌ Validation Zod échouée:', validationResult.error);
       return res.status(400).json({ 
-        error: 'Données invalides', 
-        details: validationResult.error.errors[0].message
+        error: 'Données invalides',
+        details: validationResult.error.errors?.map(e => e.message).join(', ') || 'Validation failed'
       });
     }
     
     const { filename, fileData } = validationResult.data;
+    
+    if (!isProduction && VERBOSE) {
+      console.log('Filename:', filename);
+      console.log('FileData présent:', !!fileData);
+    }
     
     // Créer un backup de sécurité avant restauration
     const backupDir = path.join(__dirname, 'backups');
@@ -2152,15 +2250,15 @@ app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req,
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
     const safetyBackupPath = path.join(backupDir, `backup_before_restore_${timestamp}.db`);
     
-    if (!isProduction) console.log('🔒 Création backup de sécurité...');
+    if (!isProduction && VERBOSE) console.log('🔒 Création backup de sécurité...');
     fs.copyFileSync(dbPath, safetyBackupPath);
-    if (!isProduction) console.log('✓ Backup de sécurité créé:', path.basename(safetyBackupPath));
+    if (!isProduction && VERBOSE) console.log('✓ Backup de sécurité créé:', path.basename(safetyBackupPath));
     
     let restorePath;
     
     // Si c'est un fichier uploadé (base64)
     if (fileData) {
-      if (!isProduction) console.log('📤 Restauration depuis fichier uploadé...');
+      if (!isProduction && VERBOSE) console.log('📤 Restauration depuis fichier uploadé...');
       
       // Décoder base64
       const buffer = Buffer.from(fileData, 'base64');
@@ -2172,7 +2270,7 @@ app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req,
       
     } else if (filename) {
       // Restauration depuis un backup existant
-      if (!isProduction) console.log('📁 Restauration depuis backup existant:', filename);
+      if (!isProduction && VERBOSE) console.log('📁 Restauration depuis backup existant:', filename);
       restorePath = path.join(backupDir, filename);
       
       if (!fs.existsSync(restorePath)) {
@@ -2183,7 +2281,7 @@ app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req,
     }
     
     // Vérifier que c'est bien une base SQLite valide
-    if (!isProduction) console.log('🔍 Vérification du fichier...');
+    if (!isProduction && VERBOSE) console.log('🔍 Vérification du fichier...');
     const fileBuffer = fs.readFileSync(restorePath);
     const header = fileBuffer.toString('utf8', 0, 16);
     
@@ -2193,7 +2291,7 @@ app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req,
     }
     
     // Fermer la connexion actuelle
-    if (!isProduction) console.log('🔌 Fermeture connexion base actuelle...');
+    if (!isProduction && VERBOSE) console.log('🔌 Fermeture connexion base actuelle...');
     await new Promise((resolve, reject) => {
       db.close((err) => {
         if (err) reject(err);
@@ -2202,7 +2300,7 @@ app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req,
     });
     
     // Remplacer la base de données
-    if (!isProduction) console.log('🔄 Remplacement de la base...');
+    if (!isProduction && VERBOSE) console.log('🔄 Remplacement de la base...');
     fs.copyFileSync(restorePath, dbPath);
     
     // Nettoyer le fichier temporaire si nécessaire
@@ -2210,7 +2308,7 @@ app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req,
       fs.unlinkSync(restorePath);
     }
     
-    if (!isProduction) {
+    if (!isProduction && VERBOSE) {
       console.log('✅ Base restaurée avec succès');
       console.log('⚠️ REDÉMARRAGE DU SERVEUR NÉCESSAIRE');
     }
@@ -2223,12 +2321,19 @@ app.post('/api/restore', requireAuth, backupLimiter, csrfProtection, async (req,
     
     // Redémarrer le serveur après un court délai
     setTimeout(() => {
-      if (!isProduction) console.log('🔄 Redémarrage du serveur...');
-      process.exit(0);
+
     }, 1000);
     
+    // Redémarrer le serveur en touchant le fichier
+    setTimeout(() => {
+        if (!isProduction && VERBOSE) console.log('🔄 Redémarrage du serveur...');
+        //process.exit(1);   // Exit code 1 force nodemon à redémarrer //avant: process.exit(0); mais restait bloqué
+        const now = new Date();
+        fs.utimesSync(__filename, now, now); // Touch le fichier actuel
+    }, 1000);
+
   } catch (err) {
-    if (!isProduction) console.error('❌ Erreur restauration:', err);
+    if (!isProduction && VERBOSE) console.error('❌ Erreur restauration:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -2265,7 +2370,7 @@ app.post('/api/backup', requireAuth, backupLimiter, csrfProtection, async (req, 
     if (files.length > BACKUP_RETENTION_COUNT) {
       files.slice(BACKUP_RETENTION_COUNT).forEach(f => {
         fs.unlinkSync(f.path);
-        if (!isProduction) console.log('Backup supprimé:', f.name);
+        if (!isProduction && VERBOSE) console.log('Backup supprimé:', f.name);
       });
     }
     
@@ -2284,7 +2389,7 @@ app.post('/api/backup', requireAuth, backupLimiter, csrfProtection, async (req, 
 // Backup automatique au démarrage et périodique
 function setupAutoBackup() {
   if (BACKUP_FREQUENCY_HOURS === 0) {
-    if (!isProduction) console.log('⏭️  Backups automatiques désactivés');
+    if (!isProduction && VERBOSE) console.log('⏭️  Backups automatiques désactivés');
     return;
   }
   
@@ -2299,7 +2404,7 @@ function setupAutoBackup() {
       const backupPath = path.join(backupDir, `backup_auto_${timestamp}.db`);
       
       fs.copyFileSync(dbPath, backupPath);
-      if (!isProduction) console.log('✓ Backup automatique créé:', path.basename(backupPath));
+      if (!isProduction && VERBOSE) console.log('✓ Backup automatique créé:', path.basename(backupPath));
       
       // Nettoyer les vieux backups
       const files = fs.readdirSync(backupDir)
@@ -2314,7 +2419,7 @@ function setupAutoBackup() {
       if (files.length > BACKUP_RETENTION_COUNT) {
         files.slice(BACKUP_RETENTION_COUNT).forEach(f => {
           fs.unlinkSync(f.path);
-          if (!isProduction) console.log('Backup supprimé:', f.name);
+          if (!isProduction && VERBOSE) console.log('Backup supprimé:', f.name);
         });
       }
     } catch (err) {
@@ -2329,7 +2434,7 @@ function setupAutoBackup() {
   const intervalMs = BACKUP_FREQUENCY_HOURS * 60 * 60 * 1000;
   setInterval(createBackup, intervalMs);
   
-  if (!isProduction) console.log(`✓ Backups automatiques activés (toutes les ${BACKUP_FREQUENCY_HOURS}h, ${BACKUP_RETENTION_COUNT} fichiers conservés)`);
+  if (!isProduction && VERBOSE) console.log(`✓ Backups automatiques activés (toutes les ${BACKUP_FREQUENCY_HOURS}h, ${BACKUP_RETENTION_COUNT} fichiers conservés)`);
 }
 
 //-------------------------------------------
@@ -2394,7 +2499,7 @@ app.get('/api/client-ip', (req, res) => {
 // Route par défaut pour servir index.html
 app.get('/', (req, res) => {
   const filePath = path.join(__dirname, 'public', 'index.html');
-  if (!isProduction) {
+  if (!isProduction && VERBOSE) {
     console.log('Tentative d\'accès à :', filePath);
     console.log('Fichier existe?', fs.existsSync(filePath));
   }
@@ -2417,7 +2522,7 @@ const LOCAL_IP = getLocalIP();
 
 app.listen(PORT, '0.0.0.0', () => {
   
-  if (!isProduction) {
+  if (!isProduction && VERBOSE) {
     console.log(`✓ Serveur démarré`);
     console.log(`  - Local:    http://localhost:${PORT}`);
     console.log(`  - Réseau:   http://${LOCAL_IP}:${PORT}`);

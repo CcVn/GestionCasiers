@@ -3,6 +3,10 @@
         padding: 10px;
     }
 
+    .mobile-only {
+        display: block; /* Affiché uniquement sur mobile */
+    }
+
     h1 {
         font-size: 22px;
     }

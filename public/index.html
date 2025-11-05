@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' 'unsafe-eval';">
-    <title>Ardon - Casiers PUI zone départ</title>
+    <title>HADO - Casiers PUI zone départ</title>
     <link rel="stylesheet" href="css/styles.css">
     <link rel="stylesheet" href="css/mobile.css">
     <link rel="stylesheet" href="css/print.css">
@@ -13,7 +13,7 @@
 <body>
     <div id="loginPage" class="login-container active">
         <div class="login-box">
-            <h1>Ardon - Casiers PUI zone départ</h1>
+            <h1>HADO - Casiers PUI zone départ</h1>
             <form id="loginForm">
                 <button type="button" class="btn-primary" style="width: 100%; margin-top: 10px; font-size: 1.25rem; height: 75px; " onclick="loginAsGuest()">👁️ Chercher un casier</button>
                 <div class="separator"></div>
@@ -37,23 +37,23 @@
         <header>
             <div class="header-info">
                 <div>
-                    <h1>Ardon - Casiers PUI zone départ</h1>
+                    <h1>HADO - Casiers PUI zone départ</h1>
                     <div style="display: flex; gap: 20px; align-items: center;">
-                        <div id="authStatus" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
-                        <div class="admin-only" id="importStatus" style="font-size: 12px; color: #666; margin-top: 5px;"></div>
+                        <div id="authStatus" style="font-size: 16px; color: #666; margin-top: 5px;"></div>
+                        <div class="admin-only" id="importStatus" style="font-size: 14px; color: #666; margin-top: 5px;"></div>
                     </div>
                 </div>
                 <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
                     <button class="btn-theme-toggle" onclick="toggleDarkModeQuick()" id="btnThemeToggle" title="Changer le thème">
-                        <span class="theme-icon">☀️</span>
+                        <span class="theme-icon">🌓</span>
                     </button>
                     <div id="serverStatus" class="server-status offline">⚪ Vérification...</div>
                     <button class="btn-secondary btn-small" onclick="logout()">Déconnexion</button>
                 </div>
             </div>
             <div class="search-bar">
-                <input type="text" id="globalSearch" placeholder="Rechercher par nom, prénom ou IPP...">
-                <button class="btn-clearsearch" onclick="clearSearch()" style="background: #ff0000 !important;" title="Vider la recherche"> ✕ </button>
+                <input type="text" id="globalSearch" class="pulse" placeholder="Rechercher par nom, prénom ou IPP...">
+                <button class="btn-clearsearch" onclick="clearSearch()" style="background: #FF5C5C !important;" title="Vider la recherche"> ✕ </button>
                 <button class="btn-settings admin-only" onclick="toggleAdminTools()" title="Outils d'administration" id="btnSettings">⚙️</button>
             </div>
         </header>
@@ -116,6 +116,9 @@
                 <fieldset id="bloctImport" class="group-box">
                     <legend>Import des casiers</legend>
                     <div class="buttons-container" title="Import des casiers">
+                        <button class="btn-secondary" onclick="showLockersImportOptions()" title="Importer des casiers">
+                                ⬆️ Import casiers
+                        </button>
                         <button class="btn-secondary" onclick="importCSV()" title="Importer des données casiers depuis un CSV">
                             ⬆️ CSV
                         </button>
@@ -172,7 +175,7 @@
 
         <!-- FOOTER -->
         <footer class="app-footer">
-            <p>© 2025, C.Vinson & Sonnet 4.5</p>
+            <p>C.Vinson, Nov 2025</p>
         </footer>        
     </div>
 
@@ -285,7 +288,72 @@
     
     <input type="file" id="clientFileInput" accept=".csv" style="display: none;">
 
-<!-- Panel stats patients -->
+    <!-- Modal options d'import casiers -->
+    <div id="lockersImportOptionsModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">⬆️ Options d'import casiers</div>
+            
+            <div style="padding: 20px;">
+                <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin-bottom: 20px;">
+                    <strong style="color: #92400e;">ℹ️ Import de casiers</strong>
+                    <p style="margin: 4px 0 0 0; font-size: 13px; color: #78350f;">
+                        Importez des casiers depuis un fichier CSV ou JSON.
+                    </p>
+                </div>
+                
+                <form id="lockersImportOptionsForm">
+                    <div class="form-group">
+                        <label for="lockersImportFormat">Format du fichier</label>
+                        <select id="lockersImportFormat" required>
+                            <option value="csv">CSV (format standard)</option>
+                            <option value="json">JSON (export backup)</option>
+                        </select>
+                        <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                            Le CSV doit contenir les colonnes : Numéro, Zone, Nom, Prénom, IPP, Date Naissance, Récupérable, Commentaire
+                        </small>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="lockersImportMode">Mode d'import</label>
+                        <select id="lockersImportMode" required>
+                            <option value="update">📝 Mise à jour (remplace les casiers existants)</option>
+                            <option value="replace">🗑️ Remplacement complet (vide puis importe)</option>
+                        </select>
+                        <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                            Mode "Mise à jour" : ne modifie que les casiers présents dans le fichier<br>
+                            Mode "Remplacement" : vide TOUS les casiers puis importe
+                        </small>
+                    </div>
+                    
+                    <div id="lockersImportWarning" style="background: #fee2e2; border: 1px solid #ef4444; border-radius: 6px; padding: 12px; margin: 16px 0; display: none;">
+                        <strong style="color: #991b1b;">⚠️ Attention :</strong>
+                        <p style="margin: 4px 0 0 0; font-size: 13px; color: #7f1d1d;">
+                            Le mode "Remplacement complet" va libérer TOUS les casiers avant l'import.
+                        </p>
+                    </div>
+                    
+                    <div class="modal-footer">
+                        <button type="button" class="btn-secondary" onclick="closeLockersImportOptions()">Annuler</button>
+                        <button type="button" class="btn-primary" onclick="selectFileForLockersImport()">Choisir le fichier</button>
+                    </div>
+                </form>
+                
+                <!-- Bouton pour vider la base casiers -->
+                <div style="border-top: 1px solid var(--border-color); margin-top: 20px; padding-top: 20px;">
+                    <button type="button" class="btn-secondary" onclick="clearLockersDatabase()" style="width: 100%; background: #fee2e2; color: #991b1b; border-color: #fecaca;">
+                        🗑️ Vider tous les casiers
+                    </button>
+                    <p style="font-size: 11px; color: var(--text-tertiary); margin: 8px 0 0 0; text-align: center;">
+                        Libère tous les casiers de toutes les zones
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <input type="file" id="lockersFileInput" accept=".csv,.json" style="display: none;">
+
+    <!-- Panel stats patients -->
     <div id="clientsStatsPanel" class="clients-stats-panel">
         <div class="clients-stats-content">
             <div class="clients-stats-header">
@@ -414,14 +482,21 @@
             <div class="modal-header">🏷️ Impression d'étiquettes</div>
             
             <div style="padding: 20px;">
-                <div class="form-group">
-                    <label>Format d'étiquette</label>
-                    <select id="labelFormat" onchange="updateLabelPreview()">
-                        <option value="5x13">5 × 13 étiquettes (65 par page)</option>
-                        <option value="3x9">3 × 9 étiquettes (27 par page)</option>
-                    </select>
+                <div class="container" style="display: flex;align-items: center; gap: 10px; width: 100%;">
+                    <div class="form-group" style= "width: 100%; box-sizing: border-box;">
+                        <label>Format d'étiquette</label>
+                        <select id="labelFormat" onchange="updateLabelPreview()">
+                            <option value="5x13">5 × 13 étiquettes (65 par page)</option>
+                            <option value="3x9">3 × 9 étiquettes (27 par page)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group" style= "width: 100%; box-sizing: border-box;">
+                        <label>Nombre d'étiquettes par patient</label>
+                        <input type="text" id="labelRepetition" placeholder="1" oninput="updateLabelPreview()">
+                    </div>
                 </div>
-                
+
                 <div class="form-group">
                     <label>Sélection des casiers</label>
                     <select id="labelSelection" onchange="updateLabelPreview()">
@@ -456,7 +531,13 @@
                         <span>Anonymiser les noms/prénoms</span>
                     </label>
                 </div>
-                
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="labelHomonymes" onchange="updateLabelPreview()" style="margin-right: 10px; width: auto;">
+                        <span>Souligner les homonymes (non fonctionnel)</span>
+                    </label>
+                </div>
+
                 <div style="background: var(--bg-secondary); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
                     <div style="font-size: 13px; color: var(--text-secondary);">
                         <strong>Aperçu :</strong> <span id="labelCount">0</span> étiquette(s) sélectionnée(s)

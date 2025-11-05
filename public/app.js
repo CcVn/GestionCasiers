@@ -10,6 +10,7 @@ let USER_NAME = '';
 let DARK_MODE_SETTING = 'system'
 let EDITING_LOCKER_NUMBER = null; // Mémoriser le casier en cours d'édition
 let EDITING_LOCKER_VERSION = null; // Mémoriser la version du casier en cours d'édition
+let VERBCONSOLE = 1
 
 // ============ CONFIG DES ZONES ============
 
@@ -22,17 +23,18 @@ async function loadZonesConfig() {
         const data = await response.json();
         ZONES_CONFIG = data.zones;
         
-        console.log('📋 Configuration des zones chargée:', ZONES_CONFIG);
+        if (VERBCONSOLE>0) { console.log('📋 Configuration des zones chargée:', ZONES_CONFIG); }
         return ZONES_CONFIG;
     } catch (err) {
         console.error('Erreur chargement config zones:', err);
         // Fallback sur la config par défaut
-/*        ZONES_CONFIG = [
-            { name: 'NORD', count: 75, prefix: 'N' },
-            { name: 'SUD', count: 75, prefix: 'S' },
-            { name: 'PCA', count: 40, prefix: 'P' }
+        ZONES_CONFIG = [
+            { name: 'ZoneA', count: 50, prefix: 'A', color: '#3b82f6' },
+            { name: 'ZoneB', count: 40, prefix: 'B', color: '#10b981' },
+            { name: 'ZoneC', count: 20, prefix: 'C', color: '#f59e0b' },
+            { name: 'ZoneD', count: 20, prefix: 'D', color: '#ef4444' }
         ];
-        return ZONES_CONFIG; */
+        return ZONES_CONFIG; 
     }
 }
 
@@ -44,17 +46,24 @@ function generateTabs() {
     // Générer les onglets de zones
     let tabsHTML = ZONES_CONFIG.map((zone, index) => `
         <button class="tab-button ${index === 0 ? 'active' : ''}" data-zone="${zone.name}">
-            Zone ${zone.name}
+            Zone <br class="mobile-only">${zone.name}
         </button>
     `).join('');
     
-    // AJOUTER l'onglet de recherche à la fin
+    // Onglet de recherche à la fin
     tabsHTML += `
         <button class="tab-button tab-search" data-zone="SEARCH" style="margin-left: auto;" title="Résultats de recherche">
             🔍
         </button>
     `;
-    
+
+    // Onglet Aide
+    tabsHTML += `
+        <button class="tab-button tab-help" data-zone="HELP" title="Aide">
+            ❓
+        </button>
+    `;
+
     tabsContainer.innerHTML = tabsHTML;
     
     // Ajouter les event listeners
@@ -63,8 +72,7 @@ function generateTabs() {
             const clickedZone = this.dataset.zone;
             switchTab(clickedZone);
             
-            // NE PAS recharger si c'est l'onglet SEARCH
-            // NE PAS recharger s'il y a une recherche active (les tables sont déjà filtrées)
+            // NE PAS recharger 1) si c'est l'onglet SEARCH ou 2) s'il y a une recherche active (les tables sont déjà filtrées)
             const searchInput = document.getElementById('globalSearch');
             const hasActiveSearch = searchInput && searchInput.value.trim() !== '';
             
@@ -105,9 +113,9 @@ function generateContentSections() {
                 <div class="controls">
                     <!-- Indicateur de recherche active -->
                     <button id="search-indicator-${zone.name}" onclick="clearSearch()" class= "btn-activesearch">
-                        ✕ Reset
+                        ✕ Quitter la recherche
                     </button>
-                    <button class="btn-secondary admin-only" onclick="openModal('${zone.name}')">➕ Attribuer</button>
+                    <button class="btn-secondary admin-only pulse" onclick="openModal('${zone.name}')">➕ Attribuer</button>
                     <select class="admin-only" onchange="filterTable('${zone.name}', this.value)" id="filter-${zone.name}">
                         <option value="all">Tous</option>
                         <option value="occupied">Occupés</option>
@@ -153,10 +161,10 @@ function generateContentSections() {
         <div class="section-header">
             <h2 style="font-size: 18px; font-weight: 600;">
                 🔍 Résultats de recherche
-                <span id="counter-SEARCH" class="zone-counter" style="background: #667eea;">0 résultat(s)</span>
+                <span id="counter-SEARCH" class="zone-counter" style="color: white; background-color: #667eea;">0 résultat(s)</span>
             </h2>
             <div class="controls">
-                <button class="btn-secondary" onclick="clearSearch()" style="background: #fef3c7; border: 1px solid #f59e0b; padding: 6px 12px; border-radius: 6px; font-size: 12px; color: #92400e; font-weight: 600;">✕ Effacer la recherche</button>
+                <button class="btn-secondary" onclick="clearSearch()" style="background-color: #fef3c7; border: 1px solid #f59e0b; padding: 6px 12px; border-radius: 6px; font-size: 12px; color: #92400e; font-weight: 600;">✕ Effacer la recherche</button>
             </div>
         </div>
         <div class="table-container">
@@ -181,6 +189,167 @@ function generateContentSections() {
     
     container.insertBefore(searchSection, footerElement);
     
+    //----------- Section d'aide
+    const helpSection = document.createElement('div');
+    helpSection.id = 'content-HELP';
+    helpSection.className = 'content-section';
+    
+    helpSection.innerHTML = `
+        <div class="section-header">
+            <h2 style="font-size: 18px; font-weight: 600;">
+                ❓ Guide d'utilisation
+            </h2>
+        </div>
+        <div style="padding: 24px; max-width: 800px; margin: 0 auto;">
+            
+            <!-- PARTIE 1 : CONSULTATION (visible par tous) -->
+            <div class="help-section">
+                <h3>🔍 Rechercher un casier</h3>
+                
+                <div class="help-item">
+                    <div class="help-title">Par recherche globale</div>
+                    <div class="help-content">
+                        <ol>
+                            <li>Utilisez la barre de recherche en haut de la page</li>
+                            <li>Tapez un <strong>nom</strong>, <strong>prénom</strong> ou <strong>N°IPP</strong></li>
+                            <li>L'onglet <strong>🔍 Recherche</strong> s'affiche automatiquement avec tous les résultats</li>
+                            <li>Cliquez sur un onglet de zone (NORD, SUD, etc.) pour voir uniquement les résultats de cette zone</li>
+                            <li>Effacez le champ de recherche pour revenir à l'affichage normal</li>
+                        </ol>
+                    </div>
+                </div>
+                
+                <div class="help-item">
+                    <div class="help-title">Par navigation dans les zones</div>
+                    <div class="help-content">
+                        <ol>
+                            <li>Cliquez sur un onglet de zone : <strong>Zone NORD</strong>, <strong>Zone SUD</strong>, etc.</li>
+                            <li>Parcourez la liste des casiers occupés de cette zone</li>
+                            <li>Les casiers sont triés par ordre alphabétique sur le nom du patient</li>
+                        </ol>
+                        <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin-top: 12px; border-radius: 4px;">
+                            <strong>💡 Avec un écran tactile :</strong> un balayage latéral permet de passer à l'onglet situé à gauche ou à droite.
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- PARTIE 2 : MODIFICATION (visible seulement en admin) -->
+            <div class="help-section admin-only">
+                <h3>✏️ Gérer les casiers (mode admin)</h3>
+
+                <div class="help-item">
+                    <div class="help-title">Compteurs de zone</div>
+                    <div class="help-content">
+                        Chaque onglet affiche le nombre de casiers occupés : <span class="zone-counter" style="display: inline-block;">15/75</span>
+                        <ul style="margin-top: 8px;">
+                            <li><strong>Vert</strong> : moins de 80% d'occupation</li>
+                            <li><strong>Orange</strong> : 80% ou plus</li>
+                            <li><strong>Rouge</strong> : zone complète</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="help-item">
+                    <div class="help-title">Filtrer les casiers</div>
+                    <div class="help-content">
+                        Utilisez le menu déroulant pour afficher :
+                        <ul>
+                            <li><strong>Tous</strong> : tous les casiers de la zone</li>
+                            <li><strong>Occupés</strong> : seulement les casiers attribués</li>
+                            <li><strong>Vides</strong> : seulement les casiers disponibles</li>
+                            <li><strong>Récupérables</strong> : casiers qui peuvent être libérés en cas de besoin</li>
+                            <li><strong>Doublons ⚠️</strong> : casiers avec IPP ou identité en double</li>
+                        </ul>
+                    </div>
+                </div> 
+                <div class="help-item">
+                    <div class="help-title">Légende des statuts</div>
+                    <div class="help-content">
+                        <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span class="status-empty" title="Libre"></span>
+                                <span>Casier libre</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span class="status-occupied" title="Occupé"></span>
+                                <span>Casier occupé</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span class="status-recoverable" title="Récupérable"></span>
+                                <span>Casier récupérable</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="help-item">
+                    <div class="help-title">Trier les casiers</div>
+                    <div class="help-content">
+                        Utilisez le second menu déroulant pour trier :
+                        <ul>
+                            <li><strong>Par numéro de casier</strong> : N01, N02, N03... (par défaut)</li>
+                            <li><strong>Par nom de patient</strong> : ordre alphabétique ascendant des noms de patients</li>
+                        </ul>
+                    </div>
+                </div>
+                <div class="help-item">
+                    <div class="help-title">Attribuer un casier</div>
+                    <div class="help-content">
+                        <ol>
+                            <li>Cliquez sur le bouton <button class="btn-primary" style="pointer-events: none; padding: 4px 12px; font-size: 12px;">➕ Attribuer</button> dans la zone souhaitée</li>
+                            <li>Sélectionnez le <strong>numéro de casier</strong></li>
+                            <li>Remplissez les informations du patient :
+                                <ul>
+                                    <li><strong>Nom</strong> et <strong>Prénom</strong></li>
+                                    <li><strong>N°IPP</strong> (cliquez sur 🔍 pour rechercher dans la base patients)</li>
+                                    <li><strong>Date de naissance</strong></li>
+                                </ul>
+                            </li>
+                            <li>Ajoutez un <strong>commentaire</strong> si nécessaire</li>
+                            <li>Cochez <strong>Récupérable</strong> si le casier peut être libéré en cas de pénurie</li>
+                            <li>Cliquez sur <button class="btn-primary" style="pointer-events: none; padding: 4px 12px; font-size: 12px;">Enregistrer</button></li>
+                        </ol>
+                        <div class="post-it">
+                            <strong>💡 Astuce :</strong> Si le N°IPP n'est pas trouvé dans la base patients, le casier sera automatiquement marqué comme récupérable.
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="help-item">
+                    <div class="help-title">Modifier un casier</div>
+                    <div class="help-content">
+                        <ol>
+                            <li>Cliquez sur le menu <strong>⋮</strong> à droite de la ligne du casier</li>
+                            <li>Sélectionnez <strong>Modifier</strong></li>
+                            <li>Modifiez les informations souhaitées</li>
+                            <li>Cliquez sur <button class="btn-primary" style="pointer-events: none; padding: 4px 12px; font-size: 12px;">Enregistrer</button></li>
+                        </ol>
+                        <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin-top: 12px; border-radius: 4px;">
+                            <strong>⚠️ Changement de casier :</strong> Si vous changez le numéro du casier, l'application vous proposera de libérer automatiquement l'ancien casier.
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="help-item">
+                    <div class="help-title">Libérer un casier</div>
+                    <div class="help-content">
+                        <ol>
+                            <li>Cliquez sur le menu <strong>⋮</strong> à droite de la ligne du casier</li>
+                            <li>Sélectionnez <strong>Libérer</strong></li>
+                            <li>Confirmez la libération</li>
+                        </ol>
+                        <p style="margin-top: 8px; font-size: 13px; color: var(--text-secondary);">
+                            Le casier devient immédiatement disponible pour une nouvelle attribution.
+                        </p>
+                    </div>
+                </div>
+
+            </div>
+            
+        </div>
+    `;
+    
+    container.insertBefore(helpSection, footerElement);
+
     // Initialiser les filtres par défaut
     CURRENT_FILTER = {};
     ZONES_CONFIG.forEach(zone => {
@@ -230,7 +399,7 @@ async function loadCsrfToken() {
         
         const data = await response.json();
         CSRF_TOKEN = data.csrfToken;
-        console.log('✓ Token CSRF chargé');
+        if (VERBCONSOLE>0) { console.log('✓ Token CSRF chargé'); }
     } catch (err) {
         console.error('❌ Erreur chargement token CSRF:', err);
         CSRF_TOKEN = null;
@@ -241,7 +410,7 @@ async function loadCsrfToken() {
 
 function applyDarkMode(setting) {
     DARK_MODE_SETTING = setting || 'system';
-    console.log('Application du mode sombre:', DARK_MODE_SETTING);
+    if (VERBCONSOLE>0) { console.log('Application du mode sombre:', DARK_MODE_SETTING); }
     
     if (DARK_MODE_SETTING === 'active') {
         document.body.classList.add('dark-mode');
@@ -283,7 +452,7 @@ function updateDarkModeButtons() {
 }
 
 function setDarkMode(mode) {
-    console.log('🌓 Changement mode:', mode);
+    if (VERBCONSOLE>0) { console.log('🌓 Changement mode:', mode); }
     
     // Sauvegarder la préférence localement
     localStorage.setItem('darkMode', mode);
@@ -317,11 +486,8 @@ function toggleDarkModeQuick() {
         setTimeout(() => btn.classList.remove('animating'), 500);
     }
     
-    // Appliquer le nouveau mode
-    setDarkMode(newMode);
-    
-    // Mettre à jour l'icône
-    updateThemeIcon();
+    setDarkMode(newMode); // Appliquer le nouveau mode
+    updateThemeIcon(); // Mettre à jour l'icône
 }
 
 function updateThemeIcon() {
@@ -343,18 +509,18 @@ function updateThemeIcon() {
 // ============ DÉTECTION MOBILE ============
 function detectMobile() {
     IS_MOBILE = window.innerWidth <= 768;
-    console.log('Mode mobile:', IS_MOBILE);
+    if (VERBCONSOLE>0) { console.log('Mode mobile:', IS_MOBILE); }
     return IS_MOBILE;
 }
 
 // ============ INITIALISATION ============
 document.addEventListener('DOMContentLoaded', async function() {
-    //console.log('Page chargée');
+    if (VERBCONSOLE>0) { console.log('Page chargée'); }
     
     const protocol = window.location.protocol;
     const host = window.location.host;
     API_URL = `${protocol}//${host}/api`;
-    console.log('API_URL configurée:', API_URL);
+    if (VERBCONSOLE>0) { console.log('API_URL configurée:', API_URL); }
     
     detectMobile();
     
@@ -365,7 +531,7 @@ document.addEventListener('DOMContentLoaded', async function() {
     const urlParams = new URLSearchParams(window.location.search);
     const autoGuest = urlParams.get('guest') !== null;
     if (autoGuest) {
-        console.log('Mode guest automatique détecté via URL');
+        if (VERBCONSOLE>0) { console.log('Mode guest automatique détecté via URL'); }
         loginAsGuestAuto();
         return;
     }
@@ -377,19 +543,19 @@ document.addEventListener('DOMContentLoaded', async function() {
     .then(res => res.json())
     .then(data => {
         if (data.authenticated) {
-            console.log('Session valide, rôle:', data.role);
+            if (VERBCONSOLE>0) { console.log('Session valide, rôle:', data.role); }
             IS_AUTHENTICATED = data.role === 'admin';
             IS_GUEST = data.role === 'guest';
             ANONYMIZE_ENABLED = data.anonymize || false;
             USER_NAME = data.userName || '';
             applyDarkMode(data.darkMode || 'system');
-            console.log('Anonymisation activée:', ANONYMIZE_ENABLED);
-            console.log('Utilisateur:', USER_NAME);
+            if (VERBCONSOLE>0) { console.log('Anonymisation activée:', ANONYMIZE_ENABLED); }
+            if (VERBCONSOLE>0) { console.log('Utilisateur:', USER_NAME); }
             showLoginPage(false);
             updateAuthStatus();
             setupApp();
         } else {
-            console.log('Pas de session valide');
+            if (VERBCONSOLE>0) { console.log('Pas de session valide'); }
             setupLoginPage();
         }
     })
@@ -413,6 +579,78 @@ document.addEventListener('DOMContentLoaded', async function() {
         }
     });
 });
+
+// ============ SUPPORT SWIPE TACTILE ============
+
+function initSwipeSupport() {
+    let touchStartX = 0;
+    let touchEndX = 0;
+    let touchStartY = 0;
+    let touchEndY = 0;
+    
+    const minSwipeDistance = 50; // pixels minimum pour déclencher le swipe
+    const maxVerticalDistance = 100; // tolérance verticale
+    
+    document.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+    }, { passive: true });
+    
+    document.addEventListener('touchend', (e) => {
+        touchEndX = e.changedTouches[0].screenX;
+        touchEndY = e.changedTouches[0].screenY;
+        handleSwipe();
+    }, { passive: true });
+    
+    function handleSwipe() {
+        const horizontalDistance = touchEndX - touchStartX;
+        const verticalDistance = Math.abs(touchEndY - touchStartY);
+        
+        // Ignorer si trop de mouvement vertical (scroll)
+        if (verticalDistance > maxVerticalDistance) return;
+        
+        // Ignorer si distance horizontale insuffisante
+        if (Math.abs(horizontalDistance) < minSwipeDistance) return;
+        
+        // Récupérer l'onglet actuel
+        const currentTab = document.querySelector('.tab-button.active');
+        if (!currentTab) return;
+        
+        const currentZone = currentTab.dataset.zone;
+        
+        // Créer la liste ordonnée des onglets
+        const allTabs = [...ZONES_CONFIG.map(z => z.name), 'SEARCH', 'HELP'];
+        const currentIndex = allTabs.indexOf(currentZone);
+        
+        if (currentIndex === -1) return;
+        
+        let newIndex;
+        
+        // Swipe vers la gauche (onglet suivant)
+        if (horizontalDistance < 0) {
+            newIndex = currentIndex + 1;
+            if (newIndex >= allTabs.length) newIndex = 0; // Boucle au début
+        }
+        // Swipe vers la droite (onglet précédent)
+        else {
+            newIndex = currentIndex - 1;
+            if (newIndex < 0) newIndex = allTabs.length - 1; // Boucle à la fin
+        }
+        
+        const newZone = allTabs[newIndex];
+        
+        // Changer d'onglet
+        switchTab(newZone);
+        
+        // Ne recharger que si nécessaire
+        const searchInput = document.getElementById('globalSearch');
+        const hasActiveSearch = searchInput && searchInput.value.trim() !== '';
+        
+        if (newZone !== 'SEARCH' && newZone !== 'HELP' && !hasActiveSearch) {
+            loadData();
+        }
+    }
+}
 
 // ============ AUTHENTIFICATION ============
 async function setupLoginPage() {
@@ -506,8 +744,8 @@ function handleLogin(e) {
         
         ANONYMIZE_ENABLED = data.anonymize || false;
         applyDarkMode(data.darkMode || 'system');
-        console.log('Anonymisation activée:', ANONYMIZE_ENABLED);
-        console.log('Utilisateur:', USER_NAME);
+        if (VERBCONSOLE>0) { console.log('Anonymisation activée:', ANONYMIZE_ENABLED);}
+        if (VERBCONSOLE>0) { console.log('Utilisateur:', USER_NAME); }
         
         showLoginPage(false);
         updateAuthStatus();
@@ -567,7 +805,7 @@ function loginAsGuest() {
         IS_GUEST = true;
         ANONYMIZE_ENABLED = data.anonymize || false;
         applyDarkMode(data.darkMode || 'system');
-        console.log('Anonymisation activée:', ANONYMIZE_ENABLED);
+        if (VERBCONSOLE>0) { console.log('Anonymisation activée:', ANONYMIZE_ENABLED); }
 
         hideAdminElements();
         showLoginPage(false);
@@ -587,7 +825,7 @@ function loginAsGuest() {
 
 // Utilisation : URL à mettre dans le QR code : http://adresseIP:5000/?guest=true
 function loginAsGuestAuto() {
-    console.log('Connexion automatique en mode guest...');
+    if (VERBCONSOLE>0) { console.log('Connexion automatique en mode guest...'); }
     // Vérifier que le token CSRF est chargé
     if (!CSRF_TOKEN) {
         console.error('❌ Token CSRF non disponible');
@@ -619,7 +857,7 @@ function loginAsGuestAuto() {
         IS_GUEST = true;
         ANONYMIZE_ENABLED = data.anonymize || false;
         applyDarkMode(data.darkMode || 'system');
-        console.log('Anonymisation activée:', ANONYMIZE_ENABLED);
+        if (VERBCONSOLE>0) { console.log('Anonymisation activée:', ANONYMIZE_ENABLED); }
 
         hideAdminElements();
         showLoginPage(false);
@@ -770,14 +1008,14 @@ async function updateImportStatus() {
     }
 }
 
-// plus utilisée pour l'instant
+// @TODO plus utilisée pour l'instant
 function updateImportExportButtons() {
     const importExportButtons = document.querySelectorAll('.search-bar button');
-    console.log('Mise à jour des boutons header, IS_GUEST:', IS_GUEST);
+    if (VERBCONSOLE>0) { console.log('Mise à jour des boutons header, IS_GUEST:', IS_GUEST); }
     
     importExportButtons.forEach(btn => {
         const text = btn.textContent.toLowerCase();
-        console.log('Bouton:', text);
+        if (VERBCONSOLE>0) { console.log('Bouton:', text); }
         
         if (text.includes('import') || text.includes('backup')|| 
             text.includes('json') || text.includes('csv') ) {
@@ -786,7 +1024,7 @@ function updateImportExportButtons() {
                 btn.style.opacity = '0.4';
                 btn.style.cursor = 'not-allowed';
                 btn.style.pointerEvents = 'none';
-                console.log('Bouton désactivé:', text);
+                if (VERBCONSOLE>0) { console.log('Bouton désactivé:', text); }
                 //btn.style.display = 'none';
             } else {
                 //btn.style.display = '';
@@ -794,13 +1032,13 @@ function updateImportExportButtons() {
                 btn.style.opacity = '1';
                 btn.style.cursor = 'pointer';
                 btn.style.pointerEvents = 'auto';
-                console.log('Bouton activé:', text);
+                if (VERBCONSOLE>0) { console.log('Bouton activé:', text); }
             }
         }
     });
     
     const newLockerButtons = document.querySelectorAll('.controls .btn-primary');
-    console.log('Mise à jour des boutons "Attribuer" et "Imprimés", trouvés:', newLockerButtons.length);
+    if (VERBCONSOLE>0) { console.log('Mise à jour des boutons "Attribuer" et "Imprimés", trouvés:', newLockerButtons.length); }
     
     newLockerButtons.forEach(btn => {
         const text = btn.textContent.toLowerCase();
@@ -810,7 +1048,7 @@ function updateImportExportButtons() {
                 btn.style.opacity = '0.4';
                 btn.style.cursor = 'not-allowed';
                 btn.style.pointerEvents = 'none';
-                console.log('Boutons "Attribuer & Imprimer" désactivé');
+                if (VERBCONSOLE>0) { console.log('Boutons "Attribuer & Imprimer" désactivé'); }
                 //btn.style.display = 'none';
             } else {
                 //btn.style.display = '';
@@ -837,7 +1075,7 @@ function isEditAllowed() {
 // ============================================
 
 function hideAdminElements() {
-    console.log('🙈 Masquage des éléments admin en mode guest');
+    if (VERBCONSOLE>0) { console.log('🙈 Masquage des éléments admin en mode guest'); }
     
     // 1. Masquer tous les boutons d'import/export/backup
     const headerButtons = document.querySelectorAll('.search-bar button');
@@ -860,7 +1098,7 @@ function hideAdminElements() {
     
     // 3. Masquer tous les éléments avec la classe .admin-only
     const adminOnlyElements = document.querySelectorAll('.admin-only');
-    console.log(`   Éléments .admin-only trouvés: ${adminOnlyElements.length}`);
+    if (VERBCONSOLE>0) { console.log(`   Éléments .admin-only trouvés: ${adminOnlyElements.length}`); }
     adminOnlyElements.forEach(el => {
         el.style.display = 'none';
     });
@@ -876,7 +1114,7 @@ function hideAdminElements() {
         }
     });
     
-    console.log('✓ Éléments admin masqués');
+    if (VERBCONSOLE>0) { console.log('✓ Éléments admin masqués'); }
 }
 
 // ============================================
@@ -884,7 +1122,7 @@ function hideAdminElements() {
 // ============================================
 
 function showAdminElements() {
-    console.log('👁️ Affichage des éléments admin');
+    if (VERBCONSOLE>0) { console.log('👁️ Affichage des éléments admin'); }
     
     // 1. Réafficher tous les boutons d'import/export/backup
     const headerButtons = document.querySelectorAll('.search-bar button');
@@ -915,41 +1153,46 @@ function showAdminElements() {
         }
     });
     
-    console.log('✓ Éléments admin réaffichés');
+    if (VERBCONSOLE>0) { console.log('✓ Éléments admin réaffichés'); }
 }
 
 // ============ CONFIGURATION API ============================
 
 async function setupApp() {
-    console.log('🚀 Setup de l\'application...');
-    console.log('API_URL actuelle:', API_URL);
+    if (VERBCONSOLE>0) { console.log('🚀 Setup de l\'application...'); }
+    if (VERBCONSOLE>0) { console.log('API_URL actuelle:', API_URL); }
     
     try {
         // ÉTAPE 1 : Charger la configuration des zones
-        console.log('1️⃣ Chargement configuration zones...');
+        if (VERBCONSOLE>0) { console.log('1️⃣ Chargement configuration zones...'); }
         await loadZonesConfig();
-        console.log('✓ Config zones chargée:', ZONES_CONFIG);
+        if (VERBCONSOLE>0) { console.log('✓ Config zones chargée:', ZONES_CONFIG); }
         
         // ÉTAPE 1b : Charger le token CSRF
-        console.log('1️⃣b Chargement token CSRF...');
+        if (VERBCONSOLE>0) { console.log('1️⃣b Chargement token CSRF...'); }
         await loadCsrfToken();
 
         // ÉTAPE 2 : Générer l'interface
-        console.log('2️⃣ Génération interface...');
+        if (VERBCONSOLE>0) { console.log('2️⃣ Génération interface...'); }
         generateTabs();
         generateContentSections();
-        console.log('✓ Interface générée');
-        
+        if (VERBCONSOLE>0) { console.log('✓ Interface générée'); }
+
+        // ÉTAPE 2b : Initialiser le support swipe tactile
+        if (VERBCONSOLE>0) { console.log('2️⃣b Initialisation swipe tactile...'); }
+        initSwipeSupport();
+        if (VERBCONSOLE>0) { console.log('✓ Swipe tactile activé'); }
+
         // ÉTAPE 3 : Initialiser les filtres
-        console.log('3️⃣ Initialisation filtres...');
+        if (VERBCONSOLE>0) { console.log('3️⃣ Initialisation filtres...'); }
         CURRENT_FILTER = {};
         ZONES_CONFIG.forEach(zone => {
             CURRENT_FILTER[zone.name] = 'all';
         });
-        console.log('✓ Filtres initialisés:', CURRENT_FILTER);
+        if (VERBCONSOLE>0) { console.log('✓ Filtres initialisés:', CURRENT_FILTER); }
         
         // ÉTAPE 4 : Event listeners
-        console.log('4️⃣ Event listeners...');
+        if (VERBCONSOLE>0) { console.log('4️⃣ Event listeners...'); }
         
         const searchInput = document.getElementById('globalSearch');
         if (searchInput) {
@@ -963,21 +1206,21 @@ async function setupApp() {
             form.addEventListener('submit', handleFormSubmit);
         }
         
-        console.log('✓ Event listeners installés');
+        if (VERBCONSOLE>0) { console.log('✓ Event listeners installés'); }
         
         // ÉTAPE 5 : Charger les données
-        console.log('5️⃣ Chargement données...');
+        if (VERBCONSOLE>0) { console.log('5️⃣ Chargement données...'); }
         loadData();
         
         // ÉTAPE 6 : Vérifier serveur
-        console.log('6️⃣ Vérification serveur...');
+        if (VERBCONSOLE>0) { console.log('6️⃣ Vérification serveur...'); }
         checkServerStatus();
         
         // ÉTAPE 7 : Appliquer mode dark sauvegardé
-        console.log('7️⃣ Application préférences dark mode...');
+        if (VERBCONSOLE>0) { console.log('7️⃣ Application préférences dark mode...'); }
         const savedMode = localStorage.getItem('darkMode');
         if (savedMode) {
-            console.log('Mode sauvegardé trouvé:', savedMode);
+            if (VERBCONSOLE>0) { console.log('Mode sauvegardé trouvé:', savedMode); }
             applyDarkMode(savedMode);
         } else {
             applyDarkMode(DARK_MODE_SETTING);
@@ -985,19 +1228,19 @@ async function setupApp() {
         updateThemeIcon(); // Mettre à jour l'icône du toggle
 
         // ÉTAPE 7b : Charger statut import
-        console.log('7️⃣b Chargement statut import...');
+        if (VERBCONSOLE>0) { console.log('7️⃣b Chargement statut import...'); }
         updateImportStatus();
 
         // ÉTAPE 8 : Appliquer mode guest si nécessaire
         if (IS_GUEST) {
-            console.log('7️⃣ Application mode guest...');
+            if (VERBCONSOLE>0) { console.log('7️⃣ Application mode guest...'); }
             applyGuestDefaults();
         }
 
         // ÉTAPE 9 : Rafraîchissement automatique
-        console.log('8️⃣ Démarrage rafraîchissement auto...');
+        if (VERBCONSOLE>0) { console.log('8️⃣ Démarrage rafraîchissement auto...'); }
         setInterval(() => {
-            console.log('⟳ Rafraîchissement automatique...');
+            if (VERBCONSOLE>0) { console.log('⟳ Rafraîchissement automatique...'); }
             loadData();
             checkServerStatus();
             updateImportStatus();
@@ -1005,11 +1248,11 @@ async function setupApp() {
 
         // ÉTAPE 10 : Vérification expiration session (si authentifié)
         if (IS_AUTHENTICATED || IS_GUEST) {
-            console.log('9️⃣ Démarrage vérification expiration session...');
+            if (VERBCONSOLE>0) { console.log('9️⃣ Démarrage vérification expiration session...'); }
             setInterval(checkSessionExpiration, 5 * 60 * 1000); // Toutes les 5 minutes
         }
 
-        console.log('✅ Application initialisée avec succès');
+        if (VERBCONSOLE>0) { console.log('✅ Application initialisée avec succès'); }
         
     } catch (err) {
         console.error('❌ Erreur lors du setup:', err);
@@ -1018,7 +1261,7 @@ async function setupApp() {
 }
 
 function applyGuestDefaults() {
-    console.log('👁️ Application mode guest...');
+    if (VERBCONSOLE>0) { console.log('👁️ Application mode guest...'); }
     
     if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
         console.warn('⚠️ ZONES_CONFIG non chargée');
@@ -1047,11 +1290,11 @@ function applyGuestDefaults() {
     // Masquer les éléments admin
     hideAdminElements();
     
-    console.log('✓ Mode guest appliqué');
+    if (VERBCONSOLE>0) { console.log('✓ Mode guest appliqué'); }
 }
 
 function applyAdminDefaults() {
-    console.log('👁️ Application mode guest...');
+    if (VERBCONSOLE>0) { console.log('👁️ Application mode guest...'); }
     
     if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
         console.warn('⚠️ ZONES_CONFIG non chargée');
@@ -1080,7 +1323,7 @@ function applyAdminDefaults() {
     // Démasquer les éléments d'administration
     showAdminElements();
     
-    console.log('✓ Mode guest appliqué');
+    if (VERBCONSOLE>0) { console.log('✓ Mode guest appliqué'); }
 }
 
 // ============ BACKUP =============================================
@@ -1159,8 +1402,8 @@ function loadData() {
         })
         .then(data => {
             DATA = data;
-            console.log('📦 Données chargées:', DATA.length);
-            console.log('📋 ZONES_CONFIG:', ZONES_CONFIG);
+            if (VERBCONSOLE>0) { console.log('📦 Données chargées:', DATA.length); }
+            if (VERBCONSOLE>0) { console.log('📋 ZONES_CONFIG:', ZONES_CONFIG); }
             
             renderAllTables();
             updateCounters();
@@ -1175,12 +1418,12 @@ function loadData() {
 
 function updateCounters() {
     if (!DATA || DATA.length === 0) {
-        console.log('⚠️ Pas de données pour les compteurs');
+        if (VERBCONSOLE>0) { console.log('⚠️ Pas de données pour les compteurs'); }
         return;
     }
     
     if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
-        console.log('⚠️ ZONES_CONFIG non chargée');
+        if (VERBCONSOLE>0) { console.log('⚠️ ZONES_CONFIG non chargée'); }
         return;
     }
     
@@ -1473,9 +1716,9 @@ function detectDuplicates() {
         }
     });
     
-    console.log('🔍 Doublons détectés:', duplicates.size);
-    console.log('  Par IPP:', Object.entries(seen.byIPP).filter(([k,v]) => v.length > 1));
-    console.log('  Par identité:', Object.entries(seen.byIdentity).filter(([k,v]) => v.length > 1));
+    if (VERBCONSOLE>0) { console.log('🔍 Doublons détectés:', duplicates.size); }
+    if (VERBCONSOLE>0) { console.log('  Par IPP:', Object.entries(seen.byIPP).filter(([k,v]) => v.length > 1)); }
+    if (VERBCONSOLE>0) { console.log('  Par identité:', Object.entries(seen.byIdentity).filter(([k,v]) => v.length > 1)); }
     
     return {
         duplicates: duplicates,
@@ -1554,17 +1797,17 @@ function detectHomonyms() {
         }
     });
     
-    console.log('👥 Homonymes détectés:', homonyms.size);
-    console.log('  Par nom+prénom:', Object.entries(seen.byFullName).filter(([k,v]) => {
+    if (VERBCONSOLE>0) { console.log('👥 Homonymes détectés:', homonyms.size); }
+    if (VERBCONSOLE>0) {  console.log('  Par nom+prénom:', Object.entries(seen.byFullName).filter(([k,v]) => {
         if (v.length <= 1) return false;
         const uniquePersons = new Set(v.map(l => `${l.ipp}|${l.birthDate}`));
         return uniquePersons.size > 1;
-    }).length);
-    console.log('  Par nom seul:', Object.entries(seen.byLastName).filter(([k,v]) => {
+    }).length); }
+    if (VERBCONSOLE>0) { console.log('  Par nom seul:', Object.entries(seen.byLastName).filter(([k,v]) => {
         if (v.length <= 1) return false;
         const uniqueFirstNames = new Set(v.map(l => l.firstName?.toUpperCase()));
         return uniqueFirstNames.size > 1;
-    }).length);
+    }).length); }
     
     return {
         homonyms: homonyms,
@@ -1588,7 +1831,7 @@ function searchLockers(query) {
         return searchText.includes(searchTerm);
     });
     
-    console.log(`🔍 Recherche "${query}" : ${allResults.length} résultat(s)`);
+    if (VERBCONSOLE>0) { console.log(`🔍 Recherche "${query}" : ${allResults.length} résultat(s)`); }
     
     // Mettre à jour le compteur de l'onglet SEARCH
     const counterSearch = document.getElementById('counter-SEARCH');
@@ -2218,7 +2461,7 @@ function importJSON() {
         }
       
         try {
-            console.log('📂 Lecture du fichier JSON...');
+            if (VERBCONSOLE>0) { console.log('📂 Lecture du fichier JSON...'); }
             const text = await file.text();
             const jsonData = JSON.parse(text);
             
@@ -2232,7 +2475,7 @@ function importJSON() {
             const data = jsonData.lockers || jsonData;
             const metadata = jsonData.metadata;
             
-            console.log(`📦 ${data.length} casiers trouvés dans le fichier`);
+            if (VERBCONSOLE>0) { console.log(`📦 ${data.length} casiers trouvés dans le fichier`); }
             
             if (metadata) {
                 const exportDate = new Date(metadata.exportDate).toLocaleString('fr-FR');
@@ -2314,6 +2557,250 @@ function importJSON() {
     };
     
     input.click();
+}
+
+// ============ IMPORT CASIERS UNIFIÉ ============
+
+let selectedLockersImportFormat = 'csv';
+let selectedLockersImportMode = 'update';
+
+async function showLockersImportOptions() {
+    if (!isEditAllowed()) return;
+    
+    // Réinitialiser les valeurs
+    selectedLockersImportFormat = 'csv';
+    selectedLockersImportMode = 'update';
+    document.getElementById('lockersImportFormat').value = 'csv';
+    document.getElementById('lockersImportMode').value = 'update';
+    document.getElementById('lockersImportWarning').style.display = 'none';
+    
+    // Gérer l'affichage du warning
+    const modeSelect = document.getElementById('lockersImportMode');
+    const warning = document.getElementById('lockersImportWarning');
+    
+    modeSelect.onchange = function() {
+        selectedLockersImportMode = this.value;
+        if (this.value === 'replace') {
+            warning.style.display = 'block';
+        } else {
+            warning.style.display = 'none';
+        }
+    };
+    
+    const formatSelect = document.getElementById('lockersImportFormat');
+    formatSelect.onchange = function() {
+        selectedLockersImportFormat = this.value;
+    };
+    
+    // Ouvrir le modal
+    document.getElementById('lockersImportOptionsModal').classList.add('active');
+}
+
+function closeLockersImportOptions() {
+    document.getElementById('lockersImportOptionsModal').classList.remove('active');
+}
+
+function selectFileForLockersImport() {
+    closeLockersImportOptions();
+    
+    const fileInput = document.getElementById('lockersFileInput');
+    fileInput.value = '';
+    fileInput.accept = selectedLockersImportFormat === 'csv' ? '.csv' : '.json';
+    fileInput.onchange = handleLockersFileSelected;
+    fileInput.click();
+}
+
+async function handleLockersFileSelected(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    
+    // Trouver le bouton d'import
+    const importBtn = Array.from(document.querySelectorAll('.admin-tools-content button'))
+        .find(btn => btn.textContent.includes('Import casiers'));
+    const originalText = importBtn ? importBtn.innerHTML : '';
+    
+    // LOADING STATE
+    if (importBtn) {
+        importBtn.disabled = true;
+        importBtn.innerHTML = '⏳ Import...';
+        importBtn.classList.add('btn-loading');
+    }
+    
+    try {
+        console.log('📂 Lecture du fichier casiers...');
+        console.log('Format:', selectedLockersImportFormat);
+        console.log('Mode:', selectedLockersImportMode);
+        
+        const text = await file.text();
+        let data;
+        let metadata = null;
+        
+        // Parser selon le format
+        if (selectedLockersImportFormat === 'json') {
+            const jsonData = JSON.parse(text);
+            
+            // Supporter les deux formats
+            data = jsonData.lockers || jsonData;
+            metadata = jsonData.metadata;
+            
+            if (!Array.isArray(data)) {
+                throw new Error('Format JSON invalide : doit contenir un tableau de casiers');
+            }
+        } else {
+            // CSV
+            const lines = text.split('\n').filter(line => line.trim());
+            const dataLines = lines.slice(1);
+            
+            data = dataLines.map(line => {
+                const values = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g);
+                if (!values || values.length < 6) return null;
+                
+                return {
+                    number: values[0].replace(/"/g, '').trim(),
+                    zone: values[1].replace(/"/g, '').trim(),
+                    name: values[2].replace(/"/g, '').trim(),
+                    firstName: values[3].replace(/"/g, '').trim(),
+                    code: values[4].replace(/"/g, '').trim(),
+                    birthDate: values[5].replace(/"/g, '').trim(),
+                    recoverable: values[6] ? (values[6].replace(/"/g, '').trim() === '1') : false,
+                    comment: values[7] ? values[7].replace(/"/g, '').trim() : ''
+                };
+            }).filter(item => item !== null);
+        }
+        
+        if (data.length === 0) {
+            alert('❌ Aucune donnée valide trouvée dans le fichier');
+            return;
+        }
+        
+        // Confirmation
+        let confirmMsg = `⬆️ IMPORT CASIERS\n\n`;
+        confirmMsg += `Fichier : ${file.name}\n`;
+        confirmMsg += `Format : ${selectedLockersImportFormat.toUpperCase()}\n`;
+        confirmMsg += `Casiers : ${data.length}\n`;
+        if (metadata) {
+            const exportDate = new Date(metadata.exportDate).toLocaleString('fr-FR');
+            confirmMsg += `Exporté le : ${exportDate}\n`;
+            confirmMsg += `Par : ${metadata.exportBy || 'Inconnu'}\n`;
+        }
+        confirmMsg += `\nMode : ${selectedLockersImportMode === 'replace' ? 'REMPLACEMENT COMPLET' : 'Mise à jour'}\n`;
+        
+        if (selectedLockersImportMode === 'replace') {
+            confirmMsg += `\n⚠️ ATTENTION :\n`;
+            confirmMsg += `TOUS les casiers seront libérés avant l'import !\n`;
+        }
+        
+        confirmMsg += `\nVoulez-vous continuer ?`;
+        
+        if (!confirm(confirmMsg)) return;
+        
+        // Import
+        const res = await fetch(`${API_URL}/import`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': CSRF_TOKEN
+            },
+            credentials: 'include',
+            body: JSON.stringify({ 
+                data: data,
+                mode: selectedLockersImportMode
+            })
+        });
+        
+        if (res.ok) {
+            const result = await res.json();
+            
+            let message = `✅ Import casiers terminé !\n\n`;
+            message += `✓ Importés : ${result.imported}\n`;
+            if (result.skipped > 0) {
+                message += `⏭️ Ignorés : ${result.skipped}\n`;
+            }
+            if (result.invalidIPP > 0) {
+                message += `⚠️ IPP invalides : ${result.invalidIPP} (marqués récupérables)\n`;
+            }
+            if (result.errors > 0) {
+                message += `✗ Erreurs : ${result.errors}\n`;
+            }
+            if (result.validationErrors > 0) {
+                message += `⚠️ Validation échouée : ${result.validationErrors}\n`;
+            }
+            message += `\nTotal : ${result.total}`;
+            
+            alert(message);
+            loadData();
+            
+        } else if (res.status === 401) {
+            alert('Session expirée. Veuillez vous reconnecter.');
+            logout();
+        } else {
+            const error = await res.json();
+            throw new Error(error.error || 'Erreur serveur');
+        }
+        
+    } catch (err) {
+        if (err instanceof SyntaxError) {
+            alert('❌ Erreur : Le fichier n\'est pas valide.\n\n' + err.message);
+        } else {
+            alert('❌ Erreur lors de l\'import : ' + err.message);
+        }
+        console.error('Erreur import casiers:', err);
+    } finally {
+        // RESET STATE
+        if (importBtn) {
+            importBtn.disabled = false;
+            importBtn.innerHTML = originalText;
+            importBtn.classList.remove('btn-loading');
+        }
+    }
+}
+
+async function clearLockersDatabase() {
+    const confirmFirst = confirm(
+        '⚠️ ATTENTION - LIBÉRATION DE TOUS LES CASIERS\n\n' +
+        'Vous allez libérer TOUS les casiers de TOUTES les zones.\n\n' +
+        'Cette action est IRRÉVERSIBLE.\n\n' +
+        'Voulez-vous continuer ?'
+    );
+    
+    if (!confirmFirst) return;
+    
+    const confirmSecond = confirm(
+        '⚠️ DERNIÈRE CONFIRMATION\n\n' +
+        'Êtes-vous ABSOLUMENT CERTAIN de vouloir libérer tous les casiers ?\n\n' +
+        'Tapez OK pour confirmer.'
+    );
+    
+    if (!confirmSecond) return;
+    
+    try {
+        const res = await fetch(`${API_URL}/lockers/clear`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRF-Token': CSRF_TOKEN
+            },
+            credentials: 'include'
+        });
+        
+        if (!res.ok) {
+            const error = await res.json();
+            throw new Error(error.error || 'Erreur serveur');
+        }
+        
+        const data = await res.json();
+        
+        alert(`✓ Tous les casiers ont été libérés\n\n${data.cleared} casier(s) libéré(s)`);
+        
+        // Recharger les données
+        loadData();
+        
+        // Fermer le modal
+        closeLockersImportOptions();
+        
+    } catch (err) {
+        console.error('Erreur libération casiers:', err);
+        alert('❌ Erreur : ' + err.message);
+    }
 }
 
 // ============ IMPORT CLIENTS ============
@@ -2420,9 +2907,9 @@ async function handleClientFileSelected(e) {
     }
     
     try {
-        console.log('📂 Lecture du fichier patients...');
-        console.log('Format sélectionné:', selectedImportFormat);
-        console.log('Mode sélectionné:', selectedImportMode);
+        if (VERBCONSOLE>0) { console.log('📂 Lecture du fichier patients...'); }
+        if (VERBCONSOLE>0) { console.log('Format sélectionné:', selectedImportFormat); }
+        if (VERBCONSOLE>0) { console.log('Mode sélectionné:', selectedImportMode); }
         
         const text = await file.text();
         
@@ -2498,7 +2985,7 @@ async function clearClientsDatabase() {
     
     if (!confirmFirst) return;
     
-    // Double confirmation
+/*    // Double confirmation
     const confirmSecond = confirm(
         '⚠️ DERNIÈRE CONFIRMATION\n\n' +
         'Êtes-vous ABSOLUMENT CERTAIN de vouloir vider la base patients ?\n\n' +
@@ -2506,7 +2993,7 @@ async function clearClientsDatabase() {
         'Tapez OK pour confirmer.'
     );
     
-    if (!confirmSecond) return;
+    if (!confirmSecond) return;*/
     
     try {
         const res = await fetch(`${API_URL}/clients/clear`, {
@@ -2608,35 +3095,6 @@ function toggleDropdown(e) {
 document.addEventListener('click', function() {
     document.querySelectorAll('.dropdown-menu.active').forEach(m => m.classList.remove('active'));
 });
-
-
-function debugAppState() {
-    console.log('🔍 État de l\'application:');
-    console.log('  ZONES_CONFIG:', ZONES_CONFIG);
-    console.log('  DATA:', DATA ? DATA.length + ' casiers' : 'non chargé');
-    console.log('  CURRENT_FILTER:', CURRENT_FILTER);
-    console.log('  IS_GUEST:', IS_GUEST);
-    console.log('  IS_AUTHENTICATED:', IS_AUTHENTICATED);
-    
-    console.log('\n📊 Compteurs:');
-    ZONES_CONFIG.forEach(zone => {
-        const counter = document.getElementById(`counter-${zone.name}`);
-        console.log(`  ${zone.name}:`, counter ? counter.textContent : 'NON TROUVÉ');
-    });
-    
-    console.log('\n📋 Tableaux:');
-    ZONES_CONFIG.forEach(zone => {
-        const tbody = document.getElementById(`tbody-${zone.name}`);
-        console.log(`  tbody-${zone.name}:`, tbody ? tbody.children.length + ' lignes' : 'NON TROUVÉ');
-    });
-    
-    console.log('\n🔘 Onglets:');
-    const tabs = document.querySelectorAll('.tab-button');
-    console.log(`  ${tabs.length} onglets générés`);
-    tabs.forEach(tab => {
-        console.log(`    - ${tab.textContent.trim()} (${tab.classList.contains('active') ? 'actif' : 'inactif'})`);
-    });
-}
 
 function showDuplicatesPanel() {
     const duplicateInfo = detectDuplicates();
@@ -3161,17 +3619,22 @@ async function confirmRestore() {
     `;
     
     try {
+        const bodyData = {};
+        if (selectedBackupFile) {
+            bodyData.filename = selectedBackupFile;
+        }
+        if (uploadedBackupData) {
+            bodyData.fileData = uploadedBackupData;
+        }
+        
         const res = await fetch(`${API_URL}/restore`, {
             method: 'POST',
-            credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
                 'X-CSRF-Token': CSRF_TOKEN
             },
-            body: JSON.stringify({
-                filename: selectedBackupFile,
-                fileData: uploadedBackupData
-            })
+            credentials: 'include',
+            body: JSON.stringify(bodyData)
         });
         
         const data = await res.json();
@@ -3891,9 +4354,11 @@ function showLabelPrintDialog() {
     // Réinitialiser
     document.getElementById('labelFormat').value = '3x9';
     document.getElementById('labelSelection').value = 'all';
+    document.getElementById('labelRepetition').value = '1';
     document.getElementById('zoneSelector').style.display = 'none';
     document.getElementById('rangeSelector').style.display = 'none';
     document.getElementById('labelAnonymize').checked = false;
+    document.getElementById('labelHomonymes').checked = false;
     
     updateLabelPreview();
     modal.classList.add('active');
@@ -3974,8 +4439,8 @@ function generateLabelHTML(lockers, format, anonymize) {
     // Dimensions calculées (A4 = 210mm × 297mm)
     const pageWidth = 210; // mm
     const pageHeight = 297; // mm
-    const marginTop = format === '5x13' ? 8 : 15; // mm
-    const marginBottom = format === '5x13' ? 8 : 15; // mm
+    const marginTop = format === '5x13' ? 10 : 15; // mm
+    const marginBottom = format === '5x13' ? 10 : 15; // mm
     const marginLeft = format === '5x13' ? 5 : 6; // mm
     const marginRight = format === '5x13' ? 5 : 6; // mm
     
@@ -4038,17 +4503,22 @@ function generateLabelHTML(lockers, format, anonymize) {
             overflow: hidden;
             text-align: center;
         }
-        
-        .label-name {
-            font-size: ${format === '5x13' ? '10' : '12'}pt;
-            font-weight: bold;
-            margin-bottom: 1mm;
-        }
-        
+
         .label-locker {
             font-size: ${format === '5x13' ? '9' : '11'}pt;
             font-weight: bold;
-            margin-bottom: 0.5mm;
+            margin-bottom: ${format === '5x13' ? '0.5' : '1'}mm;
+            padding: 1mm 3mm;
+            border-radius: 3px;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+        }
+        
+
+        .label-name {
+            font-size: ${format === '5x13' ? '10' : '12'}pt;
+            font-weight: bold;
+            margin-bottom: ${format === '5x13' ? '0.5' : '1'}mm;
         }
         
         .label-info {
@@ -4077,7 +4547,13 @@ function generateLabelHTML(lockers, format, anonymize) {
 </head>
 <body>
 `;
-    
+
+    // Créer une map des couleurs par zone
+    const zoneColors = {};
+    ZONES_CONFIG.forEach(zone => {
+        zoneColors[zone.name] = zone.color || '#667eea';
+    });
+
     // Générer les pages
     for (let i = 0; i < lockers.length; i += perPage) {
         const pageLockers = lockers.slice(i, i + perPage);
@@ -4090,6 +4566,7 @@ function generateLabelHTML(lockers, format, anonymize) {
                 const locker = pageLockers[j];
                 const name = anonymize ? anonymizeName(locker.name) : locker.name;
                 const firstName = anonymize ? anonymizeFirstName(locker.firstName) : locker.firstName;
+                const zoneColor = zoneColors[locker.zone] || '#667eea';
                 
                 html += `
                     <div class="label">
@@ -4098,7 +4575,7 @@ function generateLabelHTML(lockers, format, anonymize) {
                         <div class="label-info">
                             DDN: ${locker.birthDate ? formatDate(locker.birthDate) : ''}
                         </div>
-                        <div class="label-locker">${locker.number}</div>
+                        <div class="label-locker" style="color: ${zoneColor};">${locker.number}</div>
                     </div>
                 `;
             } else {
@@ -4167,8 +4644,9 @@ function confirmPrintSingleLabel() {
     
     const format = document.getElementById('singleLabelFormat').value;
     const anonymize = document.getElementById('singleLabelAnonymize').checked;
-    const count = format === '3x9' ? 27 : 75;
-    
+    const count = format === '3x9' ? 27 : 65;
+    console.log(anonymize);
+
     // Créer un tableau avec le même casier répété
     const lockers = Array(count).fill(CURRENT_LOCKER_FOR_PRINT);
     
@@ -4190,4 +4668,36 @@ function confirmPrintSingleLabel() {
             printWindow.print();
         }, 250);
     };
+}
+
+// ================  DEBUG   =========================
+// à lancer dans la console du navigateur
+function debugAppState() {
+    if (VERBCONSOLE>0) { 
+        console.log('🔍 État de l\'application:');
+        console.log('  ZONES_CONFIG:', ZONES_CONFIG);
+        console.log('  DATA:', DATA ? DATA.length + ' casiers' : 'non chargé');
+        console.log('  CURRENT_FILTER:', CURRENT_FILTER);
+        console.log('  IS_GUEST:', IS_GUEST);
+        console.log('  IS_AUTHENTICATED:', IS_AUTHENTICATED);
+
+        console.log('\n📊 Compteurs:');
+        ZONES_CONFIG.forEach(zone => {
+            const counter = document.getElementById(`counter-${zone.name}`);
+            console.log(`  ${zone.name}:`, counter ? counter.textContent : 'NON TROUVÉ');
+        });
+        
+        console.log('\n📋 Tableaux:');
+        ZONES_CONFIG.forEach(zone => {
+            const tbody = document.getElementById(`tbody-${zone.name}`);
+            console.log(`  tbody-${zone.name}:`, tbody ? tbody.children.length + ' lignes' : 'NON TROUVÉ');
+        });
+        
+        console.log('\n🔘 Onglets:');
+        const tabs = document.querySelectorAll('.tab-button');
+        console.log(`  ${tabs.length} onglets générés`);
+        tabs.forEach(tab => {
+            console.log(`    - ${tab.textContent.trim()} (${tab.classList.contains('active') ? 'actif' : 'inactif'})`);
+        });
+    }
 }

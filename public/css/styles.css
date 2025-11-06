@@ -882,3 +882,86 @@ tr.duplicate-row td:first-child strong::after {
     color: var(--text-primary);
     font-weight: 600;
 }
+
+
+/* ============ ICÔNES DE STATUT CASIER ============ */
+.locker-status-icons {
+    display: inline-flex;
+    gap: 4px;
+    margin-left: 8px;
+    font-size: 14px;
+}
+
+.locker-status-icons span {
+    display: inline-block;
+    cursor: help;
+}
+
+/* Légende des icônes */
+.status-legend {
+    display: flex;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding: 12px;
+    background: var(--bg-secondary);
+    border-radius: 6px;
+    font-size: 13px;
+    margin-bottom: 16px;
+}
+
+.status-legend-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.status-legend-icon {
+    font-size: 16px;
+}
+
+/* Modal hospitalisation */
+#hospDateGroup {
+    transition: all 0.3s ease;
+}
+
+#hospDateGroup.hidden {
+    display: none !important;
+}
+
+/* ============ MODAL ÉTIQUETTES ============ */
+#labelPagesInfo {
+    font-size: 13px;
+    color: var(--text-secondary);
+}
+
+#labelLockerCount,
+#labelTotalCount {
+    transition: all 0.3s ease;
+}
+
+/* Animation lors du changement de valeur */
+@keyframes pulse-number {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+.number-changed {
+    animation: pulse-number 0.3s ease;
+}
+
+/* Style pour le champ de répétition */
+#labelRepetition {
+    text-align: center;
+    font-weight: 600;
+    font-size: 16px;
+}
+
+#labelRepetition:focus {
+    border-color: var(--primary-color);
+    box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+}
+
+/* Style pour la sélection */
+#labelSelection option[value="marked"] {
+    font-weight: 600;
+}

@@ -14,6 +14,21 @@ let VERBCONSOLE = 1
 
 // ============ CONFIG DES ZONES ============
 
+function sanitizeName(name) {
+  // Nettoie d'abord le nom
+  let cleanName = name.replace(/[^A-Z0-9_]/gi, '');
+
+  // Mots-clé interdits dans le nom
+  const sqlKeywords = ['DROP', 'TABLE', 'DELETE', 'INSERT', 'UPDATE', 'SELECT', 'ALTER', 'TRUNCATE', 'UNION', 'WHERE', 'FROM'];
+  const hasKeyword = sqlKeywords.some(keyword => cleanName.includes(keyword));
+
+  // Si un mot-clé est présent, ajoute un préfixe pour le rendre sûr
+  if (hasKeyword) {
+    cleanName = `Z_${cleanName}`;
+  }
+  return cleanName;
+}
+
 // Fonction pour charger la configuration des zones
 async function loadZonesConfig() {
     try {
@@ -22,7 +37,16 @@ async function loadZonesConfig() {
         });
         const data = await response.json();
         ZONES_CONFIG = data.zones;
-        
+
+        if (VERBCONSOLE>0) {
+            const zonesList = ZONES_CONFIG
+                .map(z => z.name)
+                .map(name => sanitizeName(name))
+                .map(z => `'${z}'`)
+                .join(', ');
+            console.log(zonesList);
+        }
+
         if (VERBCONSOLE>0) { console.log('📋 Configuration des zones chargée:', ZONES_CONFIG); }
         return ZONES_CONFIG;
     } catch (err) {
@@ -281,6 +305,28 @@ function generateContentSections() {
                         </div>
                     </div>
                 </div>
+                <div class="help-item admin-only">
+                    <div class="help-title">Icônes de statut des casiers</div>
+                    <div class="help-content">
+                        <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 8px;">
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 18px;">🔖</span>
+                                <span>Casier marqué (pour suivi particulier)</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 18px;">🏥</span>
+                                <span>Patient hospitalisé</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 18px;">💊</span>
+                                <span>Contient des stupéfiants</span>
+                            </div>
+                        </div>
+                        <div style="margin-top: 12px; padding: 8px; background: var(--bg-secondary); border-radius: 4px; font-size: 12px; color: var(--text-secondary);">
+                            Ces icônes apparaissent à côté du numéro de casier dans la liste
+                        </div>
+                    </div>
+                </div>
                 <div class="help-item">
                     <div class="help-title">Trier les casiers</div>
                     <div class="help-content">
@@ -343,8 +389,32 @@ function generateContentSections() {
                     </div>
                 </div>
 
+                <div class="help-item admin-only">
+                    <div class="help-title">🏷️ Impression d'étiquettes</div>
+                    <div class="help-content">
+                        <p style="margin-bottom: 12px;">L'interface d'impression permet de générer des planches d'étiquettes personnalisées.</p>
+                        
+                        <h4 style="font-size: 13px; font-weight: 600; margin: 12px 0 8px 0;">Options de sélection :</h4>
+                        <ul style="margin-left: 20px;">
+                            <li><strong>Tous les casiers occupés</strong> : Imprime tous les casiers actuellement attribués</li>
+                            <li><strong>🔖 Casiers marqués uniquement</strong> : N'imprime que les casiers marqués (pour suivi particulier)</li>
+                            <li><strong>Par zone</strong> : Sélectionne une zone spécifique (NORD, SUD, etc.)</li>
+                            <li><strong>Plage de numéros</strong> : Sélectionne une plage (ex: N01 à N25)</li>
+                        </ul>
+                        
+                        <h4 style="font-size: 13px; font-weight: 600; margin: 12px 0 8px 0;">Nombre de copies :</h4>
+                        <p style="font-size: 13px;">
+                            Permet d'imprimer plusieurs exemplaires de chaque étiquette (entre 1 et 10 copies).<br>
+                            <strong>Exemple :</strong> 15 casiers × 2 copies = 30 étiquettes au total
+                        </p>
+                        
+                        <div class="post-it" style="margin-top: 12px;">
+                            <strong>💡 Astuce :</strong> Marquez les casiers importants (menu ⋮ → Marquer) puis utilisez le filtre "Casiers marqués" pour imprimer uniquement ces étiquettes.
+                        </div>
+                    </div>
+                </div>
+
             </div>
-            
         </div>
     `;
     
@@ -362,6 +432,11 @@ function generateContentSections() {
 function anonymizeName(name) {
     if (!ANONYMIZE_ENABLED || !name) return name;
     return name.substring(0, 3).toUpperCase();
+}
+
+function anonmaxName(name) {
+    const hash = crypto.createHash('md5').update(name).digest('hex');
+    return `${name.charAt(0)}***${hash.substring(0, 3)}`; // "D***a4f"
 }
 
 function anonymizeFirstName(firstName) {
@@ -1603,10 +1678,16 @@ function renderTable(zone) {
             const isDuplicate = duplicateNumbers.has(locker.number);
             const duplicateClass = isDuplicate ? 'duplicate-row' : '';
             const duplicateTitle = isDuplicate ? getDuplicateInfo(locker) : '';
-            
+    
+            // Icônes de statut
+            const marqueIcon = locker.marque ? '🔖' : '';
+            const hospIcon = locker.hosp ? '🚑' : '';
+            const stupIcon = locker.stup ? '💊' : '';
+            const statusIcons = [marqueIcon, hospIcon, stupIcon].filter(i => i).join(' ');
+
             return `
-            <tr class="${duplicateClass}" title="${duplicateTitle}">
-                <td><strong>${locker.number}</strong>${isDuplicate ? ' ⚠️' : ''}</td>
+ <tr class="${duplicateClass}" title="${duplicateTitle}">
+                <td><strong>${locker.number}</strong>${isDuplicate ? ' ⚠️' : ''} ${statusIcons}</td>
                 <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeName(locker.name)}</span>` : '<span class="cell-empty">—</span>'}</td>
                 <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeFirstName(locker.firstName)}</span>` : '<span class="cell-empty">—</span>'}</td>
                 <td>${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
@@ -1617,9 +1698,13 @@ function renderTable(zone) {
                     <div class="menu-dot">
                         <button class="btn-secondary" onclick="toggleDropdown(event)">⋮</button>
                         <div class="dropdown-menu">
-                            <button onclick="openModalEdit('${locker.number}')">Modifier</button>
+                            <button onclick="openModalEdit('${locker.number}')">✏️ Modifier</button>
                             <button onclick="printSingleLockerLabels('${locker.number}')">🏷️ Imprimer étiquettes</button>
-                            <button class="btn-delete" onclick="releaseLocker('${locker.number}')">Libérer</button>
+                            <button onclick="toggleMarque('${locker.number}', ${locker.marque ? 'true' : 'false'})">
+                                ${locker.marque ? '🔖 Retirer marque' : '🔖 Marquer'}
+                            </button>
+                            <button onclick="openHospitalisationModal('${locker.number}')">🚑 Patient hospitalisé</button>
+                            <button class="btn-delete" onclick="releaseLocker('${locker.number}')">🧹 Libérer</button>
                         </div>
                     </div>
                 </td>
@@ -1716,9 +1801,11 @@ function detectDuplicates() {
         }
     });
     
-    if (VERBCONSOLE>0) { console.log('🔍 Doublons détectés:', duplicates.size); }
-    if (VERBCONSOLE>0) { console.log('  Par IPP:', Object.entries(seen.byIPP).filter(([k,v]) => v.length > 1)); }
-    if (VERBCONSOLE>0) { console.log('  Par identité:', Object.entries(seen.byIdentity).filter(([k,v]) => v.length > 1)); }
+    if (VERBCONSOLE>1) { 
+        console.log('🔍 Doublons détectés:', duplicates.size);
+        console.log('  Par IPP:', Object.entries(seen.byIPP).filter(([k,v]) => v.length > 1));
+        console.log('  Par identité:', Object.entries(seen.byIdentity).filter(([k,v]) => v.length > 1));
+    }
     
     return {
         duplicates: duplicates,
@@ -1797,17 +1884,19 @@ function detectHomonyms() {
         }
     });
     
-    if (VERBCONSOLE>0) { console.log('👥 Homonymes détectés:', homonyms.size); }
-    if (VERBCONSOLE>0) {  console.log('  Par nom+prénom:', Object.entries(seen.byFullName).filter(([k,v]) => {
-        if (v.length <= 1) return false;
-        const uniquePersons = new Set(v.map(l => `${l.ipp}|${l.birthDate}`));
-        return uniquePersons.size > 1;
-    }).length); }
-    if (VERBCONSOLE>0) { console.log('  Par nom seul:', Object.entries(seen.byLastName).filter(([k,v]) => {
-        if (v.length <= 1) return false;
-        const uniqueFirstNames = new Set(v.map(l => l.firstName?.toUpperCase()));
-        return uniqueFirstNames.size > 1;
-    }).length); }
+    if (VERBCONSOLE>1) { 
+        console.log('👥 Homonymes détectés:', homonyms.size);
+        console.log('  Par nom+prénom:', Object.entries(seen.byFullName).filter(([k,v]) => {
+                if (v.length <= 1) return false;
+                const uniquePersons = new Set(v.map(l => `${l.ipp}|${l.birthDate}`));
+                return uniquePersons.size > 1;
+            }).length);
+            console.log('  Par nom seul:', Object.entries(seen.byLastName).filter(([k,v]) => {
+                if (v.length <= 1) return false;
+                const uniqueFirstNames = new Set(v.map(l => l.firstName?.toUpperCase()));
+                return uniqueFirstNames.size > 1;
+            }).length);
+    }
     
     return {
         homonyms: homonyms,
@@ -2226,8 +2315,8 @@ async function saveLocker(lockerNumber, zone, recoverable, comment) {
 }
 
 // Libérer un casier sans message
-async function releaseLockerSilent(lockerNumber) {
-    const response = await fetch(`${API_URL}/lockers/${lockerNumber}`, { 
+async function releaseLockerSilent(lockerNumber, reason = 'TRANSFERT') {
+    const response = await fetch(`${API_URL}/lockers/${lockerNumber}?reason=${reason}`, {  
         method: 'DELETE',
         credentials: 'include',
         headers: {
@@ -2321,7 +2410,11 @@ function convertToCSV(data) {
         locker.firstName, 
         locker.code, 
         locker.birthDate,
-        locker.recoverable ? '1' : '0'
+        locker.recoverable ? '1' : '0',
+        locker.marque ? '1' : '0',
+        locker.hosp ? '1' : '0',
+        locker.hospDate || '',
+        locker.stup ? '1' : '0'
     ]);
     
     return [
@@ -4357,9 +4450,11 @@ function showLabelPrintDialog() {
     document.getElementById('labelRepetition').value = '1';
     document.getElementById('zoneSelector').style.display = 'none';
     document.getElementById('rangeSelector').style.display = 'none';
-    document.getElementById('labelAnonymize').checked = false;
-    document.getElementById('labelHomonymes').checked = false;
+    // Pré-cocher selon ANONYMIZE_ENABLED
+    document.getElementById('labelAnonymize').checked = ANONYMIZE_ENABLED;    
+    //document.getElementById('labelHomonymes').checked = false;
     
+
     updateLabelPreview();
     modal.classList.add('active');
 }
@@ -4375,9 +4470,31 @@ function updateLabelPreview() {
     document.getElementById('zoneSelector').style.display = selection === 'zone' ? 'block' : 'none';
     document.getElementById('rangeSelector').style.display = selection === 'range' ? 'block' : 'none';
     
-    // Calculer le nombre d'étiquettes
+    // Calculer le nombre de casiers et d'étiquettes
     const lockers = getSelectedLockersForLabels();
-    document.getElementById('labelCount').textContent = lockers.length;
+    const repetition = parseInt(document.getElementById('labelRepetition').value) || 1;
+    const totalLabels = lockers.length * repetition;
+    
+    // Mettre à jour l'affichage
+    document.getElementById('labelLockerCount').textContent = lockers.length;
+    document.getElementById('labelTotalCount').textContent = totalLabels;
+    
+    // Calculer le nombre de pages
+    const format = document.getElementById('labelFormat').value;
+    const labelsPerPage = format === '5x13' ? 65 : 27;
+    const pagesNeeded = Math.ceil(totalLabels / labelsPerPage);
+    const lastPageLabels = totalLabels % labelsPerPage || labelsPerPage;
+    
+    // Afficher les infos de pagination
+    const pagesInfo = document.getElementById('labelPagesInfo');
+    if (totalLabels === 0) {
+        pagesInfo.innerHTML = '<span style="color: var(--text-tertiary);">Aucun casier sélectionné</span>';
+    } else {
+        pagesInfo.innerHTML = `
+            📄 ${pagesNeeded} page${pagesNeeded > 1 ? 's' : ''} nécessaire${pagesNeeded > 1 ? 's' : ''}
+            ${pagesNeeded > 1 ? `<br><span style="font-size: 11px;">(Dernière page : ${lastPageLabels} étiquette${lastPageLabels > 1 ? 's' : ''})</span>` : ''}
+        `;
+    }
 }
 
 function getSelectedLockersForLabels() {
@@ -4397,6 +4514,9 @@ function getSelectedLockersForLabels() {
                 return num >= start && num <= end;
             });
         }
+    } else if (selection === 'marked') {
+        // ⬇️ NOUVEAU : Filtrer les casiers marqués
+        lockers = lockers.filter(l => l.marque);
     }
     
     // Trier par numéro
@@ -4408,18 +4528,68 @@ function getSelectedLockersForLabels() {
 function openLabelPrintWindow() {
     const format = document.getElementById('labelFormat').value;
     const anonymize = document.getElementById('labelAnonymize').checked;
+    const repetitionInput = document.getElementById('labelRepetition');
+    let repetition = parseInt(repetitionInput.value);
+    
+    // Validation stricte
+    if (isNaN(repetition) || repetition < 1) {
+        repetition = 1;
+        repetitionInput.value = 1;
+        alert('⚠️ Le nombre de copies doit être au minimum 1.\nValeur réinitialisée à 1.');
+        return;
+    }
+    
+    if (repetition > 10) {
+        repetition = 10;
+        repetitionInput.value = 10;
+        alert('⚠️ Le nombre de copies ne peut pas dépasser 10.\nValeur limitée à 10.');
+        return;
+    }
+
     const lockers = getSelectedLockersForLabels();
     
     if (lockers.length === 0) {
         alert('Aucun casier sélectionné');
         return;
     }
+
+    // Vérification de la taille totale
+    const totalLabels = lockers.length * repetition;
+    const labelsPerPage = format === '5x13' ? 65 : 27;
+    const pagesNeeded = Math.ceil(totalLabels / labelsPerPage);
+    
+    // Avertissement si trop de pages
+    if (pagesNeeded > 20) {
+        const confirm = window.confirm(
+            `⚠️ ATTENTION\n\n` +
+            `Vous allez imprimer ${totalLabels} étiquettes sur ${pagesNeeded} pages.\n\n` +
+            `Cela peut prendre du temps et consommer beaucoup de papier.\n\n` +
+            `Voulez-vous continuer ?`
+        );
+        if (!confirm) return;
+    }
+
+    // Dupliquer les casiers selon le nombre de répétitions
+    const duplicatedLockers = [];
+    lockers.forEach(locker => {
+        for (let i = 0; i < repetition; i++) {
+            duplicatedLockers.push(locker);
+        }
+    });
+    
+    if (VERBCONSOLE > 0) {
+        console.log(`🏷️ Impression d'étiquettes:`);
+        console.log(`   - Casiers uniques: ${lockers.length}`);
+        console.log(`   - Répétitions: ${repetition}`);
+        console.log(`   - Total étiquettes: ${duplicatedLockers.length}`);
+        console.log(`   - Pages nécessaires: ${pagesNeeded}`);
+    }
     
     // Créer une nouvelle fenêtre pour l'impression
     const printWindow = window.open('', '_blank', 'width=800,height=600');
     
     // Générer le HTML
-    const html = generateLabelHTML(lockers, format, anonymize);
+    const html = generateLabelHTML(duplicatedLockers, format, anonymize);
     
     printWindow.document.write(html);
     printWindow.document.close();
@@ -4433,6 +4603,14 @@ function openLabelPrintWindow() {
 }
 
 function generateLabelHTML(lockers, format, anonymize) {
+
+    if (VERBCONSOLE==1) {
+        console.log('🏷️ generateLabelHTML appelée avec:');
+        console.log('  - Nombre de casiers:', lockers.length);
+        console.log('  - Anonymisation:', anonymize);
+        console.log('  - ANONYMIZE_ENABLED (global):', ANONYMIZE_ENABLED);
+    }
+
     const [cols, rows] = format === '5x13' ? [5, 13] : [3, 9];
     const perPage = cols * rows;
     
@@ -4449,6 +4627,21 @@ function generateLabelHTML(lockers, format, anonymize) {
     
     const labelWidth = usableWidth / cols;
     const labelHeight = usableHeight / rows;
+
+    // Compter les casiers uniques
+    const uniqueLockers = new Set(lockers.map(l => l.number));
+    const totalPages = Math.ceil(lockers.length / perPage);
+
+    // FONCTION LOCALE D'ANONYMISATION
+    const anonymizeNameLocal = (name) => {
+        if (!anonymize || !name) return name;
+        return name.substring(0, 3).toUpperCase();
+    };
+    
+    const anonymizeFirstNameLocal = (firstName) => {
+        if (!anonymize || !firstName) return firstName;
+        return firstName.substring(0, 2);
+    };
     
     let html = `
 <!DOCTYPE html>
@@ -4533,6 +4726,17 @@ function generateLabelHTML(lockers, format, anonymize) {
             margin-top: 1mm;
         }
         
+        /* Footer avec info */
+        .page-footer {
+            position: absolute;
+            bottom: 2mm;
+            left: 0;
+            right: 0;
+            text-align: center;
+            font-size: 7pt;
+            color: #999;
+        }
+
         @media print {
             body {
                 -webkit-print-color-adjust: exact;
@@ -4557,15 +4761,18 @@ function generateLabelHTML(lockers, format, anonymize) {
     // Générer les pages
     for (let i = 0; i < lockers.length; i += perPage) {
         const pageLockers = lockers.slice(i, i + perPage);
+        const currentPage = Math.floor(i / perPage) + 1;
         
-        html += `<div class="page"><div class="label-grid">`;
+        html += `<div class="page">
+            <div class="label-grid">`;
         
         // Remplir la page
         for (let j = 0; j < perPage; j++) {
             if (j < pageLockers.length) {
                 const locker = pageLockers[j];
-                const name = anonymize ? anonymizeName(locker.name) : locker.name;
-                const firstName = anonymize ? anonymizeFirstName(locker.firstName) : locker.firstName;
+                const name = anonymizeNameLocal(locker.name);
+                const firstName = anonymizeFirstNameLocal(locker.firstName);               console.log(`  Casier ${locker.number}: "${locker.name}" → "${name}"`);
+                console.log(`  Prénom: "${locker.firstName}" → "${firstName}"`);
                 const zoneColor = zoneColors[locker.zone] || '#667eea';
                 
                 html += `
@@ -4584,7 +4791,11 @@ function generateLabelHTML(lockers, format, anonymize) {
             }
         }
         
-        html += `</div></div>`;
+        html += `</div>
+            <div class="page-footer">
+                Page ${currentPage}/${totalPages} • ${uniqueLockers.size} casier${uniqueLockers.size > 1 ? 's' : ''} • ${lockers.length} étiquette${lockers.length > 1 ? 's' : ''} • Généré le ${new Date().toLocaleDateString('fr-FR')}
+            </div>
+        </div>`;
     }
     
     html += `
@@ -4645,7 +4856,14 @@ function confirmPrintSingleLabel() {
     const format = document.getElementById('singleLabelFormat').value;
     const anonymize = document.getElementById('singleLabelAnonymize').checked;
     const count = format === '3x9' ? 27 : 65;
-    console.log(anonymize);
+
+    // Debug
+    if (VERBCONSOLE > 0) {
+        console.log('🏷️ Impression étiquette unique:');
+        console.log('  - Casier:', CURRENT_LOCKER_FOR_PRINT.number);
+        console.log('  - Anonymisation:', anonymize);
+        console.log('  - Format:', format);
+    }
 
     // Créer un tableau avec le même casier répété
     const lockers = Array(count).fill(CURRENT_LOCKER_FOR_PRINT);
@@ -4669,6 +4887,199 @@ function confirmPrintSingleLabel() {
         }, 250);
     };
 }
+
+// ============ MARQUE CASIER ============
+
+let CURRENT_LOCKER_FOR_MARQUE = null;
+
+async function toggleMarque(lockerNumber, currentMarque) {
+    const locker = DATA.find(l => l.number === lockerNumber);
+    if (!locker) {
+        alert('Casier non trouvé');
+        return;
+    }
+
+    const action = currentMarque ? 'retirer la marque de' : 'marquer';
+    const confirmMsg = `${action.charAt(0).toUpperCase() + action.slice(1)} le casier ${lockerNumber} ?\n\n` +
+        (locker.occupied ? `Patient: ${locker.name} ${locker.firstName}` : 'Casier vide');
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const response = await fetch(`${API_URL}/lockers/${lockerNumber}/marque`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': CSRF_TOKEN
+            }
+        });
+
+        if (!response.ok) {
+            handleCsrfError(response);
+            throw new Error('Erreur ' + response.status);
+        }
+
+        const updatedLocker = await response.json();
+        
+        // Mettre à jour DATA
+        const index = DATA.findIndex(l => l.number === lockerNumber);
+        if (index !== -1) {
+            DATA[index] = updatedLocker;
+        }
+
+        // Rafraîchir l'affichage
+        renderAllTables();
+
+        const icon = updatedLocker.marque ? '🔖' : '✓';
+        const message = updatedLocker.marque 
+            ? `${icon} Casier ${lockerNumber} marqué`
+            : `${icon} Marque retirée du casier ${lockerNumber}`;
+        
+        showStatus(message, 'success');
+
+    } catch (err) {
+        console.error('Erreur toggle marque:', err);
+        showStatus('Erreur: ' + err.message, 'error');
+    }
+}
+
+// ============ HOSPITALISATION ============
+
+let CURRENT_LOCKER_FOR_HOSP = null;
+
+function openHospitalisationModal(lockerNumber) {
+    const locker = DATA.find(l => l.number === lockerNumber);
+    
+    if (!locker) {
+        alert('Casier non trouvé');
+        return;
+    }
+    
+    CURRENT_LOCKER_FOR_HOSP = locker;
+    
+    // Remplir les infos
+    const infoDiv = document.getElementById('hospitalisationInfo');
+    infoDiv.innerHTML = `
+        <div style="font-size: 14px;">
+            <strong style="font-size: 16px;">${locker.number} - Zone ${locker.zone}</strong><br>
+            ${locker.occupied 
+                ? `<span style="color: var(--text-secondary);">
+                    ${locker.name} ${locker.firstName}<br>
+                    IPP: ${locker.code}
+                   </span>`
+                : '<span style="color: var(--text-secondary);">Casier vide</span>'
+            }
+        </div>
+    `;
+    
+    // Pré-remplir le formulaire
+    const hospCheckbox = document.getElementById('hospCheckbox');
+    const hospDateInput = document.getElementById('hospDateInput');
+    const hospDateGroup = document.getElementById('hospDateGroup');
+    
+    hospCheckbox.checked = locker.hosp ? true : false;
+    hospDateInput.value = locker.hospDate || '';
+    
+    // Afficher/masquer le champ date selon la checkbox
+    hospDateGroup.style.display = hospCheckbox.checked ? 'block' : 'none';
+    
+    // Event listener pour la checkbox
+    hospCheckbox.onchange = function() {
+        hospDateGroup.style.display = this.checked ? 'block' : 'none';
+        if (!this.checked) {
+            hospDateInput.value = '';
+        }
+    };
+    
+    // Reset status message
+    document.getElementById('hospitalisationStatus').innerHTML = '';
+    
+    // Ouvrir le modal
+    document.getElementById('hospitalisationModal').classList.add('active');
+}
+
+function closeHospitalisationModal() {
+    document.getElementById('hospitalisationModal').classList.remove('active');
+    CURRENT_LOCKER_FOR_HOSP = null;
+}
+
+// Gérer la soumission du formulaire
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('hospitalisationForm');
+    if (form) {
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            if (!CURRENT_LOCKER_FOR_HOSP) return;
+            
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const originalText = submitBtn.textContent;
+            const statusEl = document.getElementById('hospitalisationStatus');
+            
+            // LOADING STATE
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '⏳ Enregistrement...';
+            submitBtn.classList.add('btn-loading');
+            
+            try {
+                const hospCheckbox = document.getElementById('hospCheckbox');
+                const hospDateInput = document.getElementById('hospDateInput');
+                
+                const hosp = hospCheckbox.checked;
+                const hospDate = hosp ? hospDateInput.value : '';
+                
+                const response = await fetch(`${API_URL}/lockers/${CURRENT_LOCKER_FOR_HOSP.number}/hospitalisation`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({ hosp, hospDate })
+                });
+                
+                if (!response.ok) {
+                    handleCsrfError(response);
+                    const error = await response.json();
+                    throw new Error(error.error || 'Erreur ' + response.status);
+                }
+                
+                const updatedLocker = await response.json();
+                
+                // Mettre à jour DATA
+                const index = DATA.findIndex(l => l.number === CURRENT_LOCKER_FOR_HOSP.number);
+                if (index !== -1) {
+                    DATA[index] = updatedLocker;
+                }
+                
+                // Rafraîchir l'affichage
+                renderAllTables();
+                
+                // Fermer le modal
+                closeHospitalisationModal();
+                
+                // Message de succès
+                const icon = updatedLocker.hosp ? '🏥' : '✓';
+                const message = updatedLocker.hosp 
+                    ? `${icon} Hospitalisation enregistrée pour ${CURRENT_LOCKER_FOR_HOSP.number}${updatedLocker.hospDate ? ` (${formatDate(updatedLocker.hospDate)})` : ''}`
+                    : `${icon} Hospitalisation retirée du casier ${CURRENT_LOCKER_FOR_HOSP.number}`;
+                
+                showStatus(message, 'success');
+                
+            } catch (err) {
+                console.error('Erreur modification hospitalisation:', err);
+                statusEl.className = 'status-message status-error';
+                statusEl.textContent = '✗ Erreur : ' + err.message;
+            } finally {
+                // RESET STATE
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+                submitBtn.classList.remove('btn-loading');
+            }
+        });
+    }
+});
 
 // ================  DEBUG   =========================
 // à lancer dans la console du navigateur

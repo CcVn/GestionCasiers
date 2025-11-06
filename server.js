@@ -16,8 +16,11 @@ const lockerSchema = z.object({
     birthDate: z.string().optional().default(''),
     recoverable: z.boolean().optional().default(false),
     comment: z.string().max(500, 'Commentaire trop long').optional().default(''),
-    expectedVersion: z.union([z.number(), z.null()]).optional()  // MODIFIER : accepter number, null ou undefined
-    //expectedVersion: z.number().nullable().optional()  // number | null | undefined
+    marque: z.boolean().optional().default(false),
+    hosp: z.boolean().optional().default(false),
+    hospDate: z.string().optional().default(''),
+    stup: z.boolean().optional().default(false),
+    expectedVersion: z.union([z.number(), z.null()]).optional()  // accepter number, null ou undefined
 });
 
 // Schéma pour import clients
@@ -432,8 +435,10 @@ function initializeDatabase() {
         code TEXT DEFAULT '',
         birthDate TEXT DEFAULT '',
         comment TEXT DEFAULT '',
-        Hospi BOOLEAN DEFAULT 0,
-        Stup BOOLEAN DEFAULT 0,
+        marque BOOLEAN DEFAULT 0,
+        hosp BOOLEAN DEFAULT 0,
+        hospDate TEXT DEFAULT '',
+        stup BOOLEAN DEFAULT 0,
         updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
         updatedBy TEXT DEFAULT '',
         version INTEGER DEFAULT 0
@@ -443,8 +448,10 @@ function initializeDatabase() {
       else {
         db.run(`ALTER TABLE lockers ADD COLUMN comment TEXT DEFAULT ''`, () => {});
         db.run(`ALTER TABLE lockers ADD COLUMN updatedBy TEXT DEFAULT ''`, () => {});
-        db.run(`ALTER TABLE lockers ADD COLUMN Hospi BOOLEAN DEFAULT ''`, () => {});
-        db.run(`ALTER TABLE lockers ADD COLUMN Stup BOOLEAN DEFAULT ''`, () => {});
+        db.run(`ALTER TABLE lockers ADD COLUMN hosp BOOLEAN DEFAULT ''`, () => {});
+        db.run(`ALTER TABLE lockers ADD COLUMN hospDate TEXT DEFAULT ''`, () => {});
+        db.run(`ALTER TABLE lockers ADD COLUMN stup BOOLEAN DEFAULT ''`, () => {});
+        db.run(`ALTER TABLE lockers ADD COLUMN marque BOOLEAN DEFAULT ''`, () => {});
         if (!isProduction && VERBOSE) console.log('✓ Table casiers créée/vérifiée');
       }
     });
@@ -1201,10 +1208,10 @@ app.post('/api/lockers', requireAuth, csrfProtection, async (req, res) => {
   }
 });
 
-// DELETE libérer un casier
-app.delete('/api/lockers/:number', requireAuth, csrfProtection, async (req, res) => {
+// POST Toggle marque d'un casier
+app.post('/api/lockers/:number/marque', requireAuth, csrfProtection, async (req, res) => {
   try {
-    const token = req.headers['authorization']?.replace('Bearer ', '');
+    const token = req.cookies.auth_token;
     const session = sessions.get(token);
     const userName = session?.userName || 'Inconnu';
 
@@ -1217,7 +1224,159 @@ app.delete('/api/lockers/:number', requireAuth, csrfProtection, async (req, res)
       return res.status(404).json({ error: 'Casier non trouvé' });
     }
 
-    const details = locker.occupied ? `${locker.name} ${locker.firstName} (IPP: ${locker.code})` : '';
+    // Toggle la marque
+    const newMarque = locker.marque ? 0 : 1;
+
+    await dbRun(
+      `UPDATE lockers 
+       SET marque = ?, updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
+       WHERE number = ?`,
+      [newMarque, userName, req.params.number]
+    );
+
+    // Logger dans l'historique
+    const action = newMarque ? 'MARQUE_AJOUTÉE' : 'MARQUE_RETIRÉE';
+    const details = locker.occupied 
+      ? `${locker.name} ${locker.firstName} (IPP: ${locker.code})`
+      : 'Casier vide';
+    
+    await recordHistory(req.params.number, action, userName, 'admin', details);
+
+    const updatedLocker = await dbGet(
+      'SELECT * FROM lockers WHERE number = ?',
+      [req.params.number]
+    );
+
+    res.json(updatedLocker);
+  } catch (err) {
+    console.error('Erreur toggle marque:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST Toggle marque d'un casier
+app.post('/api/lockers/:number/marque', requireAuth, csrfProtection, async (req, res) => {
+  try {
+    const token = req.cookies.auth_token;
+    const session = sessions.get(token);
+    const userName = session?.userName || 'Inconnu';
+
+    const locker = await dbGet(
+      'SELECT * FROM lockers WHERE number = ?',
+      [req.params.number]
+    );
+
+    if (!locker) {
+      return res.status(404).json({ error: 'Casier non trouvé' });
+    }
+
+    // Toggle la marque
+    const newMarque = locker.marque ? 0 : 1;
+
+    await dbRun(
+      `UPDATE lockers 
+       SET marque = ?, updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
+       WHERE number = ?`,
+      [newMarque, userName, req.params.number]
+    );
+
+    // Logger dans l'historique
+    const action = newMarque ? 'MARQUE_AJOUTÉE' : 'MARQUE_RETIRÉE';
+    const details = locker.occupied 
+      ? `${locker.name} ${locker.firstName} (IPP: ${locker.code})`
+      : 'Casier vide';
+    
+    await recordHistory(req.params.number, action, userName, 'admin', details);
+
+    const updatedLocker = await dbGet(
+      'SELECT * FROM lockers WHERE number = ?',
+      [req.params.number]
+    );
+
+    res.json(updatedLocker);
+  } catch (err) {
+    console.error('Erreur toggle marque:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST Modifier l'hospitalisation d'un casier
+app.post('/api/lockers/:number/hospitalisation', requireAuth, csrfProtection, async (req, res) => {
+  try {
+    const token = req.cookies.auth_token;
+    const session = sessions.get(token);
+    const userName = session?.userName || 'Inconnu';
+
+    const { hosp, hospDate } = req.body;
+
+    // Validation
+    if (typeof hosp !== 'boolean') {
+      return res.status(400).json({ error: 'hosp doit être un boolean' });
+    }
+
+    if (hosp && hospDate && !hospDate.match(/^\d{4}-\d{2}-\d{2}$/)) {
+      return res.status(400).json({ error: 'Format de date invalide (YYYY-MM-DD)' });
+    }
+
+    const locker = await dbGet(
+      'SELECT * FROM lockers WHERE number = ?',
+      [req.params.number]
+    );
+
+    if (!locker) {
+      return res.status(404).json({ error: 'Casier non trouvé' });
+    }
+
+    // Si hosp = false, vider hospDate
+    const finalHospDate = hosp ? (hospDate || '') : '';
+
+    await dbRun(
+      `UPDATE lockers 
+       SET hosp = ?, hospDate = ?, updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
+       WHERE number = ?`,
+      [hosp ? 1 : 0, finalHospDate, userName, req.params.number]
+    );
+
+    // Logger dans l'historique
+    const action = hosp ? 'HOSPITALISATION_AJOUTÉE' : 'HOSPITALISATION_RETIRÉE';
+    const details = locker.occupied 
+      ? `${locker.name} ${locker.firstName} (IPP: ${locker.code})${finalHospDate ? ` - Date: ${finalHospDate}` : ''}`
+      : `Casier vide${finalHospDate ? ` - Date: ${finalHospDate}` : ''}`;
+    
+    await recordHistory(req.params.number, action, userName, 'admin', details);
+
+    const updatedLocker = await dbGet(
+      'SELECT * FROM lockers WHERE number = ?',
+      [req.params.number]
+    );
+
+    res.json(updatedLocker);
+  } catch (err) {
+    console.error('Erreur modification hospitalisation:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE libérer un casier
+app.delete('/api/lockers/:number', requireAuth, csrfProtection, async (req, res) => {
+  try {
+    const token = req.cookies.auth_token;
+    const session = sessions.get(token);
+    const userName = session?.userName || 'Inconnu';
+    const reason = req.query.reason || 'LIBÉRATION';
+
+    const locker = await dbGet(
+      'SELECT * FROM lockers WHERE number = ?',
+      [req.params.number]
+    );
+
+    if (!locker) {
+      return res.status(404).json({ error: 'Casier non trouvé' });
+    }
+
+    const details = locker.occupied 
+      ? `${locker.name} ${locker.firstName} (IPP: ${locker.code})${reason === 'TRANSFERT' ? ' - TRANSFERT' : ''}` 
+      : '';
 
     await dbRun(
       `UPDATE lockers 
@@ -1227,7 +1386,7 @@ app.delete('/api/lockers/:number', requireAuth, csrfProtection, async (req, res)
       [userName, req.params.number]
     );
 
-    await recordHistory(req.params.number, 'LIBÉRATION', userName, 'admin', details);
+    await recordHistory(req.params.number, reason, userName, 'admin', details);
 
     const updatedLocker = await dbGet(
       'SELECT * FROM lockers WHERE number = ?',
@@ -1648,7 +1807,7 @@ app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, asyn
         stmt.finalize(async () => {
             if (!isProduction && VERBOSE) console.log('Import terminé:', importedCount, 'importés,', skippedCount, 'ignorés,', errorCount, 'erreurs,', validationErrors, 'validations échouées');
             
-            const token = req.headers['authorization']?.replace('Bearer ', '');
+            const token = req.cookies.auth_token;
             const session = sessions.get(token);
             const userName = session?.userName || 'Inconnu';
             
@@ -1683,25 +1842,34 @@ app.delete('/api/clients/clear', requireAuth, csrfProtection, async (req, res) =
     const token = req.cookies.auth_token;
     const session = sessions.get(token);
     const isAdmin = session?.isAdmin;
+    const userName = session?.userName || 'Inconnu';
+    
     if (!isAdmin) {
       return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
     }
     
-    console.log('🗑️ Suppression de tous les clients...');
+    if (true) { console.log('🗑️ Suppression de tous les clients...'); }
     
     // Supprimer les clients
     const resultClients = await dbRun('DELETE FROM clients');
     const countClients = resultClients.changes || 0;
-    console.log(`✓ ${countClients} clients supprimés`);
+    if (true) { console.log(`✓ ${countClients} clients supprimés`); }
     
     // Supprimer aussi l'historique des imports ? pour détection mise à jour... bof bof...
 /*    const resultImports = await dbRun('DELETE FROM client_imports');
     const countImports = resultImports.changes || 0;
     console.log(`✓ ${countImports} historique(s) d'import supprimé(s)`);*/
     
+    // Log de sécurité
+    await dbRun(
+      'INSERT INTO client_imports (recordCount, userName, importDate) VALUES (?, ?, ?)',
+      [-countClients, `EFFACEMENT par ${userName}`, new Date().toISOString()]
+    );
+
     res.json({
       success: true,
       deleted: countClients,
+      deletedBy: userName,
       //importsDeleted: countImports,
       message: 'Base clients vidée avec succès'
     });
@@ -1742,7 +1910,14 @@ app.delete('/api/lockers/clear', requireAuth, csrfProtection, async (req, res) =
     await recordHistory('ALL', 'CLEAR_ALL', userName, 'admin', `${count} casiers libérés`);
     
     console.log(`✓ ${count} casiers libérés`);
-    
+ 
+    // Log de sécurité supplémentaire
+    const clientIP = getClientIP(req);
+    await dbRun(
+      'INSERT INTO connection_logs (role, userName, ipAddress) VALUES (?, ?, ?)',
+      ['admin', `EFFACEMENT_CASIERS (${count})`, clientIP]
+    );
+
     res.json({
       success: true,
       cleared: count,
@@ -2064,7 +2239,7 @@ app.post('/api/clients/import', requireAuth, csrfProtection, async (req, res) =>
       if (!isProduction && VERBOSE) console.log('Import terminé:', imported, 'clients importés,', errors, 'erreurs');
       
       // Enregistrer l'import
-      const token = req.headers['authorization']?.replace('Bearer ', '');
+      const token = req.cookies.auth_token;
       const session = sessions.get(token);
       const userName = session?.userName || 'Inconnu';
       

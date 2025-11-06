@@ -19,7 +19,7 @@
                 <div class="separator"></div>
                 <div id="login_admin">
                     <p style="font-size: 16px; margin-bottom: 1rem;"><strong>Modification des casiers par la PUI</strong></p>
-                    <div class="form-group" id="userNameGroup" style="display: none;">
+                    <div class="form-group" id="userNameGroup" style="display: block;">
                         <p><small style="color: var(--text-secondary);">Identifiant libre: nom, initiales, ... Adresse réseau par défaut</small></p>
                         <input type="text" id="userName" placeholder="Identifiant (optionnel, adresse IP par défaut)" autocomplete="off">
                     </div>
@@ -117,7 +117,7 @@
                     <legend>Import des casiers</legend>
                     <div class="buttons-container" title="Import des casiers">
                         <button class="btn-secondary" onclick="showLockersImportOptions()" title="Importer des casiers">
-                                ⬆️ Import casiers
+                                ⬆️ Import CSV/JSON
                         </button>
                         <button class="btn-secondary" onclick="importCSV()" title="Importer des données casiers depuis un CSV">
                             ⬆️ CSV
@@ -482,27 +482,22 @@
             <div class="modal-header">🏷️ Impression d'étiquettes</div>
             
             <div style="padding: 20px;">
-                <div class="container" style="display: flex;align-items: center; gap: 10px; width: 100%;">
-                    <div class="form-group" style= "width: 100%; box-sizing: border-box;">
-                        <label>Format d'étiquette</label>
-                        <select id="labelFormat" onchange="updateLabelPreview()">
-                            <option value="5x13">5 × 13 étiquettes (65 par page)</option>
-                            <option value="3x9">3 × 9 étiquettes (27 par page)</option>
-                        </select>
-                    </div>
-                    
-                    <div class="form-group" style= "width: 100%; box-sizing: border-box;">
-                        <label>Nombre d'étiquettes par patient</label>
-                        <input type="text" id="labelRepetition" placeholder="1" oninput="updateLabelPreview()">
-                    </div>
+                <div class="form-group" style="width: 100%; box-sizing: border-box;">
+                    <label>Format d'étiquette</label>
+                    <select id="labelFormat" onchange="updateLabelPreview()">
+                        <option value="5x13">5 × 13 étiquettes (65 par page)</option>
+                        <option value="3x9">3 × 9 étiquettes (27 par page)</option>
+                    </select>
                 </div>
-
+                    
                 <div class="form-group">
                     <label>Sélection des casiers</label>
                     <select id="labelSelection" onchange="updateLabelPreview()">
                         <option value="all">Tous les casiers occupés</option>
-                        <option value="zone">Par zone</option>
-                        <option value="range">Plage de numéros</option>
+                        <option value="zone">   ... d'une zone</option>
+                        <option value="range">   ... dans une plage de numéros</option>
+                        <option value="marked">🔖 Casiers marqués uniquement</option>
+                        <option value="stup">💊 Casiers avec stupéfiants</option>
                     </select>
                 </div>
                 
@@ -525,22 +520,41 @@
                     </div>
                 </div>
                 
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="checkbox" id="labelAnonymize" onchange="updateLabelPreview()" style="margin-right: 10px; width: auto;">
-                        <span>Anonymiser les noms/prénoms</span>
-                    </label>
-                </div>
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="checkbox" id="labelHomonymes" onchange="updateLabelPreview()" style="margin-right: 10px; width: auto;">
-                        <span>Souligner les homonymes (non fonctionnel)</span>
-                    </label>
+                <div>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="number" id="labelRepetition" value="1" min="1" max="10" oninput="updateLabelPreview()" style="margin-right: 10px; width: auto;">
+                            <span>Nombre de copies par casier</span>
+                        </label>
+                        <small style="display: flex; color: var(--text-secondary); font-size: 11px; margin-top: 2px;">
+                            Entre 1 et 10 copies
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="labelAnonymize" onchange="updateLabelPreview()" style="margin-right: 10px; width: auto;">
+                            <span>Anonymiser les noms/prénoms</span>
+                        </label>
+                    </div>
                 </div>
 
-                <div style="background: var(--bg-secondary); border-radius: 8px; padding: 12px; margin-bottom: 16px;">
-                    <div style="font-size: 13px; color: var(--text-secondary);">
-                        <strong>Aperçu :</strong> <span id="labelCount">0</span> étiquette(s) sélectionnée(s)
+                <div style="background: var(--bg-secondary); border-radius: 8px; padding: 16px; margin-bottom: 16px;">
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; font-size: 14px;">
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 4px;">Casiers sélectionnés</div>
+                            <div style="font-size: 20px; font-weight: 600; color: var(--primary-color);">
+                                <span id="labelLockerCount">0</span>
+                            </div>
+                        </div>
+                        <div>
+                            <div style="color: var(--text-secondary); font-size: 12px; margin-bottom: 4px;">Total étiquettes</div>
+                            <div style="font-size: 20px; font-weight: 600; color: var(--primary-color);">
+                                <span id="labelTotalCount">0</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div id="labelPagesInfo" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border-color); font-size: 13px; color: var(--text-secondary);">
+                        <!-- Sera rempli dynamiquement -->
                     </div>
                 </div>
                 
@@ -583,6 +597,44 @@
             </div>
         </div>
     </div>
+    <!-- Modal Hospitalisation -->
+    <div id="hospitalisationModal" class="modal">
+        <div class="modal-content" style="max-width: 400px;">
+            <div class="modal-header">🏥 Hospitalisation</div>
+            
+            <div style="padding: 20px;">
+                <div id="hospitalisationInfo" style="background: var(--bg-secondary); padding: 16px; border-radius: 8px; margin-bottom: 20px;">
+                    <!-- Sera rempli dynamiquement -->
+                </div>
+                
+                <form id="hospitalisationForm">
+                    <div class="form-group">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="hospCheckbox" style="margin-right: 10px; width: auto; cursor: pointer;">
+                            <span style="font-weight: 600;">Patient hospitalisé</span>
+                        </label>
+                    </div>
+                    
+                    <div class="form-group" id="hospDateGroup" style="display: none;">
+                        <label for="hospDateInput">Date d'hospitalisation</label>
+                        <input type="date" id="hospDateInput">
+                        <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                            Optionnel - Laissez vide si date inconnue
+                        </small>
+                    </div>
+                    
+                    <div id="hospitalisationStatus" class="status-message" style="margin-bottom: 16px;"></div>
+                    
+                    <div class="modal-footer">
+                        <button type="button" class="btn-secondary" onclick="closeHospitalisationModal()">Annuler</button>
+                        <button type="submit" class="btn-primary">Enregistrer</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+
 <!--    <script src="/js/admintools.js"></script> -->
     <script src="app.js"></script>
     <script>

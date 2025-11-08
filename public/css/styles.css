@@ -973,8 +973,8 @@ tr.duplicate-row td:first-child strong::after {
 
 /* ============ HOSPITALISATION & STUP ============ */
 
-/* Highlight des lignes avec stupéfiants */
-tr.hospi-row {
+/* Highlight des lignes avec hospi */
+tr.hosp-row {
     background: linear-gradient(90deg, rgba(147, 51, 234, 0.5) 0%, transparent 100%);
 }
 
@@ -985,13 +985,32 @@ tr.hospi-row {
 }
 
 /* Animation pour l'icône stupéfiants */
-@keyframes pulse-pill {
+@keyframes pulse-icon {
     0%, 100% { transform: scale(1); }
     50% { transform: scale(1.15); }
 }
 
-.pill-icon-animated {
-    animation: pulse-pill 0.5s ease;
+.icon-pulse {
+    animation: pulse-icon 0.5s ease;
+}
+
+@keyframes move-vehicle {
+    0% {
+        transform: translateX(100%); /* Début à droite (hors écran) */
+        opacity: 0; /* Optionnel : fondu en entrée */
+    }
+    10%, 90% {
+        opacity: 1; /* Pleinement visible pendant le trajet */
+    }
+    100% {
+        transform: translateX(-100%); /* Fin à gauche (hors écran) */
+        opacity: 0; /* Optionnel : fondu en sortie */
+    }
+}
+
+.vehicle-icon {
+    animation: move-vehicle 3s linear infinite; /* Durée, timing, répétition */
+    display: inline-block; /* Assure que l'icône est bien alignée */
 }
 
 /* Style pour le filtre idel */

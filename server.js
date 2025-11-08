@@ -19,6 +19,7 @@ const lockerSchema = z.object({
     marque: z.boolean().optional().default(false),
     hosp: z.boolean().optional().default(false),
     hospDate: z.string().optional().default(''),
+    idel: z.boolean().optional().default(false),
     stup: z.boolean().optional().default(false),
     expectedVersion: z.union([z.number(), z.null()]).optional()  // accepter number, null ou undefined
 });
@@ -1239,7 +1240,7 @@ app.post('/api/lockers', requireAuth, csrfProtection, async (req, res) => {
       [number]
     );
 
-    if (!isProduction && VERBOSE) console.log('📝 updatedLocker:', updatedLocker);
+    //if (!isProduction && VERBOSE) console.log('📝 updatedLocker:', updatedLocker);
 
     res.json({
       locker: updatedLocker,
@@ -2014,12 +2015,12 @@ app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, asyn
             res.json({
                 success: true,
                 imported: importedCount,
-                skipped: skippedCount,           // NOUVEAU
+                skipped: skippedCount,
                 errors: errorCount,
                 validationErrors: validationErrors,
                 filtered: stats.filtered,
                 total: stats.total,
-                totalInDb: totalInDb.count        // NOUVEAU
+                totalInDb: totalInDb.count
             });
         });
     } catch (err) {
@@ -2202,10 +2203,61 @@ app.get('/api/exports/history', async (req, res) => {
 // POST import CSV casiers
 app.post('/api/import', requireAuth, importLimiter, csrfProtection, async (req, res) => {
   try {
-    const { data, mode } = req.body;
+    const { data, mode, separator, rawContent } = req.body;  // AJOUTER separator et rawContent
     
-    if (!data || !Array.isArray(data)) {
+    if (!isEditAllowed()) return;
+    
+    let parsedData = [];
+    
+    // Si rawContent fourni, parser avec séparateur
+    if (rawContent) {
+      const usedSeparator = separator === 'auto' || !separator 
+        ? detectCSVSeparator(rawContent) 
+        : separator;
+      
+      if (!isProduction && VERBOSE) {
+        console.log(`📥 Import casiers CSV`);
+        console.log(`   Séparateur: "${usedSeparator === '\t' ? 'TAB' : usedSeparator}" ${separator === 'auto' ? '(auto-détecté)' : ''}`);
+      }
+      
+      const lines = rawContent.split('\n').filter(line => line.trim());
+      
+      if (lines.length < 2) {
+        return res.status(400).json({ error: 'Fichier vide ou invalide' });
+      }
+      
+      const headers = parseCsvLine(lines[0], usedSeparator);
+      const dataLines = lines.slice(1);
+      
+      parsedData = dataLines.map(line => {
+        const values = parseCsvLine(line, usedSeparator);
+        if (!values || values.length < 6) return null;
+        
+        return {
+          number: values[0]?.trim() || '',
+          zone: values[1]?.trim() || '',
+          name: values[2]?.trim() || '',
+          firstName: values[3]?.trim() || '',
+          code: values[4]?.trim() || '',
+          birthDate: values[5]?.trim() || '',
+          recoverable: values[6] ? (values[6].trim() === '1') : false,
+          marque: values[7] ? (values[7].trim() === '1') : false,
+          hosp: values[8] ? (values[8].trim() === '1') : false,
+          hospDate: values[9]?.trim() || '',
+          stup: values[10] ? (values[10].trim() === '1') : false,
+          comment: values[11]?.trim() || ''
+        };
+      }).filter(item => item !== null);
+      
+    } else if (data && Array.isArray(data)) {
+      // Format legacy
+      parsedData = data;
+    } else {
       return res.status(400).json({ error: 'Données invalides' });
+    }
+    
+    if (parsedData.length === 0) {
+      return res.status(400).json({ error: 'Aucune donnée valide' });
     }
 
     const token = req.cookies.auth_token;
@@ -2217,10 +2269,11 @@ app.post('/api/import', requireAuth, importLimiter, csrfProtection, async (req, 
       console.log('🗑️ Mode remplacement : libération de tous les casiers...');
       await dbRun(
         `UPDATE lockers 
-         SET zone = ?, occupied = 1, recoverable = ?, name = ?, firstName = ?, code = ?, birthDate = ?, marque = ?, hosp = ?, hospDate = ?, stup = ?,
-             updatedAt = CURRENT_TIMESTAMP, version = version + 1
-         WHERE number = ?`,
-        [zone, isRecoverable, name, firstName, code, birthDate, marque ? 1 : 0, hosp ? 1 : 0, hospDate || '', stup ? 1 : 0, number]
+         SET occupied = 0, recoverable = 0, name = '', firstName = '', code = '', birthDate = '', comment = '',
+             marque = 0, hosp = 0, hospDate = '', stup = 0,
+             updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
+         WHERE occupied = 1`,
+        [userName]
       );
       await recordHistory('ALL', 'CLEAR_BEFORE_IMPORT', userName, 'admin', 'Tous les casiers libérés avant import');
     }
@@ -2230,7 +2283,7 @@ app.post('/api/import', requireAuth, importLimiter, csrfProtection, async (req, 
     let invalidIPP = 0;
     let validationErrors = 0;
 
-    for (const row of data) {
+    for (const row of parsedData) {
       try {
         // VALIDATION ZOD
         const validationResult = importCasierSchema.safeParse(row);
@@ -2239,7 +2292,8 @@ app.post('/api/import', requireAuth, importLimiter, csrfProtection, async (req, 
           validationErrors++;
           continue;
         }
-        const { number, zone, name, firstName, code, birthDate, recoverable } = validationResult.data;
+        
+        const { number, zone, name, firstName, code, birthDate, recoverable, marque, hosp, hospDate, stup, comment } = validationResult.data;
         
         const locker = await dbGet('SELECT * FROM lockers WHERE number = ?', [number]);
         
@@ -2255,10 +2309,12 @@ app.post('/api/import', requireAuth, importLimiter, csrfProtection, async (req, 
           
           await dbRun(
             `UPDATE lockers 
-             SET zone = ?, occupied = 1, recoverable = ?, name = ?, firstName = ?, code = ?, birthDate = ?,
-                 updatedAt = CURRENT_TIMESTAMP, version = version + 1
+             SET zone = ?, occupied = 1, recoverable = ?, name = ?, firstName = ?, code = ?, birthDate = ?, comment = ?,
+                 marque = ?, hosp = ?, hospDate = ?, stup = ?,
+                 updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
              WHERE number = ?`,
-            [zone, isRecoverable, name, firstName, code, birthDate, number]
+            [zone, isRecoverable, name, firstName, code, birthDate, comment || '', 
+             marque ? 1 : 0, hosp ? 1 : 0, hospDate || '', stup ? 1 : 0, userName, number]
           );
           imported++;
         } else {
@@ -2276,7 +2332,7 @@ app.post('/api/import', requireAuth, importLimiter, csrfProtection, async (req, 
       errors: errors,
       invalidIPP: invalidIPP,
       validationErrors: validationErrors,
-      total: data.length
+      total: parsedData.length
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -2379,6 +2435,97 @@ app.post('/api/import-json', requireAuth, importLimiter, csrfProtection, async (
   }
 });
 
+// POST export unifié
+app.post('/api/export', requireAuth, exportLimiter, csrfProtection, async (req, res) => {
+    try {
+        const { format, separator, includeEmpty } = req.body;
+        
+        const token = req.cookies.auth_token;
+        const session = sessions.get(token);
+        const userName = session?.userName || 'Inconnu';
+        const role = session?.isAdmin ? 'admin' : 'guest';
+        
+        // Récupérer les données
+        let lockers = includeEmpty 
+            ? await dbAll('SELECT * FROM lockers ORDER BY number ASC')
+            : await dbAll('SELECT * FROM lockers WHERE occupied = 1 ORDER BY number ASC');
+        
+        const now = new Date();
+        const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
+        const readableDate = now.toLocaleString('fr-FR', { 
+            year: 'numeric', 
+            month: '2-digit', 
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        }).replace(/[/:]/g, '-').replace(', ', '_');
+        
+        let content, filename, mimeType;
+        
+        if (format === 'json') {
+            const exportData = {
+                metadata: {
+                    exportDate: now.toISOString(),
+                    exportBy: userName,
+                    userRole: role,
+                    totalLockers: lockers.length,
+                    includeEmpty: includeEmpty,
+                    application: 'HADO - Casiers zone départ',
+                    version: '1.0'
+                },
+                lockers: lockers
+            };
+            content = JSON.stringify(exportData, null, 2);
+            filename = `casiers_${readableDate}_${userName}.json`;
+            mimeType = 'application/json';
+            
+        } else if (format === 'csv') {
+            const sep = separator || ',';
+            const headers = ['N° Casier', 'Zone', 'Nom', 'Prénom', 'N°IPP', 'DDN', 'Récupérable', 'Marque', 'Hospitalisation', 'Date Hosp', 'Stupéfiants', 'Commentaire'];
+            const rows = lockers.map(locker => [
+                locker.number, 
+                locker.zone, 
+                locker.name || '', 
+                locker.firstName || '', 
+                locker.code || '', 
+                locker.birthDate || '',
+                locker.recoverable ? '1' : '0',
+                locker.marque ? '1' : '0',
+                locker.hosp ? '1' : '0',
+                locker.hospDate || '',
+                locker.stup ? '1' : '0',
+                locker.comment || ''
+            ]);
+            
+            content = [
+                headers.join(sep),
+                ...rows.map(row => row.map(cell => `"${cell}"`).join(sep))
+            ].join('\n');
+            
+            const separatorName = sep === ';' ? 'semicolon' : sep === ',' ? 'comma' : 'other';
+            filename = `casiers_${readableDate}_${userName}_${separatorName}.csv`;
+            mimeType = 'text/csv';
+        } else {
+            return res.status(400).json({ error: 'Format invalide' });
+        }
+        
+        // Logger l'export
+        await logExport(format, lockers.length, userName, role);
+        
+        res.json({
+            success: true,
+            content: content,
+            filename: filename,
+            mimeType: mimeType,
+            recordCount: lockers.length
+        });
+        
+    } catch (err) {
+        console.error('Erreur export unifié:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // ============ ROUTES IMPORT CLIENTS ============
 
 // POST import clients depuis CSV
@@ -2461,7 +2608,7 @@ app.get('/api/clients/import-status', async (req, res) => {
     const lastImport = await dbGet(
       'SELECT * FROM client_imports ORDER BY importDate DESC LIMIT 1'
     );
-    console.log(lastImport)
+    //console.log(lastImport)
     
     const rows = await dbGet(
       'SELECT COUNT(*)=0 AS is_empty FROM clients'

@@ -1,0 +1,310 @@
+/* ============================================
+   STYLES D'IMPRESSION
+   Optimisé pour impression papier
+   Compatible mode clair ET mode sombre
+   ============================================ */
+
+@media print {
+    /* ===== FORCER LE MODE CLAIR POUR L'IMPRESSION ===== */
+    body, 
+    body.dark-mode {
+        background: white !important;
+        color: black !important;
+        margin: 0;
+        padding: 0;
+    }
+    
+    /* Forcer l'impression exacte des couleurs */
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
+    }
+    
+    /* ===== MASQUER LES ÉLÉMENTS NON IMPRIMABLES ===== */
+    header,
+    .header-info,
+    .search-bar,
+    .tabs,
+    .controls,
+    .section-header .controls,
+    button,
+    .btn-primary,
+    .btn-secondary,
+    .btn-settings,
+    .btn-theme-toggle,
+    .server-status,
+    .admin-tools-container,
+    .modal,
+    footer,
+    .app-footer,
+    .menu-dot,
+    .dropdown-menu,
+    #adminTools,
+    #search-indicator,
+    .hide-mobile {
+        display: none !important;
+    }
+    
+    /* ===== CONTENEUR PRINCIPAL ===== */
+    .container {
+        background: white !important;
+        color: black !important;
+        width: 100%;
+        max-width: 100%;
+        margin: 0;
+        padding: 0;
+    }
+    
+    .content-section {
+        page-break-after: always;
+        background: white !important;
+    }
+    
+    .content-section:last-child {
+        page-break-after: auto;
+    }
+    
+    /* ===== HEADER DE SECTION ===== */
+    .section-header {
+        background: white !important;
+        color: black !important;
+        border-bottom: 2px solid #000 !important;
+        padding: 10px 0;
+        margin-bottom: 15px;
+    }
+    
+    .section-header h2 {
+        color: black !important;
+        font-size: 18px;
+        font-weight: bold;
+        margin: 0;
+    }
+    
+    .zone-counter {
+        background: white !important;
+        color: black !important;
+        border: 1px solid #000 !important;
+        padding: 2px 8px;
+        font-weight: bold;
+    }
+    
+    /* ===== TABLEAUX ===== */
+    .table-container {
+        width: 100%;
+        overflow: visible !important;
+    }
+    
+    table {
+        width: 100%;
+        border-collapse: collapse;
+        background: white !important;
+        color: black !important;
+        font-size: 10pt;
+        page-break-inside: auto;
+    }
+    
+    /* Headers de tableau */
+    thead,
+    thead tr,
+    thead th {
+        background: #e0e0e0 !important;
+        color: black !important;
+        border: 1px solid #000 !important;
+        font-weight: bold;
+        padding: 8px 4px;
+        text-align: left;
+    }
+    
+    /* Empêcher la coupure de l'en-tête */
+    thead {
+        display: table-header-group;
+    }
+    
+    /* Corps du tableau */
+    tbody,
+    tbody tr,
+    tbody td {
+        background: white !important;
+        color: black !important;
+        border: 1px solid #666 !important;
+        padding: 6px 4px;
+    }
+    
+    /* Éviter de couper les lignes */
+    tr {
+        page-break-inside: avoid;
+        page-break-after: auto;
+    }
+    
+    td {
+        vertical-align: top;
+    }
+    
+    /* ===== STATUTS DES CASIERS ===== */
+    .status-occupied {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        background: #ef4444 !important;
+        border: 1px solid #dc2626 !important;
+        border-radius: 50%;
+    }
+    
+    .status-empty {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        background: #10b981 !important;
+        border: 1px solid #059669 !important;
+        border-radius: 50%;
+    }
+    
+    .status-recoverable {
+        display: inline-block;
+        width: 14px;
+        height: 14px;
+        background: #f59e0b !important;
+        border: 1px solid #d97706 !important;
+        border-radius: 50%;
+    }
+    
+    /* ===== LIGNES SPÉCIALES ===== */
+    /* Doublons */
+    tr.duplicate-row,
+    tr.duplicate-row td {
+        background: #fee2e2 !important;
+        border-left: 3px solid #ef4444 !important;
+    }
+    
+    /* Hospitalisation */
+    tr.hosp-row,
+    tr.hosp-row td {
+        background: #fef3c7 !important;
+    }
+    
+    /* ===== CELLULES VIDES ===== */
+    .cell-empty {
+        color: #999 !important;
+        font-style: italic;
+    }
+    
+    /* ===== HOMONYMES ===== */
+    .homonym-name {
+        font-weight: bold;
+        text-decoration: underline;
+    }
+    
+    /* ===== TEXTE SURLIGNAGE (RECHERCHE) ===== */
+    mark {
+        background: #ffff00 !important;
+        color: black !important;
+        padding: 1px 2px;
+    }
+    
+    /* ===== LÉGENDE (en bas de page) ===== */
+    .print-legend {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        background: white !important;
+        border-top: 1px solid #000;
+        padding: 5px 10px;
+        font-size: 8pt;
+        color: black !important;
+    }
+    
+    /* ===== PAGINATION ===== */
+    @page {
+        margin: 1.5cm;
+        size: A4 portrait;
+    }
+    
+    /* Numéros de page */
+    @page {
+        @bottom-right {
+            content: "Page " counter(page) " sur " counter(pages);
+            font-size: 8pt;
+            color: #666;
+        }
+    }
+    
+    /* ===== OPTIMISATIONS ===== */
+    /* Éviter les bordures orphelines */
+    table, thead, tbody, tr, th, td {
+        page-break-inside: avoid;
+    }
+    
+    /* Titres toujours avec leur contenu */
+    h1, h2, h3, h4, h5, h6 {
+        page-break-after: avoid;
+        color: black !important;
+    }
+    
+    /* Pas de box-shadow en impression */
+    * {
+        box-shadow: none !important;
+        text-shadow: none !important;
+    }
+    
+    /* ===== LARGEURS DE COLONNES OPTIMISÉES ===== */
+    td:first-child,
+    th:first-child {
+        width: 80px; /* N° Casier */
+    }
+    
+    td:nth-child(2),
+    th:nth-child(2) {
+        width: auto; /* Nom */
+    }
+    
+    td:nth-child(3),
+    th:nth-child(3) {
+        width: auto; /* Prénom */
+    }
+    
+    td:nth-child(4),
+    th:nth-child(4) {
+        width: 80px; /* IPP */
+    }
+    
+    td:nth-child(5),
+    th:nth-child(5) {
+        width: 80px; /* DDN */
+    }
+    
+    td:nth-child(6),
+    th:nth-child(6) {
+        width: 60px; /* Statut */
+        text-align: center;
+    }
+    
+    /* ===== LIENS ===== */
+    a {
+        color: black !important;
+        text-decoration: underline;
+    }
+    
+    a[href]:after {
+        content: " (" attr(href) ")";
+        font-size: 8pt;
+        color: #666;
+    }
+}
+
+/* ============================================
+   MODE PAYSAGE (pour tableaux larges)
+   ============================================ */
+@media print and (orientation: landscape) {
+    @page {
+        size: A4 landscape;
+    }
+    
+    table {
+        font-size: 9pt;
+    }
+    
+    th, td {
+        padding: 5px 3px;
+    }
+}

@@ -1,7 +1,16 @@
 /* Règles pour l'impression : masquer tout sauf les tables */
+/* Dans public/css/print.css */
+
 @media print {
+
     body * {
         visibility: hidden;
+    }
+ 
+    /* FORCER le mode clair pour l'impression */
+    body, body.dark-mode {
+        background: white !important;
+        color: black !important;
     }
 
     /* Afficher uniquement les tables et leur contenu */
@@ -17,6 +26,13 @@
         padding: 0 !important;
     }
 
+    /* Tables : forcer les couleurs du mode clair */
+    table, table tbody, table tr, table td, table th {
+        background: white !important;
+        color: black !important;
+        border-color: #000 !important;
+    }
+ 
     /* Masquer explicitement les éléments non désirés */
     #loginPage,
     header,
@@ -64,6 +80,67 @@
     tr:nth-child(odd) {
         background-color: #ccffff !important; /* Bleu clair pour l'impression */
         border-bottom: 1px solid #e6f2ff;
+    }
+   
+    /* Headers de tableaux */
+    thead, thead tr, thead th {
+        background: #f0f0f0 !important;
+        color: black !important;
+        border: 1px solid #000 !important;
+    }
+    
+    /* Statuts des casiers */
+    .status-occupied {
+        background: #ef4444 !important;
+        border-color: #dc2626 !important;
+    }
+    
+    .status-empty {
+        background: #10b981 !important;
+        border-color: #059669 !important;
+    }
+    
+    .status-recoverable {
+        background: #f59e0b !important;
+        border-color: #d97706 !important;
+    }
+    
+    /* Lignes de tableau */
+    tr.duplicate-row {
+        background: #fee2e2 !important;
+        border-left: 3px solid #ef4444 !important;
+    }
+    
+    tr.hosp-row {
+        background: #fef3c7 !important;
+    }
+    
+    /* Headers et conteneurs */
+    .section-header,
+    .header-info,
+    .container {
+        background: white !important;
+        color: black !important;
+    }
+    
+    /* Boutons et contrôles (masqués à l'impression de toute façon) */
+    button, .btn-primary, .btn-secondary {
+        background: white !important;
+        color: black !important;
+        border-color: #000 !important;
+    }
+    
+    /* Texte secondaire/tertiaire */
+    .cell-empty,
+    [style*="color: var(--text-secondary)"],
+    [style*="color: var(--text-tertiary)"] {
+        color: #666 !important;
+    }
+    
+    /* S'assurer que tous les backgrounds custom sont overridés */
+    * {
+        -webkit-print-color-adjust: exact !important;
+        print-color-adjust: exact !important;
     }
 
 }

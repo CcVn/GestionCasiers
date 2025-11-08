@@ -47,16 +47,16 @@
                     <button class="btn-theme-toggle" onclick="toggleDarkModeQuick()" id="btnThemeToggle" title="Changer le thème">
                         <span class="theme-icon">🌓</span>
                     </button>
-                    <div id="serverStatus" class="server-status offline">⚪ Vérification...</div>
-                    <button class="btn-secondary btn-small" onclick="logout()">Déconnexion</button>
-                    <button class="btn-settings btn-small admin-only" onclick="toggleAdminTools()" title="Outils d'administration" id="btnSettings">⚙️</button>
+                    <div id="serverStatus" class="server-status offline" title="Etat de la connection avec le serveur">⚪ Vérification...</div>
+                    <button class="btn-settings admin-only" onclick="toggleAdminTools()" title="Outils d'administration" id="btnSettings">⚙️</button>
+                    <button class="btn-secondary btn-small" onclick="logout()" title="Retourner à la page de connexion">Déconnexion</button>
                 </div>
             </div>
             <div class="search-bar">
                 <input type="text" id="globalSearch" class="pulse" placeholder="Rechercher par nom, prénom ou IPP...">
                 <button class="btn-clearsearch" onclick="clearSearch()" style="background: #FF5C5C !important;" title="Vider la recherche"> ✕ </button>
                 <button class="btn-secondary admin-only" id="btnToggleMarkResults" onclick="toggleMarkSearchResults()" style="display: none;" title="Marquer/démarquer les casiers trouvés de l'onglet recherche 🔍">🔖</button>
-                <button class="btn-settings admin-only" onclick="toggleAdminTools()" title="Outils d'administration" id="btnSettings">⚙️</button>
+                <button class="btn-secondary admin-only" onclick="importClients()" title="Importer les patients présents depuis un export MH ou autre" id="btnImportPat1">⬆️ Patients</button>
             </div>
         </header>
 
@@ -64,7 +64,7 @@
         <div class="admin-tools-container admin-only" id="adminTools">
             <div class="admin-tools-header">
                 <h3>🛠️ Outils d'administration</h3>
-                <button class="btn-secondary btn-small" onclick="toggleAdminTools()" style="padding: 4px 8px; font-size: 11px;">Fermer</button>
+                <button class="btn-secondary btn-small" onclick="toggleAdminTools()" style="padding: 4px 8px; font-size: 11px;">❌</button>
             </div>
             <div class="admin-tools-content">
                 <fieldset id="blocPatients" class="group-box">
@@ -89,7 +89,7 @@
                             👥 Homonymes
                         </button>
                         <button class="btn-secondary" onclick="clearAllMarks()" title="Retirer toutes les marques des casiers">
-                            🔖->🗑️ 
+                            🔖→🗑️ 
                         </button>
                     </div>
                 </fieldset>
@@ -110,27 +110,25 @@
                         </button>
                     </div>
                 </fieldset>
-                <fieldset id="blocExport" class="group-box">
-                    <legend>Export des casiers</legend>
+                <fieldset id="blocImportExport" class="group-box">
+                    <legend>Import/Export des casiers</legend>
                     <div class="buttons-container" title="Export des casiers">
-                        <button class="btn-secondary" onclick="exportData('csv')" title="Exporter les casiers au format CSV">
+                        <button class="btn-secondary" onclick="showLockersExportOptions()" title="Exporter les casiers avec options">
+                            ⬇ Export
+                        </button>
+                        <button class="btn-secondary" onclick="exportData('csv')" style="display: none;" title="Exporter les casiers au format CSV">
                             ⬇ CSV
                         </button>
-                        <button class="btn-secondary" onclick="exportData('json')" title="Exporter les casiers au format JSON">
+                        <button class="btn-secondary" onclick="exportData('json')" style="display: none;" title="Exporter les casiers au format JSON">
                             ⬇ JSON
                         </button>
-                    </div>
-                </fieldset>
-                <fieldset id="bloctImport" class="group-box">
-                    <legend>Import des casiers</legend>
-                    <div class="buttons-container" title="Import des casiers">
                         <button class="btn-secondary" onclick="showLockersImportOptions()" title="Importer des casiers">
-                                ⬆️ Import CSV/JSON
+                                ⬆️ Import
                         </button>
-                        <button class="btn-secondary" onclick="importCSV()" title="Importer des données casiers depuis un CSV">
+                        <button class="btn-secondary" onclick="importCSV()" style="display: none;" title="Importer des données casiers depuis un CSV">
                             ⬆️ CSV
                         </button>
-                        <button class="btn-secondary" onclick="importJSON()" title="Importer des casiers depuis un fichier JSON">
+                        <button class="btn-secondary" onclick="importJSON()" style="display: none;" title="Importer des casiers depuis un fichier JSON">
                             ⬆️ JSON
                         </button>
                     </div>
@@ -274,9 +272,9 @@
                     </small>
                 </div>
                 <div id="importWarning" style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin: 16px 0; display: none;">
-                    <strong style="color: #92400e;">⚠️ Attention :</strong>
+                    <strong style="color: #92400e;">⚠️ Information importante :</strong>
                     <p style="margin: 4px 0 0 0; font-size: 13px; color: #78350f;">
-                        Le mode "Remplacer" va supprimer tous les clients existants avant l'import.
+                        Le mode "Remplacer" va supprimer tous les patients existants dans la base avant l'import du nouveau fichier. C'est le mode à privilégier pour ne pas avoir en base des patients qui ne sont plus présents. A n'effectuer que si la nouvelle liste des admissions est un export complet du logiciel source.
                     </p>
                 </div>
 
@@ -297,7 +295,8 @@
                     <select id="importSeparator" required>
                         <option value="auto">🔍 Détection automatique (recommandé)</option>
                         <option value=",">Virgule (,) - Standard</option>
-                        <option value=";">Point-virgule (;) - Excel FR</option>                        <option value="|">Pipe (|)</option>
+                        <option value=";">Point-virgule (;) - Excel FR</option>
+                        <option value="|">Pipe (|)</option>
                         <option value=" ">Tabulation</option>
                     </select>
                     <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
@@ -375,7 +374,8 @@
                         <select id="lockersImportSeparator" required>
                             <option value="auto">🔍 Détection automatique (recommandé)</option>
                             <option value=",">Virgule (,) - Standard</option>
-                            <option value=";">Point-virgule (;) - Excel FR</option>                        <option value="|">Pipe (|)</option>
+                            <option value=";">Point-virgule (;) - Excel FR</option>
+                            <option value="|">Pipe (|)</option>
                             <option value=" ">Tabulation</option>
                         </select>
                         <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
@@ -524,6 +524,54 @@
                     </div>
                 </form>
             </div>
+        </div>
+    </div>
+
+    <!-- Modal options d'export casiers -->
+    <div id="exportOptionsModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">⬇ Options d'export</div>
+            
+            <form id="exportOptionsForm">
+                <div class="form-group">
+                    <label for="exportFormat">Format</label>
+                    <select id="exportFormat" required>
+                        <option value="csv">CSV (tableur)</option>
+                        <option value="json">JSON (backup complet)</option>
+                    </select>
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                        JSON inclut les métadonnées d'export
+                    </small>
+                </div>
+                
+                <div class="form-group" id="exportSeparatorGroup">
+                    <label for="exportSeparator">Séparateur CSV</label>
+                    <select id="exportSeparator" required>
+                        <option value=";">Point-virgule (;) - Excel FR</option>
+                        <option value=",">Virgule (,) - Standard</option>
+                        <option value="|">Pipe (|)</option>
+                        <option value=" ">Tabulation</option>
+                    </select>
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                        Recommandé : point-virgule pour Excel français
+                    </small>
+                </div>
+                
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="exportIncludeEmpty" style="margin-right: 8px; width: auto; cursor: pointer;">
+                        <span>Inclure les casiers vides</span>
+                    </label>
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                        Par défaut : uniquement les casiers occupés
+                    </small>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="closeExportOptions()">Annuler</button>
+                    <button type="submit" class="btn-primary">⬇ Télécharger</button>
+                </div>
+            </form>
         </div>
     </div>
 

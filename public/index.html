@@ -49,11 +49,13 @@
                     </button>
                     <div id="serverStatus" class="server-status offline">⚪ Vérification...</div>
                     <button class="btn-secondary btn-small" onclick="logout()">Déconnexion</button>
+                    <button class="btn-settings btn-small admin-only" onclick="toggleAdminTools()" title="Outils d'administration" id="btnSettings">⚙️</button>
                 </div>
             </div>
             <div class="search-bar">
                 <input type="text" id="globalSearch" class="pulse" placeholder="Rechercher par nom, prénom ou IPP...">
                 <button class="btn-clearsearch" onclick="clearSearch()" style="background: #FF5C5C !important;" title="Vider la recherche"> ✕ </button>
+                <button class="btn-secondary admin-only" id="btnToggleMarkResults" onclick="toggleMarkSearchResults()" style="display: none;" title="Marquer/démarquer les casiers trouvés de l'onglet recherche 🔍">🔖</button>
                 <button class="btn-settings admin-only" onclick="toggleAdminTools()" title="Outils d'administration" id="btnSettings">⚙️</button>
             </div>
         </header>
@@ -86,6 +88,9 @@
                         <button class="btn-secondary" onclick="showHomonymsPanel()" title="Afficher la liste des homonymes détectés">
                             👥 Homonymes
                         </button>
+                        <button class="btn-secondary" onclick="clearAllMarks()" title="Retirer toutes les marques des casiers">
+                            🔖->🗑️ 
+                        </button>
                     </div>
                 </fieldset>
                 <fieldset id="blocStats" class="group-box">
@@ -99,6 +104,9 @@
                         </button>
                         <button class="btn-secondary" onclick="showClientsStats()" title="Afficher les statistiques de la base patients">
                             📊 Patients
+                        </button>
+                        <button class="btn-secondary" onclick="showStupStats()" title="Afficher les statistiques de la base patients (dans la console)">
+                            💊 Stup.
                         </button>
                     </div>
                 </fieldset>
@@ -188,9 +196,8 @@
                 <div class="form-group">
                     <label for="zone">Zone</label>
                     <select id="zone" required>
-                        <option value="NORD">NORD</option>
-                        <option value="SUD">SUD</option>
-                        <option value="PCA">PCA</option>
+                        <option value="Zone1">Zone1</option>
+                        <!-- Sera rempli dynamiquement? -->
                     </select>
                 </div>
                 <div class="form-group">
@@ -220,10 +227,25 @@
                     <label for="comment">Commentaire (optionnel)</label>
                     <textarea id="comment" rows="2" placeholder="Notes, remarques..."></textarea>
                 </div>
+                <!-- Checkbox Récupérable -->
                 <div class="form-group">
                     <label style="display: flex; align-items: center; cursor: pointer;">
                         <input type="checkbox" id="recoverable" style="margin-right: 8px; width: auto;">
-                        <span>Récupérable (en cas de pénurie)</span>
+                        <span>Récupérable?</span>
+                    </label>
+                </div>
+                <!-- Checkbox Stupéfiants -->
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="stup" style="margin-right: 8px; width: auto;">
+                        <span>💊 Contient des stupéfiants</span>
+                    </label>
+                </div>
+                <!-- Checkbox IDEL -->
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="idel" style="margin-right: 8px; width: auto;">
+                        <span>ℹ️ Commandes IDEL et livraison AS</span>
                     </label>
                 </div>
                 <div class="modal-footer">
@@ -240,16 +262,7 @@
             <div class="modal-header">📥 Options d'import clients</div>
             
             <form id="importOptionsForm">
-                <div class="form-group">
-                    <label for="importFormat">Format du fichier</label>
-                    <select id="importFormat" required>
-                        <!-- Sera rempli dynamiquement -->
-                    </select>
-                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
-                        Le format par défaut est configuré dans les paramètres serveur
-                    </small>
-                </div>
-                
+                <!-- Mode d'import : fusionner ou remplacer -->
                 <div class="form-group">
                     <label for="importMode">Mode d'import</label>
                     <select id="importMode" required>
@@ -260,12 +273,36 @@
                         Mode "Fusionner" : les doublons (même IPP) seront ignorés
                     </small>
                 </div>
-                
                 <div id="importWarning" style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin: 16px 0; display: none;">
                     <strong style="color: #92400e;">⚠️ Attention :</strong>
                     <p style="margin: 4px 0 0 0; font-size: 13px; color: #78350f;">
                         Le mode "Remplacer" va supprimer tous les clients existants avant l'import.
                     </p>
+                </div>
+
+                <!-- Type de fichier source -->
+                <div class="form-group">
+                    <label for="importFormat">Format du fichier</label>
+                    <select id="importFormat" required>
+                        <!-- Sera rempli dynamiquement -->
+                    </select>
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                        Le format par défaut est configuré dans les paramètres serveur
+                    </small>
+                </div>
+
+                <!-- Separateur -->
+                <div class="form-group">
+                    <label for="importSeparator">Séparateur de champs</label>
+                    <select id="importSeparator" required>
+                        <option value="auto">🔍 Détection automatique (recommandé)</option>
+                        <option value=",">Virgule (,) - Standard</option>
+                        <option value=";">Point-virgule (;) - Excel FR</option>                        <option value="|">Pipe (|)</option>
+                        <option value=" ">Tabulation</option>
+                    </select>
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                        Choisissez le séparateur utilisé dans votre fichier CSV. La détection automatique analyse votre fichier pour essayer de déterminer le bon séparateur
+                    </small>
                 </div>
                 
                 <div class="modal-footer">
@@ -303,17 +340,6 @@
                 
                 <form id="lockersImportOptionsForm">
                     <div class="form-group">
-                        <label for="lockersImportFormat">Format du fichier</label>
-                        <select id="lockersImportFormat" required>
-                            <option value="csv">CSV (format standard)</option>
-                            <option value="json">JSON (export backup)</option>
-                        </select>
-                        <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
-                            Le CSV doit contenir les colonnes : Numéro, Zone, Nom, Prénom, IPP, Date Naissance, Récupérable, Commentaire
-                        </small>
-                    </div>
-                    
-                    <div class="form-group">
                         <label for="lockersImportMode">Mode d'import</label>
                         <select id="lockersImportMode" required>
                             <option value="update">📝 Mise à jour (remplace les casiers existants)</option>
@@ -330,6 +356,31 @@
                         <p style="margin: 4px 0 0 0; font-size: 13px; color: #7f1d1d;">
                             Le mode "Remplacement complet" va libérer TOUS les casiers avant l'import.
                         </p>
+                    </div>
+
+                    <div class="form-group">
+                        <label for="lockersImportFormat">Format du fichier</label>
+                        <select id="lockersImportFormat" required>
+                            <option value="csv">CSV (format standard)</option>
+                            <option value="json">JSON (export backup)</option>
+                        </select>
+                        <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                            Le CSV doit contenir les colonnes : Numéro, Zone, Nom, Prénom, IPP, Date Naissance, Récupérable, Commentaire
+                        </small>
+                    </div>
+
+                    <!-- Separateur -->
+                    <div class="form-group">
+                        <label for="lockersImportSeparator">Séparateur de champs pour format CSV</label>
+                        <select id="lockersImportSeparator" required>
+                            <option value="auto">🔍 Détection automatique (recommandé)</option>
+                            <option value=",">Virgule (,) - Standard</option>
+                            <option value=";">Point-virgule (;) - Excel FR</option>                        <option value="|">Pipe (|)</option>
+                            <option value=" ">Tabulation</option>
+                        </select>
+                        <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                            Choisissez le séparateur utilisé dans votre fichier CSV. La détection automatique analyse votre fichier pour essayer de déterminer le bon séparateur
+                        </small>
                     </div>
                     
                     <div class="modal-footer">
@@ -494,10 +545,11 @@
                     <label>Sélection des casiers</label>
                     <select id="labelSelection" onchange="updateLabelPreview()">
                         <option value="all">Tous les casiers occupés</option>
-                        <option value="zone">   ... d'une zone</option>
-                        <option value="range">   ... dans une plage de numéros</option>
+                        <option value="zone">Tous les casiers occupés de la zone ...</option>
+                        <option value="range">Tous les casiers occupés dans la plage de numéros...</option>
                         <option value="marked">🔖 Casiers marqués uniquement</option>
                         <option value="stup">💊 Casiers avec stupéfiants</option>
+                        <option value="stup">ℹ️ Casiers avec IDEL</option>
                     </select>
                 </div>
                 

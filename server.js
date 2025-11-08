@@ -43,7 +43,11 @@ const importCasierSchema = z.object({
     firstName: z.string().max(100).optional().default(''),
     code: z.string().max(50).optional().default(''),
     birthDate: z.string().optional().default(''),
-    recoverable: z.boolean().optional().default(false)
+    recoverable: z.boolean().optional().default(false),
+    marque: z.boolean().optional().default(false),
+    hosp: z.boolean().optional().default(false),
+    hospDate: z.string().optional().default(''),
+    stup: z.boolean().optional().default(false)
 });
 
 // Schéma pour restauration backup
@@ -439,6 +443,7 @@ function initializeDatabase() {
         hosp BOOLEAN DEFAULT 0,
         hospDate TEXT DEFAULT '',
         stup BOOLEAN DEFAULT 0,
+        idel BOOLEAN DEFAULT 0,
         updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
         updatedBy TEXT DEFAULT '',
         version INTEGER DEFAULT 0
@@ -446,12 +451,6 @@ function initializeDatabase() {
     `, (err) => {
       if (err) console.error('Erreur création table casiers:', err);
       else {
-        db.run(`ALTER TABLE lockers ADD COLUMN comment TEXT DEFAULT ''`, () => {});
-        db.run(`ALTER TABLE lockers ADD COLUMN updatedBy TEXT DEFAULT ''`, () => {});
-        db.run(`ALTER TABLE lockers ADD COLUMN hosp BOOLEAN DEFAULT ''`, () => {});
-        db.run(`ALTER TABLE lockers ADD COLUMN hospDate TEXT DEFAULT ''`, () => {});
-        db.run(`ALTER TABLE lockers ADD COLUMN stup BOOLEAN DEFAULT ''`, () => {});
-        db.run(`ALTER TABLE lockers ADD COLUMN marque BOOLEAN DEFAULT ''`, () => {});
         if (!isProduction && VERBOSE) console.log('✓ Table casiers créée/vérifiée');
       }
     });
@@ -708,6 +707,40 @@ const IMPORT_FORMATS = {
 
 };
 
+// Fonction de détection automatique du séparateur CSV
+function detectCSVSeparator(fileContent) {
+    const lines = fileContent.split('\n').filter(line => line.trim());
+    if (lines.length < 2) return ',';
+    
+    const firstLine = lines[0];
+    const secondLine = lines[1];
+    
+    const separators = [';', ',', '\t', '|'];
+    const scores = {};
+    
+    for (const sep of separators) {
+        const firstCount = (firstLine.match(new RegExp(`\\${sep}`, 'g')) || []).length;
+        const secondCount = (secondLine.match(new RegExp(`\\${sep}`, 'g')) || []).length;
+        
+        // Un bon séparateur apparaît le même nombre de fois sur chaque ligne
+        if (firstCount > 0 && firstCount === secondCount) {
+            scores[sep] = firstCount;
+        }
+    }
+    
+    // Retourner le séparateur avec le meilleur score (plus de colonnes)
+    const bestSep = Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b, ',');
+    
+    if (!isProduction && VERBOSE) {
+        console.log('🔍 Détection séparateur CSV:', {
+            détecté: bestSep === '\t' ? 'TAB' : bestSep,
+            scores: scores
+        });
+    }
+    
+    return bestSep || ',';
+}
+
 // Parser une ligne CSV avec séparateur personnalisé
 function parseCsvLine(line, separator = ',') {
     const result = [];
@@ -729,6 +762,113 @@ function parseCsvLine(line, separator = ',') {
     
     result.push(current.trim());
     return result.map(v => v.replace(/^"|"$/g, ''));
+}
+
+// Fonction principale d'import avec format
+function parseClientsWithFormat(fileContent, formatName, separator = ',') {
+    const format = IMPORT_FORMATS[formatName];
+    
+    if (!format) {
+        throw new Error(`Format d'import "${formatName}" non reconnu`);
+    }
+    
+    // Si separator pas fourni ou 'auto', détecter automatiquement
+    let usedSeparator;
+    if (!separator || separator === 'auto') {
+        usedSeparator = detectCSVSeparator(fileContent);
+    } else {
+        usedSeparator = separator || format.separator;
+    }
+
+    if (!isProduction && VERBOSE) {
+      console.log(`📥 Import avec format: ${formatName}`);
+      console.log(`   Séparateur: "${format.separator}"`);
+    }
+    
+    const lines = fileContent.split('\n').filter(line => line.trim());
+    
+    if (lines.length < 2) {
+        throw new Error('Fichier vide ou invalide');
+    }
+    
+    const headers = parseCsvLine(lines[0], usedSeparator);
+    if (!isProduction && VERBOSE) console.log(`   Headers trouvés: ${headers.join(', ')}`);
+    
+    const dataLines = lines.slice(1 + format.skipRows);
+    let imported = 0;
+    let filtered = 0;
+    let errors = 0;
+    
+    const clients = [];
+    
+    for (const line of dataLines) {
+        try {
+            const values = parseCsvLine(line, usedSeparator);
+            
+            const row = {};
+            headers.forEach((header, index) => {
+                row[header] = values[index] || '';
+            });
+            
+            // Appliquer les filtres
+            if (format.filters && format.filters.length > 0) {
+                let passFilters = true;
+                
+                for (const filter of format.filters) {
+                    const fieldValue = row[filter.field];
+                    
+                    if (filter.operator === 'in') {
+                        if (!filter.values.includes(fieldValue)) {
+                            passFilters = false;
+                            break;
+                        }
+                    } else if (filter.operator === 'equals') {
+                        if (fieldValue !== filter.value) {
+                            passFilters = false;
+                            break;
+                        }
+                    }
+                }
+                
+                if (!passFilters) {
+                    filtered++;
+                    continue;
+                }
+            }
+            
+            const client = mapRowToClient(row, format.mapping);
+            
+            if (!client.ipp || client.ipp.trim() === '') {
+                errors++;
+                console.warn(`⚠️ Ligne ignorée (IPP manquant)`);
+                continue;
+            }
+            
+            clients.push(client);
+            imported++;
+            
+        } catch (err) {
+            errors++;
+            console.error('Erreur parsing ligne:', err);
+        }
+    }
+    
+    if (!isProduction && VERBOSE) {
+      console.log(`✓ Parsing terminé:`);
+      console.log(`  - Importés: ${imported}`);
+      console.log(`  - Filtrés: ${filtered}`);
+      console.log(`  - Erreurs: ${errors}`);
+    }
+
+    return {
+        clients: clients,
+        stats: {
+            imported: imported,
+            filtered: filtered,
+            errors: errors,
+            total: dataLines.length
+        }
+    };
 }
 
 // Normaliser le format de date
@@ -801,105 +941,6 @@ function mapRowToClient(row, mapping) {
     }
     
     return client;
-}
-
-// Fonction principale d'import avec format
-function parseClientsWithFormat(fileContent, formatName) {
-    const format = IMPORT_FORMATS[formatName];
-    
-    if (!format) {
-        throw new Error(`Format d'import "${formatName}" non reconnu`);
-    }
-    
-    if (!isProduction && VERBOSE) {
-      console.log(`📥 Import avec format: ${formatName}`);
-      console.log(`   Séparateur: "${format.separator}"`);
-    }
-    
-    const lines = fileContent.split('\n').filter(line => line.trim());
-    
-    if (lines.length < 2) {
-        throw new Error('Fichier vide ou invalide');
-    }
-    
-    const headers = parseCsvLine(lines[0], format.separator);
-    if (!isProduction && VERBOSE) console.log(`   Headers trouvés: ${headers.join(', ')}`);
-    
-    const dataLines = lines.slice(1 + format.skipRows);
-    let imported = 0;
-    let filtered = 0;
-    let errors = 0;
-    
-    const clients = [];
-    
-    for (const line of dataLines) {
-        try {
-            const values = parseCsvLine(line, format.separator);
-            
-            const row = {};
-            headers.forEach((header, index) => {
-                row[header] = values[index] || '';
-            });
-            
-            // Appliquer les filtres
-            if (format.filters && format.filters.length > 0) {
-                let passFilters = true;
-                
-                for (const filter of format.filters) {
-                    const fieldValue = row[filter.field];
-                    
-                    if (filter.operator === 'in') {
-                        if (!filter.values.includes(fieldValue)) {
-                            passFilters = false;
-                            break;
-                        }
-                    } else if (filter.operator === 'equals') {
-                        if (fieldValue !== filter.value) {
-                            passFilters = false;
-                            break;
-                        }
-                    }
-                }
-                
-                if (!passFilters) {
-                    filtered++;
-                    continue;
-                }
-            }
-            
-            const client = mapRowToClient(row, format.mapping);
-            
-            if (!client.ipp || client.ipp.trim() === '') {
-                errors++;
-                console.warn(`⚠️ Ligne ignorée (IPP manquant)`);
-                continue;
-            }
-            
-            clients.push(client);
-            imported++;
-            
-        } catch (err) {
-            errors++;
-            console.error('Erreur parsing ligne:', err);
-        }
-    }
-    
-    if (!isProduction && VERBOSE) {
-      console.log(`✓ Parsing terminé:`);
-      console.log(`  - Importés: ${imported}`);
-      console.log(`  - Filtrés: ${filtered}`);
-      console.log(`  - Erreurs: ${errors}`);
-    }
-
-    return {
-        clients: clients,
-        stats: {
-            imported: imported,
-            filtered: filtered,
-            errors: errors,
-            total: dataLines.length
-        }
-    };
 }
 
 // ============ ROUTES API ============
@@ -1126,7 +1167,7 @@ app.post('/api/lockers', requireAuth, csrfProtection, async (req, res) => {
       });
     }
     
-    const { number, zone, name, firstName, code, birthDate, recoverable, comment, expectedVersion } = req.body;
+    const { number, zone, name, firstName, code, birthDate, recoverable, comment, stup, idel, expectedVersion } = req.body;
 
     // Vérifier que la zone existe dans la config
     const zoneExists = ZONES_CONFIG.some(z => z.name === zone);
@@ -1176,10 +1217,10 @@ app.post('/api/lockers', requireAuth, csrfProtection, async (req, res) => {
 
     await dbRun(
       `UPDATE lockers 
-       SET zone = ?, occupied = 1, recoverable = ?, name = ?, firstName = ?, code = ?, birthDate = ?, comment = ?,
+       SET zone = ?, occupied = 1, recoverable = ?, name = ?, firstName = ?, code = ?, birthDate = ?, comment = ?, stup = ?, idel = ?,
            updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
        WHERE number = ? AND version = ?`,
-      [zone, isRecoverable, name, firstName, code, birthDate, comment || '', userName, number, expectedVersion || existingLocker.version]
+      [zone, isRecoverable, name, firstName, code, birthDate, comment || '', stup ? 1 : 0, idel ? 1 : 0, userName, number, expectedVersion || existingLocker.version]
     );
 
     // Vérifier que la mise à jour a bien eu lieu
@@ -1197,6 +1238,8 @@ app.post('/api/lockers', requireAuth, csrfProtection, async (req, res) => {
       'SELECT * FROM lockers WHERE number = ?',
       [number]
     );
+
+    if (!isProduction && VERBOSE) console.log('📝 updatedLocker:', updatedLocker);
 
     res.json({
       locker: updatedLocker,
@@ -1254,8 +1297,110 @@ app.post('/api/lockers/:number/marque', requireAuth, csrfProtection, async (req,
   }
 });
 
-// POST Toggle marque d'un casier
-app.post('/api/lockers/:number/marque', requireAuth, csrfProtection, async (req, res) => {
+// POST marquer plusieurs casiers
+app.post('/api/lockers/bulk-mark', requireAuth, csrfProtection, async (req, res) => {
+  try {
+    const token = req.cookies.auth_token;
+    const session = sessions.get(token);
+    const isAdmin = session?.isAdmin;
+    
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+    }
+    
+    const { lockerNumbers, mark } = req.body;
+    
+    if (!Array.isArray(lockerNumbers) || lockerNumbers.length === 0) {
+      return res.status(400).json({ error: 'Liste de casiers invalide' });
+    }
+    
+    const userName = session?.userName || 'Inconnu';
+    const markValue = mark ? 1 : 0;
+    
+    console.log(`🔖 ${mark ? 'Marquage' : 'Démarquage'} de ${lockerNumbers.length} casiers...`);
+    
+    // Créer les placeholders pour la requête SQL
+    const placeholders = lockerNumbers.map(() => '?').join(',');
+    
+    const result = await dbRun(
+      `UPDATE lockers 
+       SET marque = ?, updatedAt = CURRENT_TIMESTAMP, 
+           updatedBy = ?, version = version + 1
+       WHERE number IN (${placeholders})`,
+      [markValue, userName, ...lockerNumbers]
+    );
+    
+    const count = result.changes || 0;
+    
+    // Logger dans l'historique
+    const action = mark ? 'BULK_MARK' : 'BULK_UNMARK';
+    const details = `${count} casiers: ${lockerNumbers.slice(0, 5).join(', ')}${lockerNumbers.length > 5 ? '...' : ''}`;
+    await recordHistory('BULK', action, userName, 'admin', details);
+    
+    console.log(`✓ ${count} casiers ${mark ? 'marqués' : 'démarqués'}`);
+
+    res.json({
+      success: true,
+      updated: count,
+      message: `${count} casier${count > 1 ? 's' : ''} ${mark ? 'marqué' : 'démarqué'}${count > 1 ? 's' : ''}`
+    });
+  } catch (err) {
+    console.error('Erreur marquage groupé:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// DELETE retirer toutes les marques
+app.delete('/api/lockers/clear-marks', requireAuth, csrfProtection, async (req, res) => {
+  try {
+    const token = req.cookies.auth_token;
+    const session = sessions.get(token);
+    const isAdmin = session?.isAdmin;
+    
+    if (!isAdmin) {
+      return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+    }
+    
+    const userName = session?.userName || 'Inconnu';
+    
+    console.log('🗑️ Suppression de toutes les marques...');
+    
+    // Retirer toutes les marques
+    const result = await dbRun(
+      `UPDATE lockers 
+       SET marque = 0, updatedAt = CURRENT_TIMESTAMP, 
+           updatedBy = ?, version = version + 1
+       WHERE marque = 1`,
+      [userName]
+    );
+    
+    const count = result.changes || 0;
+    
+    // Logger dans l'historique
+    await recordHistory('ALL', 'CLEAR_ALL_MARKS', userName, 'admin', `${count} marques retirées`);
+    
+    console.log(`✓ ${count} marques retirées`);
+ 
+    // Log de sécurité supplémentaire
+    const clientIP = getClientIP(req);
+    await dbRun(
+      'INSERT INTO connection_logs (role, userName, ipAddress) VALUES (?, ?, ?)',
+      ['admin', `CLEAR_MARKS (${count})`, clientIP]
+    );
+
+    res.json({
+      success: true,
+      cleared: count,
+      message: 'Toutes les marques ont été retirées'
+    });
+  } catch (err) {
+    console.error('Erreur suppression marques:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST Toggle stupéfiants d'un casier
+app.post('/api/lockers/:number/stup', requireAuth, csrfProtection, async (req, res) => {
   try {
     const token = req.cookies.auth_token;
     const session = sessions.get(token);
@@ -1270,18 +1415,18 @@ app.post('/api/lockers/:number/marque', requireAuth, csrfProtection, async (req,
       return res.status(404).json({ error: 'Casier non trouvé' });
     }
 
-    // Toggle la marque
-    const newMarque = locker.marque ? 0 : 1;
+    // Toggle stup
+    const newStup = locker.stup ? 0 : 1;
 
     await dbRun(
       `UPDATE lockers 
-       SET marque = ?, updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
+       SET stup = ?, updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
        WHERE number = ?`,
-      [newMarque, userName, req.params.number]
+      [newStup, userName, req.params.number]
     );
 
     // Logger dans l'historique
-    const action = newMarque ? 'MARQUE_AJOUTÉE' : 'MARQUE_RETIRÉE';
+    const action = newStup ? 'STUPÉFIANTS_AJOUTÉS' : 'STUPÉFIANTS_RETIRÉS';
     const details = locker.occupied 
       ? `${locker.name} ${locker.firstName} (IPP: ${locker.code})`
       : 'Casier vide';
@@ -1295,7 +1440,53 @@ app.post('/api/lockers/:number/marque', requireAuth, csrfProtection, async (req,
 
     res.json(updatedLocker);
   } catch (err) {
-    console.error('Erreur toggle marque:', err);
+    console.error('Erreur toggle stupéfiants:', err);
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// POST Toggle idel d'un casier
+app.post('/api/lockers/:number/idel', requireAuth, csrfProtection, async (req, res) => {
+  try {
+    const token = req.cookies.auth_token;
+    const session = sessions.get(token);
+    const userName = session?.userName || 'Inconnu';
+
+    const locker = await dbGet(
+      'SELECT * FROM lockers WHERE number = ?',
+      [req.params.number]
+    );
+
+    if (!locker) {
+      return res.status(404).json({ error: 'Casier non trouvé' });
+    }
+
+    // Toggle IDEL
+    const newIDEL = locker.idel ? 0 : 1;
+
+    await dbRun(
+      `UPDATE lockers 
+       SET idel = ?, updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
+       WHERE number = ?`,
+      [newIDEL, userName, req.params.number]
+    );
+
+    // Logger dans l'historique
+    const action = newIDEL ? 'IDEL_AJOUTÉ' : 'IDEL_RETIRÉ';
+    const details = locker.occupied 
+      ? `${locker.name} ${locker.firstName} (IPP: ${locker.code})`
+      : 'Casier vide';
+    
+    await recordHistory(req.params.number, action, userName, 'admin', details);
+
+    const updatedLocker = await dbGet(
+      'SELECT * FROM lockers WHERE number = ?',
+      [req.params.number]
+    );
+
+    res.json(updatedLocker);
+  } catch (err) {
+    console.error('Erreur toggle IDEL:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -1709,12 +1900,12 @@ app.post('/api/exports/log', exportLimiter, csrfProtection, async (req, res) => 
 // POST import clients/patients depuis CSV
 app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, async (req, res) => {
     try {
-        const { data, rawContent, format, mode } = req.body;  // Ajouter 'mode'
+        const { data, rawContent, format, mode, separator } = req.body;  // Ajouter 'mode'
         
         let clients = [];
         let stats = {
             imported: 0,
-            skipped: 0,      // NOUVEAU
+            skipped: 0,
             filtered: 0,
             errors: 0,
             total: 0
@@ -1723,7 +1914,8 @@ app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, asyn
         // rawContent fourni → parser avec le format
         if (rawContent) {
             const formatName = format || process.env.CLIENT_IMPORT_FORMAT || 'BASIQUE';
-            const result = parseClientsWithFormat(rawContent, formatName);
+            const csvSeparator = separator || ',';
+            const result = parseClientsWithFormat(rawContent, formatName, csvSeparator);
             clients = result.clients;
             stats = result.stats;
         } else if (data && Array.isArray(data)) {
@@ -2025,11 +2217,10 @@ app.post('/api/import', requireAuth, importLimiter, csrfProtection, async (req, 
       console.log('🗑️ Mode remplacement : libération de tous les casiers...');
       await dbRun(
         `UPDATE lockers 
-         SET occupied = 0, recoverable = 0, name = '', firstName = '', code = '', 
-             birthDate = '', comment = '', updatedAt = CURRENT_TIMESTAMP, 
-             updatedBy = ?, version = version + 1
-         WHERE occupied = 1`,
-        [userName]
+         SET zone = ?, occupied = 1, recoverable = ?, name = ?, firstName = ?, code = ?, birthDate = ?, marque = ?, hosp = ?, hospDate = ?, stup = ?,
+             updatedAt = CURRENT_TIMESTAMP, version = version + 1
+         WHERE number = ?`,
+        [zone, isRecoverable, name, firstName, code, birthDate, marque ? 1 : 0, hosp ? 1 : 0, hospDate || '', stup ? 1 : 0, number]
       );
       await recordHistory('ALL', 'CLEAR_BEFORE_IMPORT', userName, 'admin', 'Tous les casiers libérés avant import');
     }

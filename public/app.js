@@ -5,12 +5,16 @@ let ZONES_CONFIG = []; // Variable globale pour stocker la config des zones
 let IS_AUTHENTICATED = false;
 let IS_GUEST = false;
 let IS_MOBILE = false;
+let selectedImportSeparator = ';';
 let ANONYMIZE_ENABLED = false;
 let USER_NAME = '';
 let DARK_MODE_SETTING = 'system'
 let EDITING_LOCKER_NUMBER = null; // Mémoriser le casier en cours d'édition
 let EDITING_LOCKER_VERSION = null; // Mémoriser la version du casier en cours d'édition
 let VERBCONSOLE = 1
+let CURRENT_LOCKER_FOR_HOSP = null;
+let SEARCH_RESULTS = []; 
+let SEARCH_RESULTS_MARKED = false;
 
 // ============ CONFIG DES ZONES ============
 
@@ -139,18 +143,27 @@ function generateContentSections() {
                     <button id="search-indicator-${zone.name}" onclick="clearSearch()" class= "btn-activesearch">
                         ✕ Quitter la recherche
                     </button>
-                    <button class="btn-secondary admin-only pulse" onclick="openModal('${zone.name}')">➕ Attribuer</button>
-                    <select class="admin-only" onchange="filterTable('${zone.name}', this.value)" id="filter-${zone.name}">
-                        <option value="all">Tous</option>
-                        <option value="occupied">Occupés</option>
-                        <option value="empty">Vides</option>
-                        <option value="recoverable" class="admin-only">Récupérables</option>
-                        <option value="duplicates" class="admin-only">Doublons ⚠️</option>
-                    </select>
-                    <select class="admin-only" onchange="sortTable('${zone.name}', this.value)">
-                        <option value="number">Trier par numéro</option>
-                        <option value="name">Trier par nom</option>
-                    </select>
+                    <button class="btn-secondary btn-big admin-only pulse" onclick="openModal('${zone.name}')">➕ Attribuer</button>
+                    <div>
+                        <label for="Filtre" style="margin: 0px; font-size: 11px;">Filtrer</label>
+                        <select id="Filtre" class="admin-only" onchange="filterTable('${zone.name}', this.value)" id="filter-${zone.name}">
+                            <option value="all">Tous</option>
+                            <option value="occupied" class="status-occupied">✕ Occupés</option>
+                            <option value="empty" class="status-empty">✓ Vides</option>
+                            <option value="recoverable" class="status-recoverable admin-only">⟳ Récupérables</option>
+                            <option value="duplicates" class="admin-only">⚠️ Doublons</option>
+                            <option value="idel">ℹ️ IDEL+AS</option>
+                            <option value="stup" class="admin-only">💊 Stupéfiants</option>
+                            <option value="marque" class="admin-only" value="occupied">🔖 Marqués</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label for="Tri" style="margin: 0px; font-size: 11px;">Trier</label>
+                        <select id="Tri" class="admin-only" onchange="sortTable('${zone.name}', this.value)">
+                            <option value="number">par numéro</option>
+                            <option value="name">par nom</option>
+                        </select>
+                    </div>
                     <button class="btn-secondary admin-only" onclick="printTable()">🖨️ Imprimer</button>
                 </div>
             </div>
@@ -238,7 +251,7 @@ function generateContentSections() {
                             <li>Tapez un <strong>nom</strong>, <strong>prénom</strong> ou <strong>N°IPP</strong></li>
                             <li>L'onglet <strong>🔍 Recherche</strong> s'affiche automatiquement avec tous les résultats</li>
                             <li>Cliquez sur un onglet de zone (NORD, SUD, etc.) pour voir uniquement les résultats de cette zone</li>
-                            <li>Effacez le champ de recherche pour revenir à l'affichage normal</li>
+                            <li>Effacez le champ de recherche à l'aide du bouton "Effacer la recherche" ou de la croix rouge pour revenir à l'affichage normal</li>
                         </ol>
                     </div>
                 </div>
@@ -248,10 +261,9 @@ function generateContentSections() {
                     <div class="help-content">
                         <ol>
                             <li>Cliquez sur un onglet de zone : <strong>Zone NORD</strong>, <strong>Zone SUD</strong>, etc.</li>
-                            <li>Parcourez la liste des casiers occupés de cette zone</li>
-                            <li>Les casiers sont triés par ordre alphabétique sur le nom du patient</li>
+                            <li>Parcourez la liste des casiers occupés de cette zone (triés par ordre alphabétique sur le nom du patient) dans le tableau qui s'affiche sous l'onglet</li>
                         </ol>
-                        <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin-top: 12px; border-radius: 4px;">
+                        <div class="post-it">
                             <strong>💡 Avec un écran tactile :</strong> un balayage latéral permet de passer à l'onglet situé à gauche ou à droite.
                         </div>
                     </div>
@@ -276,13 +288,15 @@ function generateContentSections() {
                 <div class="help-item">
                     <div class="help-title">Filtrer les casiers</div>
                     <div class="help-content">
-                        Utilisez le menu déroulant pour afficher :
+                        Utilisez le menu déroulant Filtrer pour afficher :
                         <ul>
                             <li><strong>Tous</strong> : tous les casiers de la zone</li>
                             <li><strong>Occupés</strong> : seulement les casiers attribués</li>
                             <li><strong>Vides</strong> : seulement les casiers disponibles</li>
                             <li><strong>Récupérables</strong> : casiers qui peuvent être libérés en cas de besoin</li>
-                            <li><strong>Doublons ⚠️</strong> : casiers avec IPP ou identité en double</li>
+                            <li><strong>⚠️ Doublons</strong> : casiers avec IPP ou identité en double</li>
+                            <li><strong>💊 Stupéfiants</strong> : casiers avec stupéfiants</li>
+                            <li><strong>🔖 Marqués</strong> : casiers qui ont été marqués</li>
                         </ul>
                     </div>
                 </div> 
@@ -310,16 +324,20 @@ function generateContentSections() {
                     <div class="help-content">
                         <div style="display: flex; gap: 20px; flex-wrap: wrap; margin-top: 8px;">
                             <div style="display: flex; align-items: center; gap: 8px;">
-                                <span style="font-size: 18px;">🔖</span>
-                                <span>Casier marqué (pour suivi particulier)</span>
-                            </div>
-                            <div style="display: flex; align-items: center; gap: 8px;">
                                 <span style="font-size: 18px;">🏥</span>
                                 <span>Patient hospitalisé</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 18px;">ℹ️</span>
+                                <span>Commandes DM avec livraison AS</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
                                 <span style="font-size: 18px;">💊</span>
                                 <span>Contient des stupéfiants</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 18px;">🔖</span>
+                                <span>Casier marqué (pour suivi particulier)</span>
                             </div>
                         </div>
                         <div style="margin-top: 12px; padding: 8px; background: var(--bg-secondary); border-radius: 4px; font-size: 12px; color: var(--text-secondary);">
@@ -330,7 +348,7 @@ function generateContentSections() {
                 <div class="help-item">
                     <div class="help-title">Trier les casiers</div>
                     <div class="help-content">
-                        Utilisez le second menu déroulant pour trier :
+                        Utilisez le menu déroulant Trier pour modifier le mode de tri :
                         <ul>
                             <li><strong>Par numéro de casier</strong> : N01, N02, N03... (par défaut)</li>
                             <li><strong>Par nom de patient</strong> : ordre alphabétique ascendant des noms de patients</li>
@@ -369,7 +387,7 @@ function generateContentSections() {
                             <li>Modifiez les informations souhaitées</li>
                             <li>Cliquez sur <button class="btn-primary" style="pointer-events: none; padding: 4px 12px; font-size: 12px;">Enregistrer</button></li>
                         </ol>
-                        <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin-top: 12px; border-radius: 4px;">
+                        <div class="post-it">
                             <strong>⚠️ Changement de casier :</strong> Si vous changez le numéro du casier, l'application vous proposera de libérer automatiquement l'ancien casier.
                         </div>
                     </div>
@@ -397,9 +415,11 @@ function generateContentSections() {
                         <h4 style="font-size: 13px; font-weight: 600; margin: 12px 0 8px 0;">Options de sélection :</h4>
                         <ul style="margin-left: 20px;">
                             <li><strong>Tous les casiers occupés</strong> : Imprime tous les casiers actuellement attribués</li>
+                            <li><strong>Tous les casiers occupés de la zone ...</strong> : Sélectionne une zone spécifique (NORD, SUD, etc.)</li>
+                            <li><strong>Tous les casiers occupés dans la plage de numéros...</strong> : Sélectionne une plage (ex: N01 à N25, S04 à R22, etc.)</li>
+                            <li><strong>ℹ️ Casiers IDEL/AS uniquement<strong> : N'imprime que les casiers associés à des commandes DM IDEL</li>
+                            <li><strong>💊 Casiers avec stupéfiants uniquement</strong> : N'imprime que les casiers associés à des stupéfiants</li>
                             <li><strong>🔖 Casiers marqués uniquement</strong> : N'imprime que les casiers marqués (pour suivi particulier)</li>
-                            <li><strong>Par zone</strong> : Sélectionne une zone spécifique (NORD, SUD, etc.)</li>
-                            <li><strong>Plage de numéros</strong> : Sélectionne une plage (ex: N01 à N25)</li>
                         </ul>
                         
                         <h4 style="font-size: 13px; font-weight: 600; margin: 12px 0 8px 0;">Nombre de copies :</h4>
@@ -414,6 +434,28 @@ function generateContentSections() {
                     </div>
                 </div>
 
+                <div class="help-item admin-only">
+                    <div class="help-title">💊 Gestion des hospitalisations, des IDEL et des stupéfiants</div>
+                    <div class="help-content">
+                        <p style="margin-bottom: 12px;">Les marquages Hospitalisation, IDEL et stupéfiants permettent d'identifier rapidement les casiers dont les patients sont hospitalisés avec probable retour en HAD, les casiers associés à des IDEL et des casiers contena.</p>
+                        
+                        <h4 style="font-size: 13px; font-weight: 600; margin: 12px 0 8px 0;">Marquer un casier :</h4>
+                        <ol style="margin-left: 20px;">
+                            <li>Lors de l'attribution/modification : Cocher "ℹ️ Commandes IDEL et livraison AS" ou "💊 Contient des stupéfiants"</li>
+                            <li>Via le menu Actions (⋮) : Cliquer sur "ℹ️ Associer IDEL" ou "💊 Marquer stupéfiants"</li>
+                        </ol>
+                        
+                        <h4 style="font-size: 13px; font-weight: 600; margin: 12px 0 8px 0;">Filtrer les casiers stupéfiants :</h4>
+                        <ul style="margin-left: 20px;">
+                            <li>Dans chaque onglet : Utiliser le filtre "ℹ️ IDEL/AS" ou "💊 Stup."</li>
+                            <li>Pour les étiquettes : Sélectionner "ℹ️ IDEL/AS uniquement" ou "💊 Stupéfiants uniquement"</li>
+                        </ul>
+                        
+                        <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin-top: 12px; border-radius: 4px;">
+                            <strong>🔒 Sécurité :</strong> L'icône 💊 n'est pas visible en mode consultation (invité).
+                        </div>
+                    </div>
+                </div>
             </div>
         </div>
     `;
@@ -1327,6 +1369,9 @@ async function setupApp() {
             setInterval(checkSessionExpiration, 5 * 60 * 1000); // Toutes les 5 minutes
         }
 
+        // Étape 11 : Masquer le bouton de marquage
+        hideMarkButtons();
+        
         if (VERBCONSOLE>0) { console.log('✅ Application initialisée avec succès'); }
         
     } catch (err) {
@@ -1395,10 +1440,28 @@ function applyAdminDefaults() {
         select.value = 'name';
     });
     
-    // Démasquer les éléments d'administration
+    hideMarkButtons();
+
+    // Démasquer les éléments d'administration   @DEPRECATED
     showAdminElements();
-    
+
     if (VERBCONSOLE>0) { console.log('✓ Mode guest appliqué'); }
+}
+
+// ============ MARQUAGE GROUPÉ DES RÉSULTATS DE RECHERCHE ============
+
+function showMarkButtons() {
+    const btnMark = document.getElementById('btnMarkSearchResults');
+    const btnUnmark = document.getElementById('btnUnmarkSearchResults');
+    if (btnMark) btnMark.style.display = 'inline-block';
+    if (btnUnmark) btnUnmark.style.display = 'inline-block';
+}
+
+function hideMarkButtons() {
+    const btnMark = document.getElementById('btnMarkSearchResults');
+    const btnUnmark = document.getElementById('btnUnmarkSearchResults');
+    if (btnMark) btnMark.style.display = 'none';
+    if (btnUnmark) btnUnmark.style.display = 'none';
 }
 
 // ============ BACKUP =============================================
@@ -1593,7 +1656,12 @@ function renderTable(zone) {
     } else if (filter === 'duplicates') {
         const duplicateInfo = detectDuplicates();
         lockers = lockers.filter(l => duplicateInfo.duplicates.has(l.number));
+    } else if (filter === 'stup') { 
+        lockers = lockers.filter(l => l.occupied && (l.stup == 1 || l.stup === true));
+    } else if (filter === 'idel') { 
+        lockers = lockers.filter(l => l.occupied && (l.idel == 1 || l.idel === true));
     }
+
     // Appliquer le tri selon la valeur du select
     const sortSelect = document.querySelector(`select[onchange="sortTable('${zone}', this.value)"]`);
     const sortValue = sortSelect ? sortSelect.value : 'number';
@@ -1661,9 +1729,16 @@ function renderTable(zone) {
             const isDuplicate = duplicateNumbers.has(locker.number);
             const duplicateClass = isDuplicate ? 'duplicate-row' : '';
             const duplicateTitle = isDuplicate ? getDuplicateInfo(locker) : '';
-            
+            const hospiClass = locker.hospi ? 'hospi-row' : '';
+ 
+            // const marqueIcon = locker.marque ? '🔖' : '';// ❌ NE PAS AFFICHER
+            const hospIcon = locker.hosp ? '🏥' : '';
+            // const stupIcon = locker.stup ? '💊' : ''; // ❌ NE PAS AFFICHER
+            const idelIcon = locker.idel ? 'ℹ️' : '';
+            const statusIcons = [hospIcon, idelIcon].filter(i => i).join(' '); 
+     
             return `
-            <tr class="${duplicateClass}" title="${duplicateTitle}">
+            <tr class="${[duplicateClass, hospiClass].filter(c => c).join(' ')}" title="${duplicateTitle}">
                 <td><strong>${locker.number}</strong></td>
                 <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeName(locker.name)}</span>` : '<span class="cell-empty">—</span>'}</td>
                 <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeFirstName(locker.firstName)}</span>` : '<span class="cell-empty">—</span>'}</td>
@@ -1678,15 +1753,17 @@ function renderTable(zone) {
             const isDuplicate = duplicateNumbers.has(locker.number);
             const duplicateClass = isDuplicate ? 'duplicate-row' : '';
             const duplicateTitle = isDuplicate ? getDuplicateInfo(locker) : '';
+            const hospiClass = locker.hospi ? 'hospi-row' : '';
     
             // Icônes de statut
             const marqueIcon = locker.marque ? '🔖' : '';
             const hospIcon = locker.hosp ? '🚑' : '';
             const stupIcon = locker.stup ? '💊' : '';
-            const statusIcons = [marqueIcon, hospIcon, stupIcon].filter(i => i).join(' ');
+            const idelIcon = locker.idel ? 'ℹ️' : '';
+            const statusIcons = [marqueIcon, hospIcon, stupIcon, idelIcon].filter(i => i).join(' ');
 
             return `
- <tr class="${duplicateClass}" title="${duplicateTitle}">
+            <tr class="${[duplicateClass, hospiClass].filter(c => c).join(' ')}" title="${duplicateTitle}">
                 <td><strong>${locker.number}</strong>${isDuplicate ? ' ⚠️' : ''} ${statusIcons}</td>
                 <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeName(locker.name)}</span>` : '<span class="cell-empty">—</span>'}</td>
                 <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeFirstName(locker.firstName)}</span>` : '<span class="cell-empty">—</span>'}</td>
@@ -1700,10 +1777,16 @@ function renderTable(zone) {
                         <div class="dropdown-menu">
                             <button onclick="openModalEdit('${locker.number}')">✏️ Modifier</button>
                             <button onclick="printSingleLockerLabels('${locker.number}')">🏷️ Imprimer étiquettes</button>
+                            <button onclick="openHospitalisationModal('${locker.number}')">🚑 Patient hospitalisé</button>
+                            <button onclick="toggleIDEL('${locker.number}', ${locker.idel ? 'true' : 'false'})">
+                                ${locker.idel ? 'ℹ️ Dissocier IDEL' : 'ℹ️ Associer IDEL'}
+                            </button>
+                            <button onclick="toggleStup('${locker.number}', ${locker.stup ? 'true' : 'false'})">
+                                ${locker.stup ? '💊 Plus de stupéfiants' : '💊 Marquer stupéfiants'}
+                            </button>
                             <button onclick="toggleMarque('${locker.number}', ${locker.marque ? 'true' : 'false'})">
                                 ${locker.marque ? '🔖 Retirer marque' : '🔖 Marquer'}
                             </button>
-                            <button onclick="openHospitalisationModal('${locker.number}')">🚑 Patient hospitalisé</button>
                             <button class="btn-delete" onclick="releaseLocker('${locker.number}')">🧹 Libérer</button>
                         </div>
                     </div>
@@ -1908,6 +1991,8 @@ function detectHomonyms() {
 //========================================
 function searchLockers(query) {
     if (!query || query.trim() === '') {
+        SEARCH_RESULTS = [];
+        hideMarkButtons();
         renderAllTables(); // Recherche vide : afficher toutes les tables normalement
         return;
     }
@@ -1916,12 +2001,21 @@ function searchLockers(query) {
     
     // Recherche globale pour tous les résultats
     const allResults = DATA.filter(l => {
-        const searchText = (l.name + ' ' + l.firstName + ' ' + l.code).toLowerCase();
+        const searchText = (l.name + ' ' + l.firstName + ' ' + l.code + ' ' + l.comment).toLowerCase();
         return searchText.includes(searchTerm);
     });
     
+    SEARCH_RESULTS = allResults;  // NOUVEAU - stocker les résultats
+
     if (VERBCONSOLE>0) { console.log(`🔍 Recherche "${query}" : ${allResults.length} résultat(s)`); }
     
+    // Afficher les boutons de marquage si résultats et mode admin
+    if (IS_AUTHENTICATED && allResults.length > 0) {
+        showMarkButtons();
+    } else {
+        hideMarkButtons();
+    }
+
     // Mettre à jour le compteur de l'onglet SEARCH
     const counterSearch = document.getElementById('counter-SEARCH');
     if (counterSearch) {
@@ -2019,18 +2113,22 @@ function renderSearchResults(zone, results, searchTerm) {
     }
 }
 
+/* Effacer le champ de recherche */
 function clearSearch() {
-    // Effacer le champ de recherche
     const searchInput = document.getElementById('globalSearch');
     if (searchInput) {
         searchInput.value = '';
     }
     
+    SEARCH_RESULTS = [];
+    SEARCH_RESULTS_MARKED = false;  // NOUVEAU
+    hideMarkButtons();
+    
     // Restaurer les compteurs normaux
     ZONES_CONFIG.forEach(zone => {
         const counter = document.getElementById(`counter-${zone.name}`);
         if (counter) {
-            counter.style.background = ''; // Retirer la couleur orange
+            counter.style.background = '';
         }
     });
 
@@ -2042,10 +2140,7 @@ function clearSearch() {
         }
     });
     
-    // Recharger toutes les tables normalement
     renderAllTables();
-    
-    // Revenir sur le premier onglet
     switchTab(ZONES_CONFIG[0].name);
 }
 
@@ -2067,6 +2162,8 @@ function openModal(zone) {
     document.getElementById('birthDate').value = '';
     document.getElementById('comment').value = '';
     document.getElementById('recoverable').checked = false;
+    document.getElementById('stup').checked = false;
+    document.getElementById('idel').checked = false;
     document.getElementById('statusMessage').innerHTML = '';
     
     populateLockerSelect(zone);
@@ -2088,7 +2185,9 @@ function openModalEdit(lockerNumber) {
     //Mémoriser le numéro original
     EDITING_LOCKER_NUMBER = lockerNumber;
     EDITING_LOCKER_VERSION = locker.version || 0;
-    
+
+    populateZoneSelect();
+
     document.getElementById('zone').value = locker.zone;
     document.getElementById('modalTitle').textContent = `Modifier ${locker.number}`;
     document.getElementById('lockerNumber').value = lockerNumber;
@@ -2098,6 +2197,8 @@ function openModalEdit(lockerNumber) {
     document.getElementById('birthDate').value = locker.birthDate;
     document.getElementById('comment').value = locker.comment || '';
     document.getElementById('recoverable').checked = locker.recoverable || false;
+    document.getElementById('stup').checked = locker.stup || false;
+    document.getElementById('idel').checked = locker.stup || false;
     document.getElementById('statusMessage').innerHTML = '';
     
     populateLockerSelect(locker.zone, lockerNumber);
@@ -2146,7 +2247,9 @@ async function handleFormSubmit(e) {
         const zone = document.getElementById('zone').value;
         const recoverable = document.getElementById('recoverable').checked;
         const comment = document.getElementById('comment').value;
-        
+        const stup = document.getElementById('stup').checked;
+        const idel = document.getElementById('idel').checked;
+
         // Détecter si le numéro de casier a changé
         const isLockerChanged = EDITING_LOCKER_NUMBER && EDITING_LOCKER_NUMBER !== newLockerNumber;
         
@@ -2170,7 +2273,7 @@ async function handleFormSubmit(e) {
                     const oldVersion = EDITING_LOCKER_VERSION;
                     EDITING_LOCKER_VERSION = null;  // Désactiver la vérification
                     
-                    await saveLocker(newLockerNumber, zone, recoverable, comment);
+                    await saveLocker(newLockerNumber, zone, recoverable, comment, stup, idel);
                     
                     // Restaurer la version pour la libération
                     EDITING_LOCKER_VERSION = oldVersion;
@@ -2195,7 +2298,7 @@ async function handleFormSubmit(e) {
                     try {
                         // Sauvegarder SANS vérification de version
                         EDITING_LOCKER_VERSION = null;
-                        await saveLocker(newLockerNumber, zone, recoverable, comment);
+                        await saveLocker(newLockerNumber, zone, recoverable, comment, stup, idel);
                         closeModal();
                         loadData();
                         showStatus(`✓ Nouveau casier ${newLockerNumber} créé (${oldNumber} toujours occupé)`, 'success');
@@ -2208,7 +2311,7 @@ async function handleFormSubmit(e) {
         } else {
             // Pas de changement de numéro, comportement normal avec vérification de version
             try {
-                await saveLocker(newLockerNumber, zone, recoverable, comment);
+                await saveLocker(newLockerNumber, zone, recoverable, comment, stup, idel);
                 closeModal();
                 loadData();
                 
@@ -2279,7 +2382,7 @@ function releaseLocker(lockerNumber) {
 }
 
 // Enregistrer un casier (extraction du code existant)
-async function saveLocker(lockerNumber, zone, recoverable, comment) {
+async function saveLocker(lockerNumber, zone, recoverable, comment, stup, idel) {
 
     const bodyData = {
         number: lockerNumber,
@@ -2289,7 +2392,9 @@ async function saveLocker(lockerNumber, zone, recoverable, comment) {
         code: document.getElementById('code').value,
         birthDate: document.getElementById('birthDate').value,
         comment: comment,
-        recoverable: recoverable
+        recoverable: recoverable,
+        stup: stup,
+        idel: idel
     };
 
     // Ajouter expectedVersion seulement si défini (pas null)
@@ -2373,8 +2478,18 @@ function exportData(format) {
         const json = JSON.stringify(exportData, null, 2);
         downloadFile(json, `casiers_${readableDate}_${userName}.json`, 'application/json');
     } else if (format === 'csv') {
-        const csv = convertToCSV(occupied);
-        downloadFile(csv, `casiers_${readableDate}_${userName}.csv`, 'text/csv');
+        // Demander le séparateur (; ou ,)
+        const useSemicolon = confirm(
+            '📊 CHOIX DU SÉPARATEUR CSV\n\n' +
+            'Quel séparateur voulez-vous utiliser ?\n\n' +
+            '• OK = Point-virgule (;)\n' +
+            '• Annuler = Virgule (,)\n\n' +
+            'Recommandé pour Excel français : Point-virgule'
+        );
+        const separator = useSemicolon ? ';' : ',';
+        const csv = convertToCSV(occupied, separator);
+        const separatorName = useSemicolon ? 'semicolon' : 'comma';
+        downloadFile(csv, `casiers_${readableDate}_${userName}_${separatorName}.csv`, 'text/csv');
     }
     
     logExport(format, occupied.length, userName, role);
@@ -2401,8 +2516,8 @@ async function logExport(format, count, userName, role) {
     }
 }
 
-function convertToCSV(data) {
-    const headers = ['N° Casier', 'Zone', 'Nom', 'Prénom', 'N°IPP', 'DDN', 'Récupérable'];
+function convertToCSV(data, separator = ',') {
+    const headers = ['N° Casier', 'Zone', 'Nom', 'Prénom', 'N°IPP', 'DDN', 'Récupérable', 'Marque', 'Hospitalisation', 'Date Hosp', 'Stupéfiants', 'IDEL'];
     const rows = data.map(locker => [
         locker.number, 
         locker.zone, 
@@ -2414,12 +2529,13 @@ function convertToCSV(data) {
         locker.marque ? '1' : '0',
         locker.hosp ? '1' : '0',
         locker.hospDate || '',
-        locker.stup ? '1' : '0'
+        locker.stup ? '1' : '0',
+        locker.idel ? '1' : '0'
     ]);
     
     return [
-        headers.join(','),
-        ...rows.map(row => row.map(cell => `"${cell}"`).join(','))
+        headers.join(separator),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(separator))
     ].join('\n');
 }
 
@@ -2896,6 +3012,206 @@ async function clearLockersDatabase() {
     }
 }
 
+// ============ EFFACER TOUTES LES MARQUES ============
+
+// ============ MARQUAGE/DÉMARQUAGE GROUPÉ DES RÉSULTATS ============
+
+async function toggleMarkSearchResults() {
+    if (!isEditAllowed()) return;
+    
+    if (SEARCH_RESULTS.length === 0) {
+        alert('Aucun résultat de recherche');
+        return;
+    }
+    
+    const lockerNumbers = SEARCH_RESULTS.map(l => l.number);
+    const willMark = !SEARCH_RESULTS_MARKED;
+    
+    const action = willMark ? 'marquer' : 'démarquer';
+    const icon = willMark ? '🔖' : '🗑️';
+    
+    const confirmMsg = `${icon} ${action.toUpperCase()}\n\n` +
+        `Vous allez ${action} ${lockerNumbers.length} casier${lockerNumbers.length > 1 ? 's' : ''} ` +
+        `trouvé${lockerNumbers.length > 1 ? 's' : ''} par la recherche.\n\n` +
+        `Voulez-vous continuer ?`;
+    
+    if (!confirm(confirmMsg)) return;
+    
+    const btn = document.getElementById('btnToggleMarkResults');
+    const originalText = btn ? btn.innerHTML : '';
+    
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳';
+        btn.classList.add('btn-loading');
+    }
+    
+    try {
+        const res = await fetch(`${API_URL}/lockers/bulk-mark`, {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': CSRF_TOKEN
+            },
+            credentials: 'include',
+            body: JSON.stringify({
+                lockerNumbers: lockerNumbers,
+                mark: willMark
+            })
+        });
+        
+        if (!res.ok) {
+            handleCsrfError(res);
+            const error = await res.json();
+            throw new Error(error.error || 'Erreur serveur');
+        }
+        
+        const data = await res.json();
+        
+        const successIcon = willMark ? '🔖' : '✓';
+        const actionText = willMark ? 'marqué' : 'démarqué';
+        showStatus(`${successIcon} ${data.updated} casier${data.updated > 1 ? 's' : ''} ${actionText}${data.updated > 1 ? 's' : ''}`, 'success');
+        
+        // Mettre à jour l'état
+        SEARCH_RESULTS_MARKED = willMark;
+        
+        // Mettre à jour l'apparence du bouton
+        if (btn) {
+            if (willMark) {
+                btn.classList.add('active');
+                btn.title = 'Démarquer les casiers trouvés';
+            } else {
+                btn.classList.remove('active');
+                btn.title = 'Marquer les casiers trouvés';
+            }
+        }
+        
+        // Recharger les données
+        await loadData();
+        
+        // Relancer la recherche pour mettre à jour SEARCH_RESULTS avec les nouvelles valeurs de marque
+        const searchInput = document.getElementById('globalSearch');
+        if (searchInput && searchInput.value.trim()) {
+            searchLockers(searchInput.value.trim());
+        }
+        
+    } catch (err) {
+        console.error('Erreur toggle marquage:', err);
+        showStatus('❌ Erreur : ' + err.message, 'error');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+            btn.classList.remove('btn-loading');
+        }
+    }
+}
+
+async function clearAllMarks() {
+    if (!isEditAllowed()) return;
+    
+    // Compter les marques actuelles
+    const markedCount = DATA.filter(l => l.marque).length;
+    
+    if (markedCount === 0) {
+        alert('✓ Aucun casier marqué actuellement');
+        return;
+    }
+    
+    const confirmFirst = confirm(
+        `⚠️ ATTENTION - SUPPRESSION DE TOUTES LES MARQUES\n\n` +
+        `Vous allez retirer les marques de ${markedCount} casier${markedCount > 1 ? 's' : ''}.\n\n` +
+        `Cette action est IRRÉVERSIBLE.\n\n` +
+        `Voulez-vous continuer ?`
+    );
+    
+    if (!confirmFirst) return;
+    
+    // Trouver le bouton
+    const clearBtn = Array.from(document.querySelectorAll('.admin-tools-content button'))
+        .find(btn => btn.textContent.includes('Effacer marques'));
+    const originalText = clearBtn ? clearBtn.innerHTML : '';
+    
+    // LOADING STATE
+    if (clearBtn) {
+        clearBtn.disabled = true;
+        clearBtn.innerHTML = '⏳ Suppression...';
+        clearBtn.classList.add('btn-loading');
+    }
+    
+    try {
+        const res = await fetch(`${API_URL}/lockers/clear-marks`, {
+            method: 'DELETE',
+            headers: {
+                'X-CSRF-Token': CSRF_TOKEN
+            },
+            credentials: 'include'
+        });
+        
+        if (!res.ok) {
+            handleCsrfError(res);
+            const error = await res.json();
+            throw new Error(error.error || 'Erreur serveur');
+        }
+        
+        const data = await res.json();
+        
+        alert(`✓ Toutes les marques ont été retirées\n\n${data.cleared} casier${data.cleared > 1 ? 's' : ''} modifié${data.cleared > 1 ? 's' : ''}`);
+        
+        // Recharger les données
+        loadData();
+        
+    } catch (err) {
+        console.error('Erreur suppression marques:', err);
+        alert('❌ Erreur : ' + err.message);
+    } finally {
+        // RESET STATE
+        if (clearBtn) {
+            clearBtn.disabled = false;
+            clearBtn.innerHTML = originalText;
+            clearBtn.classList.remove('btn-loading');
+        }
+    }
+}
+
+function showMarkButtons() {
+    const btn = document.getElementById('btnToggleMarkResults');
+    if (btn) {
+        btn.style.display = 'inline-block';
+        // Vérifier si les résultats actuels sont marqués
+        checkIfResultsMarked();
+    }
+}
+
+function hideMarkButtons() {
+    const btn = document.getElementById('btnToggleMarkResults');
+    if (btn) {
+        btn.style.display = 'none';
+        btn.classList.remove('active');
+    }
+    SEARCH_RESULTS_MARKED = false;
+}
+
+function checkIfResultsMarked() {
+    if (SEARCH_RESULTS.length === 0) return;
+    
+    // Vérifier si tous les résultats sont marqués
+    const allMarked = SEARCH_RESULTS.every(l => l.marque);
+    
+    const btn = document.getElementById('btnToggleMarkResults');
+    if (btn) {
+        if (allMarked) {
+            btn.classList.add('active');
+            btn.title = 'Démarquer les casiers trouvés';
+            SEARCH_RESULTS_MARKED = true;
+        } else {
+            btn.classList.remove('active');
+            btn.title = 'Marquer les casiers trouvés';
+            SEARCH_RESULTS_MARKED = false;
+        }
+    }
+}
+
 // ============ IMPORT CLIENTS ============
 
 // Variables globales pour l'import
@@ -2938,9 +3254,11 @@ async function importClients() {
         // Réinitialiser les sélections
         selectedImportFormat = defaultFormat;
         selectedImportMode = 'replace';
+        selectedImportSeparator = 'auto';
         document.getElementById('importMode').value = 'replace';
-        
-        // Gérer l'affichage du warning
+        document.getElementById('importSeparator').value = 'auto';
+
+        // Gestionnaires d'événements: Gérer l'affichage du warning
         const modeSelect = document.getElementById('importMode');
         const warning = document.getElementById('importWarning');
         
@@ -2957,9 +3275,14 @@ async function importClients() {
             selectedImportFormat = this.value;
         };
         
+        // Gestionnaire pour le séparateur
+        const separatorSelect = document.getElementById('importSeparator');
+        separatorSelect.onchange = function() {
+            selectedImportSeparator = this.value;
+        };
+
         // Afficher le warning initial
         warning.style.display = 'block';
-        
         // Ouvrir le modal
         document.getElementById('importOptionsModal').classList.add('active');
         
@@ -3000,9 +3323,12 @@ async function handleClientFileSelected(e) {
     }
     
     try {
-        if (VERBCONSOLE>0) { console.log('📂 Lecture du fichier patients...'); }
-        if (VERBCONSOLE>0) { console.log('Format sélectionné:', selectedImportFormat); }
-        if (VERBCONSOLE>0) { console.log('Mode sélectionné:', selectedImportMode); }
+        if (VERBCONSOLE>0) { 
+            console.log('📂 Lecture du fichier patients...');
+            console.log('Format sélectionné:', selectedImportFormat);
+            console.log('Mode sélectionné:', selectedImportMode);
+            console.log('Séparateur sélectionné:', selectedImportSeparator);
+        }
         
         const text = await file.text();
         
@@ -3016,7 +3342,8 @@ async function handleClientFileSelected(e) {
             body: JSON.stringify({ 
                 rawContent: text,
                 format: selectedImportFormat,
-                mode: selectedImportMode  // NOUVEAU
+                mode: selectedImportMode,
+                separator: selectedImportSeparator
             })
         });
         
@@ -4515,8 +4842,11 @@ function getSelectedLockersForLabels() {
             });
         }
     } else if (selection === 'marked') {
-        // ⬇️ NOUVEAU : Filtrer les casiers marqués
         lockers = lockers.filter(l => l.marque);
+    } else if (selection === 'stup') { 
+        lockers = lockers.filter(l => l.stup);
+    } else if (selection === 'idel') { 
+        lockers = lockers.filter(l => l.idel);
     }
     
     // Trier par numéro
@@ -4944,9 +5274,153 @@ async function toggleMarque(lockerNumber, currentMarque) {
     }
 }
 
-// ============ HOSPITALISATION ============
+// ============ STUPÉFIANTS CASIER ============
 
-let CURRENT_LOCKER_FOR_HOSP = null;
+async function toggleStup(lockerNumber, currentStup) {
+    const locker = DATA.find(l => l.number === lockerNumber);
+    if (!locker) {
+        alert('Casier non trouvé');
+        return;
+    }
+
+    const action = currentStup ? 'retirer le marquage stupéfiants de' : 'marquer stupéfiants pour';
+    const confirmMsg = `${action.charAt(0).toUpperCase() + action.slice(1)} le casier ${lockerNumber} ?\n\n` +
+        (locker.occupied ? `Patient: ${locker.name} ${locker.firstName}` : 'Casier vide');
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const response = await fetch(`${API_URL}/lockers/${lockerNumber}/stup`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': CSRF_TOKEN
+            }
+        });
+
+        if (!response.ok) {
+            handleCsrfError(response);
+            throw new Error('Erreur ' + response.status);
+        }
+
+        const updatedLocker = await response.json();
+        
+        // Mettre à jour DATA
+        const index = DATA.findIndex(l => l.number === lockerNumber);
+        if (index !== -1) {
+            DATA[index] = updatedLocker;
+        }
+
+        // Rafraîchir l'affichage
+        renderAllTables();
+
+        const icon = updatedLocker.stup ? '💊' : '✓';
+        const message = updatedLocker.stup 
+            ? `${icon} Casier ${lockerNumber} marqué stupéfiants`
+            : `${icon} Marquage stupéfiants retiré du casier ${lockerNumber}`;
+        
+        showStatus(message, 'success');
+
+    } catch (err) {
+        console.error('Erreur toggle stupéfiants:', err);
+        showStatus('Erreur: ' + err.message, 'error');
+    }
+}
+
+// ============ STATISTIQUES STUPÉFIANTS ============
+//Fonction utilitaire : Compter les stupéfiants
+function getStupStats() {
+    const stupLockers = DATA.filter(l => l.stup);
+    const occupied = stupLockers.filter(l => l.occupied);
+    
+    const byZone = {};
+    ZONES_CONFIG.forEach(zone => {
+        byZone[zone.name] = stupLockers.filter(l => l.zone === zone.name).length;
+    });
+
+    return {
+        total: stupLockers.length,
+        occupied: occupied.length,
+        empty: stupLockers.length - occupied.length,
+        byZone: byZone
+    };
+}
+
+// Afficher les stats dans la console
+function showStupStats() {
+
+    const stats = getStupStats();
+    
+    let message = `📊 STATISTIQUES STUPÉFIANTS\n======================\n\n`;
+    message += `Total casiers avec Stupéfiants: ${stats.total}\n`
+    message += `\n  • Occupés: ${stats.occupied}`
+    message += `\n  • Vides: ${stats.empty}`
+    message += `\n\nPar zone:`
+    Object.entries(stats.byZone).forEach(([zone, count]) => {
+        message += `\n  • ${zone}: ${count}`;
+         });   
+    message += `\n`
+
+    if (VERBCONSOLE>0) { console.log(message) }
+    alert(message);
+}
+
+// ============ IMPLICATION IDEL ============
+
+async function toggleIDEL(lockerNumber, currentStup) {
+    const locker = DATA.find(l => l.number === lockerNumber);
+    if (!locker) {
+        alert('Casier non trouvé');
+        return;
+    }
+
+    const action = currentStup ? 'dissocier IDEL de' : 'associer IDEL à';
+    const confirmMsg = `${action.charAt(0).toUpperCase() + action.slice(1)} le casier ${lockerNumber} ?\n\n` +
+        (locker.occupied ? `Patient: ${locker.name} ${locker.firstName}` : 'Casier vide');
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const response = await fetch(`${API_URL}/lockers/${lockerNumber}/idel`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': CSRF_TOKEN
+            }
+        });
+
+        if (!response.ok) {
+            handleCsrfError(response);
+            throw new Error('Erreur ' + response.status);
+        }
+
+        const updatedLocker = await response.json();
+        
+        // Mettre à jour DATA
+        const index = DATA.findIndex(l => l.number === lockerNumber);
+        if (index !== -1) {
+            DATA[index] = updatedLocker;
+        }
+
+        // Rafraîchir l'affichage
+        renderAllTables();
+
+        const icon = updatedLocker.idel ? 'ℹ️' : '✓';
+        const message = updatedLocker.idel 
+            ? `${icon} Casier ${lockerNumber} marqué IDEL`
+            : `${icon} Marquage IDEL retiré du casier ${lockerNumber}`;
+        
+        showStatus(message, 'success');
+
+    } catch (err) {
+        console.error('Erreur toggle IDEL:', err);
+        showStatus('Erreur: ' + err.message, 'error');
+    }
+}
+
+// ============ HOSPITALISATION ============
 
 function openHospitalisationModal(lockerNumber) {
     const locker = DATA.find(l => l.number === lockerNumber);

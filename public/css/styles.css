@@ -316,6 +316,11 @@ button {
     font-size: 12px;
 }
 
+.btn-big {
+    padding: 12px 20px;
+    font-size: 14px;
+}
+
 select {
     padding: 10px 12px;
     border: 1px solid var(--border-color);
@@ -964,4 +969,56 @@ tr.duplicate-row td:first-child strong::after {
 /* Style pour la sélection */
 #labelSelection option[value="marked"] {
     font-weight: 600;
+}
+
+/* ============ HOSPITALISATION & STUP ============ */
+
+/* Highlight des lignes avec stupéfiants */
+tr.hospi-row {
+    background: linear-gradient(90deg, rgba(147, 51, 234, 0.5) 0%, transparent 100%);
+}
+
+/* Style pour la checkbox stupéfiants dans le modal */
+#stup:checked + span {
+    color: #9333ea;
+    font-weight: 600;
+}
+
+/* Animation pour l'icône stupéfiants */
+@keyframes pulse-pill {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.15); }
+}
+
+.pill-icon-animated {
+    animation: pulse-pill 0.5s ease;
+}
+
+/* Style pour le filtre idel */
+select option[value="idel"] {
+    font-weight: 600;
+    /* background: #faf5ff; */
+}
+
+
+/* Bouton marquage résultats */
+#btnToggleMarkResults {
+    transition: all 0.2s ease;
+    min-width: 40px;
+    padding: 8px 12px;
+}
+
+#btnToggleMarkResults.active {
+    background: #10b981 !important;
+    color: white !important;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.2);
+    transform: scale(0.95);
+}
+
+#btnToggleMarkResults:hover {
+    transform: scale(1.05);
+}
+
+#btnToggleMarkResults.active:hover {
+    transform: scale(0.98);
 }

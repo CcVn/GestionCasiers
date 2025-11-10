@@ -1,5 +1,3 @@
-const { CURRENT_LOCKER_FOR_PRINT } = require("./CURRENT_LOCKER_FOR_PRINT");
-
 // Configuration
 let API_URL = 'http://localhost:5000/api';
 let DATA = [];

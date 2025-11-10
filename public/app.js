@@ -1,3 +1,5 @@
+const { CURRENT_LOCKER_FOR_PRINT } = require("./CURRENT_LOCKER_FOR_PRINT");
+
 // Configuration
 let API_URL = 'http://localhost:5000/api';
 let DATA = [];
@@ -5,7 +7,6 @@ let ZONES_CONFIG = []; // Variable globale pour stocker la config des zones
 let IS_AUTHENTICATED = false;
 let IS_GUEST = false;
 let IS_MOBILE = false;
-let ANONYMIZE_ENABLED = false;
 let USER_NAME = '';
 let DARK_MODE_SETTING = 'system'
 let EDITING_LOCKER_NUMBER = null; // Mémoriser le casier en cours d'édition
@@ -14,9 +15,20 @@ let VERBCONSOLE = 1
 let CURRENT_LOCKER_FOR_HOSP = null;
 let SEARCH_RESULTS = []; 
 let SEARCH_RESULTS_MARKED = false;
+
+let ANONYMIZE_ENABLED = false;
+let NB_MAX_ANON_PRENOM = 2;   // nombre de caractères gardés pour le nom à l'écran lors de l'anonymisation
+let NB_MAX_ANON_NOM = 3;   // nombre de caractères gardés pour le prénom à l'écran lors de l'anonymisation
+let NB_MAX_CAR_NOM = 20;   // nombre de caractères max affichés pour le nom à l'écran
+let NB_MAX_CAR_PRENOM = 15;    // nombre de caractères max affichés pour le nom à l'écran
+
 let selectedExportFormat = 'csv';
 let selectedExportSeparator = ';';
 let selectedExportIncludeEmpty = false;
+let consultationData = [];
+let consultationSortColumn = 'name';
+let consultationSortDirection = 'asc';
+
 
 // ============ CONFIG DES ZONES ============
 
@@ -247,6 +259,19 @@ function generateContentSections() {
                 <h3>🔍 Rechercher un casier</h3>
                 
                 <div class="help-item">
+                    <div class="help-title">Par navigation dans les zones</div>
+                    <div class="help-content">
+                        <ol>
+                            <li>Cliquez sur un onglet de zone : <strong>Zone NORD</strong>, <strong>Zone SUD</strong>, etc.</li>
+                            <li>Parcourez la liste des casiers occupés de cette zone (triés par ordre alphabétique sur le nom du patient) dans le tableau qui s'affiche sous l'onglet. Les casiers non attribués sont automatiquement masqués.</li>
+                        </ol>
+                        <div class="post-it">
+                            <strong>💡 Avec un écran tactile :</strong> un balayage latéral permet de passer à l'onglet situé à gauche ou à droite.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="help-item">
                     <div class="help-title">Par recherche globale</div>
                     <div class="help-content">
                         <ol>
@@ -258,19 +283,22 @@ function generateContentSections() {
                         </ol>
                     </div>
                 </div>
-                
+
                 <div class="help-item">
-                    <div class="help-title">Par navigation dans les zones</div>
+                    <div class="help-title">Explications sur les lignes colorées</div>
                     <div class="help-content">
+                        <span>Il peut arriver que certaines lignes aient <strong>un texte ou un fonds coloré</strong>.</span>
                         <ol>
-                            <li>Cliquez sur un onglet de zone : <strong>Zone NORD</strong>, <strong>Zone SUD</strong>, etc.</li>
-                            <li>Parcourez la liste des casiers occupés de cette zone (triés par ordre alphabétique sur le nom du patient) dans le tableau qui s'affiche sous l'onglet</li>
+                            <li>Une ligne avec un fonds <strong>orangé</strong> et avec une icone ⚠️ signale qu'un double de casier été détecté, sur la base de numéros IPP identiques ou bien sur une combinaison nom+prénom+date de naissance identiques. Cela peut être parce qu'il y a vraiment deux casiers (un classique + un PCA par exemple) ou bien cela peut être lié à une erreur de la PUI (ancien casier non libéré).</li>
+                            <li>Une ligne avec un fonds <strong>gris dégradé</strong> et avec une icone 🏥 signale que le casier a été attribué à un patient qui a été hospitalisé temporairement dans un autre établissement (hospitalisation programmée de courte durée, ou passage aux urgences par exemple). Ce type de casier est libéré en cas de pénurie de casiers, ou s'il est avéré que le patient ne retournera pas en HAD.</li>
+                            <li>Un nom et un prénom qui apparaissent en <strong>violet</strong> signalent que des <strong>homonymes</strong> ont été détectés. NB: la détection d'homonymes est activée sur la base du nom de famille seul.</li>
                         </ol>
                         <div class="post-it">
-                            <strong>💡 Avec un écran tactile :</strong> un balayage latéral permet de passer à l'onglet situé à gauche ou à droite.
+                            <strong>💡 Informations contextuelles sur les doublons :</strong> Laisser la souris sur le numéro de casier ou l'icone ⚠️ pour avoir des informations sur le ou les autres casiers détectés comme doublons. Cette information n'est pour le moment  pas accesible sur mobile.
                         </div>
                     </div>
                 </div>
+
             </div>
             
             <!-- PARTIE 2 : MODIFICATION (visible seulement en admin) -->
@@ -297,6 +325,8 @@ function generateContentSections() {
                             <li><strong>Occupés</strong> : seulement les casiers attribués</li>
                             <li><strong>Vides</strong> : seulement les casiers disponibles</li>
                             <li><strong>Récupérables</strong> : casiers qui peuvent être libérés en cas de besoin</li>
+                            <li><strong>ℹ️ IDEL-AS</strong> : casiers livrés aux IDEL par les soignants</li>
+                            <li><strong>🏥 Hospitalisations</strong> : casiers avec patients temporairement hospitalisés</li>
                             <li><strong>⚠️ Doublons</strong> : casiers avec IPP ou identité en double</li>
                             <li><strong>💊 Stupéfiants</strong> : casiers avec stupéfiants</li>
                             <li><strong>🔖 Marqués</strong> : casiers qui ont été marqués</li>
@@ -317,7 +347,7 @@ function generateContentSections() {
                             </div>
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <span class="status-recoverable" title="Récupérable"></span>
-                                <span>Casier récupérable</span>
+                                <span>Casier occupé potentiellement récupérable</span>
                             </div>
                         </div>
                     </div>
@@ -351,10 +381,10 @@ function generateContentSections() {
                 <div class="help-item">
                     <div class="help-title">Trier les casiers</div>
                     <div class="help-content">
-                        Utilisez le menu déroulant Trier pour modifier le mode de tri :
+                        Utilisez le menu déroulant Trier pour modifier le mode de tri (avec le filtre appliqué):
                         <ul>
                             <li><strong>Par numéro de casier</strong> : N01, N02, N03... (par défaut)</li>
-                            <li><strong>Par nom de patient</strong> : ordre alphabétique ascendant des noms de patients</li>
+                            <li><strong>Par nom de patient</strong> : ordre alphabétique ascendant des noms de patients (comme dans l'interface de consultation)</li>
                         </ul>
                     </div>
                 </div>
@@ -362,7 +392,7 @@ function generateContentSections() {
                     <div class="help-title">Attribuer un casier</div>
                     <div class="help-content">
                         <ol>
-                            <li>Cliquez sur le bouton <button class="btn-primary" style="pointer-events: none; padding: 4px 12px; font-size: 12px;">➕ Attribuer</button> dans la zone souhaitée</li>
+                            <li>Cliquez sur le bouton <button class="btn-primary" style="pointer-events: none; padding: 4px 12px; font-size: 12px;">➕ Attribuer</button> dans la zone souhaitée. Il est aussi possible d'attribuer un casier à l'aide de Modifier dans le menu Actions attaché à chaque casier (voir ci-dessous).</li>
                             <li>Sélectionnez le <strong>numéro de casier</strong></li>
                             <li>Remplissez les informations du patient :
                                 <ul>
@@ -376,7 +406,7 @@ function generateContentSections() {
                             <li>Cliquez sur <button class="btn-primary" style="pointer-events: none; padding: 4px 12px; font-size: 12px;">Enregistrer</button></li>
                         </ol>
                         <div class="post-it">
-                            <strong>💡 Astuce :</strong> Si le N°IPP n'est pas trouvé dans la base patients, le casier sera automatiquement marqué comme récupérable.
+                            <strong>💡 Remplissage automatique :</strong> Si la base patients est à jour, commencez par renseigner l'IPP et cliquez sur 🔍 pour récupérer automatiquement les autres informations dans la base patients. Si la base ne contient pas de patient avec ce n° d'IPP, le casier sera automatiquement marqué comme récupérable. NB: Cette opération peut aussi être réalisée ultérieurement pour compléter/mettre à jour les informations d'un casier.
                         </div>
                     </div>
                 </div>
@@ -411,6 +441,48 @@ function generateContentSections() {
                 </div>
 
                 <div class="help-item admin-only">
+                    <div class="help-title">Gestion des indicateurs 🚑 Hospitalisation, ℹ️ IDEL et 💊 Stupéfiants</div>
+                    <div class="help-content">
+                        <p style="margin-bottom: 12px;">Les indicateurs Hospitalisation, IDEL et stupéfiants permettent d'identifier visuellement les casiers dont les patients sont hospitalisés avec probable retour en HAD, les casiers associés à des IDEL et des casiers contena.</p>
+                        
+                        <h4 style="font-size: 13px; font-weight: 600; margin: 12px 0 8px 0;">Marquer un casier :</h4>
+                        <ol style="margin-left: 20px;">
+                            <li>Lors de l'attribution/modification : Cocher "ℹ️ Commandes IDEL et livraison AS" ou "💊 Contient des stupéfiants"</li>
+                            <li>Via le menu Actions (⋮) : Cliquer sur "🚑 Hospitalisation", "ℹ️ Associer IDEL" ou "💊 Avec stupéfiants"</li>
+                            <li>Pour retirer l'indicateur via le menu Actions (⋮) : Cliquer sur "❌ Retour d'hospi", "❌ Dissocier IDEL" ou "❌ Sans stupéfiants"</li>
+                        </ol>
+                        
+                        <h4 style="font-size: 13px; font-weight: 600; margin: 12px 0 8px 0;">Filtrer les casiers stupéfiants :</h4>
+                        <ul style="margin-left: 20px;">
+                            <li>Dans chaque onglet : Utiliser le filtre "🚑 Hospitalisation", "ℹ️ IDEL/AS" ou "💊 Stup."</li>
+                            <li>Pour les étiquettes : Sélectionner "ℹ️ IDEL/AS uniquement" ou "💊 Stupéfiants uniquement"</li>
+                        </ul>
+                        
+                        <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin-top: 12px; border-radius: 4px;">
+                            🔒 <strong>Sécurité :</strong> L'icône 💊 n'est pas visible en mode consultation (invité).
+                        </div>
+                    </div>
+                </div>
+
+                <h3>🛠️ Outils d'administration</h3>
+
+                <div class="help-item admin-only">
+                    <div class="help-title">Import de données patients</div>
+                    <div class="help-content">
+                        <p style="margin-bottom: 12px;">Cette interface permet de régler les options pour importer des données patients.</p>
+                        
+                        <h4 style="font-size: 13px; font-weight: 600; margin: 12px 0 8px 0;">A COMPLETER</h4>
+                        <p style="font-size: 13px;">
+                            Pxxxxxxx
+                        </p>
+                        
+                        <div class="post-it" style="margin-top: 12px;">
+                            <strong>💡 xxx :</strong> xxxx
+                        </div>
+                    </div>
+                </div>
+
+                <div class="help-item admin-only">
                     <div class="help-title">🏷️ Impression d'étiquettes</div>
                     <div class="help-content">
                         <p style="margin-bottom: 12px;">L'interface d'impression permet de générer des planches d'étiquettes personnalisées.</p>
@@ -420,9 +492,9 @@ function generateContentSections() {
                             <li><strong>Tous les casiers occupés</strong> : Imprime tous les casiers actuellement attribués</li>
                             <li><strong>Tous les casiers occupés de la zone ...</strong> : Sélectionne une zone spécifique (NORD, SUD, etc.)</li>
                             <li><strong>Tous les casiers occupés dans la plage de numéros...</strong> : Sélectionne une plage (ex: N01 à N25, S04 à R22, etc.)</li>
-                            <li><strong>ℹ️ Casiers IDEL/AS uniquement<strong> : N'imprime que les casiers associés à des commandes DM IDEL</li>
-                            <li><strong>💊 Casiers avec stupéfiants uniquement</strong> : N'imprime que les casiers associés à des stupéfiants</li>
-                            <li><strong>🔖 Casiers marqués uniquement</strong> : N'imprime que les casiers marqués (pour suivi particulier)</li>
+                            <li>ℹ️ <strong>Casiers IDEL/AS uniquement</strong> : N'imprime que les casiers associés à des commandes DM IDEL</li>
+                            <li>💊 <strong>Casiers avec stupéfiants uniquement</strong> : N'imprime que les casiers associés à des stupéfiants</li>
+                            <li>🔖 <strong>Casiers marqués uniquement</strong> : N'imprime que les casiers marqués (pour suivi particulier)</li>
                         </ul>
                         
                         <h4 style="font-size: 13px; font-weight: 600; margin: 12px 0 8px 0;">Nombre de copies :</h4>
@@ -437,28 +509,6 @@ function generateContentSections() {
                     </div>
                 </div>
 
-                <div class="help-item admin-only">
-                    <div class="help-title">Gestion des 🚑 hospitalisations, des ℹ️ IDEL et des 💊 stupéfiants</div>
-                    <div class="help-content">
-                        <p style="margin-bottom: 12px;">Les marquages Hospitalisation, IDEL et stupéfiants permettent d'identifier rapidement les casiers dont les patients sont hospitalisés avec probable retour en HAD, les casiers associés à des IDEL et des casiers contena.</p>
-                        
-                        <h4 style="font-size: 13px; font-weight: 600; margin: 12px 0 8px 0;">Marquer un casier :</h4>
-                        <ol style="margin-left: 20px;">
-                            <li>Lors de l'attribution/modification : Cocher "ℹ️ Commandes IDEL et livraison AS" ou "💊 Contient des stupéfiants"</li>
-                            <li>Via le menu Actions (⋮) : Cliquer sur "ℹ️ Associer IDEL" ou "💊 Marquer stupéfiants"</li>
-                        </ol>
-                        
-                        <h4 style="font-size: 13px; font-weight: 600; margin: 12px 0 8px 0;">Filtrer les casiers stupéfiants :</h4>
-                        <ul style="margin-left: 20px;">
-                            <li>Dans chaque onglet : Utiliser le filtre "ℹ️ IDEL/AS" ou "💊 Stup."</li>
-                            <li>Pour les étiquettes : Sélectionner "ℹ️ IDEL/AS uniquement" ou "💊 Stupéfiants uniquement"</li>
-                        </ul>
-                        
-                        <div style="background: #fef3c7; border-left: 4px solid #f59e0b; padding: 12px; margin-top: 12px; border-radius: 4px;">
-                            <strong>🔒 Sécurité :</strong> L'icône 💊 n'est pas visible en mode consultation (invité).
-                        </div>
-                    </div>
-                </div>
             </div>
         </div>
     `;
@@ -474,20 +524,24 @@ function generateContentSections() {
 
 // ============ UTILITAIRES D'ANONYMISATION ============
 
-function anonymizeName(name) {
-    if (!ANONYMIZE_ENABLED || !name) return name;
-    return name.substring(0, 3).toUpperCase();
+// non utilisée pour le moment
+function anonMaxName(name) {
+    const hash = crypto.createHash('md5').update(name).digest('hex');
+    return `${name.charAt(0)}***${hash.substring(0, ANONYMIZE_ENABLED ? 3 : 20)}`; // "D***a4f"
 }
 
-function anonmaxName(name) {
-    const hash = crypto.createHash('md5').update(name).digest('hex');
-    return `${name.charAt(0)}***${hash.substring(0, 3)}`; // "D***a4f"
+function anonymizeName(name) {
+    if (!name) return name;
+    const maxLength = ANONYMIZE_ENABLED ? (NB_MAX_ANON_NOM || 3) : (NB_MAX_CAR_NOM || 20);
+    return name.substring(0, maxLength).toUpperCase();
 }
 
 function anonymizeFirstName(firstName) {
-    if (!ANONYMIZE_ENABLED || !firstName) return firstName;
-    return firstName.substring(0, 2);
+    if (!firstName) return firstName;
+    const maxLength = ANONYMIZE_ENABLED ? (NB_MAX_ANON_PRENOM || 2) : (NB_MAX_CAR_PRENOM || 15);
+    return firstName.substring(0, maxLength);
 }
+
 
 // Autre fonction utilitaire sur format de date
 function formatDate(inputDate) {
@@ -530,7 +584,7 @@ async function loadCsrfToken() {
 
 function applyDarkMode(setting) {
     DARK_MODE_SETTING = setting || 'system';
-    if (VERBCONSOLE>0) { console.log('Application du mode sombre:', DARK_MODE_SETTING); }
+    if (VERBCONSOLE>1) { console.log('Application du mode sombre:', DARK_MODE_SETTING); }
     
     if (DARK_MODE_SETTING === 'active') {
         document.body.classList.add('dark-mode');
@@ -862,6 +916,9 @@ function handleLogin(e) {
             hideAdminElements();
         }
         
+        // Forcer un vrai rechargement à la reconnexion : recharge sans cache
+        //if (data.authenticated) { window.location.reload(true); }
+
         ANONYMIZE_ENABLED = data.anonymize || false;
         applyDarkMode(data.darkMode || 'system');
         if (VERBCONSOLE>0) { console.log('Anonymisation activée:', ANONYMIZE_ENABLED);}
@@ -1077,54 +1134,85 @@ async function updateImportStatus() {
             credentials: 'include'
         });
         
-        if (!res.ok) return;
+        if (!res.ok) {
+            console.error('Erreur récupération statut import:', res.status);
+            return;
+        }
         
         const data = await res.json();
         
         const statusEl = document.getElementById('importStatus');
         if (!statusEl) return;
         
+        // CAS 1 : Base vide ou effacée
+        if (data.isEmpty) {
+            if (data.wasCleared) {
+                statusEl.innerHTML = `🗑️ Base patients vidée`;
+                statusEl.style.color = '#ef4444';
+                statusEl.title = `${data.message} par ${data.clearedBy || 'inconnu'}`;
+            } else {
+                statusEl.innerHTML = '⚠️ Aucun patient en base';
+                statusEl.style.color = '#f59e0b';
+                statusEl.title = 'Aucun import de patients effectué - Import recommandé';
+            }
+            return;
+        }
+        
+        // CAS 2 : Base avec données
         if (!data.hasImport) {
-            statusEl.innerHTML = '⚠️ Aucun import client';
+            statusEl.innerHTML = '⚠️ Aucun import patient';
             statusEl.style.color = '#f59e0b';
             statusEl.title = 'Aucun import de clients effectué - Import recommandé';
-        } else {
-            const importDate = new Date(data.lastImportDate);
-            const daysSince = data.daysSinceImport;
-            const hoursSince = data.hoursSinceImport;
-
-            let message = '';
-            let color = '#666';
-            let title = '';
-            
-            const formattedDateTime = importDate.toLocaleString('fr-FR', {
-                year: 'numeric',
-                month: '2-digit',
-                day: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit'
-            });
-
-            if (daysSince < 1) {
-                message = `Dernier import patient il y a ${hoursSince}h`;
-                color = '#10b981';
-                title = `Dernière mise à jour de la base patients: ${formattedDateTime}`;
-            } else if (daysSince <= data.warningThreshold) {
-                message = `✓ Denier import patients il y a ${daysSince}j`;
-                color = '#e6e600';
-                title = `Dernière mise à jour de la base patients: ${formattedDateTime}`;
-            } else {
-                message = `⚠️ Base patients ancienne (${daysSince}j) - à rafraichir`;
-                color = '#f59e0b';
-                title = `Dernière mise à jour de la base patients: ${formattedDateTime} - Import recommandé`;
-            }
-            
-            statusEl.innerHTML = message;
-            statusEl.style.color = color;
-            statusEl.title = title;
+            return;
         }
+        
+        // CAS 3 : Import récent existant
+        const importDate = new Date(data.lastImportDate);
+        const daysSince = data.daysSinceImport;
+        const hoursSince = data.hoursSinceImport;
+        const clientCount = data.clientCount || 0;
+
+        let message = '';
+        let color = '#666';
+        let title = '';
+        
+        const formattedDateTime = importDate.toLocaleString('fr-FR', {
+            year: 'numeric',
+            month: '2-digit',
+            day: '2-digit',
+            hour: '2-digit',
+            minute: '2-digit'
+        });
+
+        if (daysSince < 1) {
+            // Moins de 24h
+            message = `✓ Import patients il y a ${hoursSince}h (${clientCount})`;
+            color = '#10b981';
+            title = `Dernière mise à jour : ${formattedDateTime}`;
+        } else if (daysSince <= data.warningThreshold) {
+            // Entre 1 jour et seuil
+            message = `✓ Import patients il y a ${daysSince}j (${clientCount})`;
+            color = '#e6e600';
+            title = `Dernière mise à jour : ${formattedDateTime}`;
+        } else {
+            // Au-delà du seuil
+            message = `⚠️ Base patients ancienne (${daysSince}j) - ${clientCount} patients`;
+            color = '#f59e0b';
+            title = `Dernière mise à jour : ${formattedDateTime} - Import recommandé`;
+        }
+        
+        statusEl.innerHTML = message;
+        statusEl.style.color = color;
+        statusEl.title = title;
+        
     } catch (err) {
         console.error('Erreur chargement statut import:', err);
+        const statusEl = document.getElementById('importStatus');
+        if (statusEl) {
+            statusEl.innerHTML = '⚠️ Erreur statut';
+            statusEl.style.color = '#ef4444';
+            statusEl.title = 'Impossible de charger le statut d\'import';
+        }
     }
 }
 
@@ -1689,9 +1777,11 @@ function generateTableRow(locker, showZone = false) {
         
         return reasons.join(' + ');
     };
-    
     const duplicateTitle = isDuplicate ? getDuplicateInfo(locker) : '';
     
+    const hasHospiDate = false
+    const hospiTitle = hasHospiDate ? ('Date d\'hospi: xxxxx') : 'Date d\'hospi non renseignée';
+
     const getStatus = (locker) => {
         if (!locker.occupied) {
             return '<span class="status-empty" title="Libre"></span>';
@@ -1742,19 +1832,35 @@ function generateTableRow(locker, showZone = false) {
                 <div class="menu-dot">
                     <button class="btn-secondary" onclick="toggleDropdown(event)">⋮</button>
                     <div class="dropdown-menu">
-                        <button onclick="openModalEdit('${locker.number}')">✏️ Modifier</button>
-                        <button onclick="printSingleLockerLabels('${locker.number}')">🏷️ Imprimer étiquettes</button>
-                        <button onclick="openHospitalisationModal('${locker.number}')">🚑 Patient hospitalisé</button>
-                        <button onclick="toggleIDEL('${locker.number}', ${locker.idel ? 'true' : 'false'})">
-                            ${locker.idel ? 'ℹ️ Dissocier IDEL' : 'ℹ️ Associer IDEL'}
+                        <button onclick="openModalEdit('${locker.number}')">
+                            ✏️ Modifier
                         </button>
-                        <button onclick="toggleStup('${locker.number}', ${locker.stup ? 'true' : 'false'})">
-                            ${locker.stup ? '💊 Plus de stupéfiants' : '💊 Marquer stupéfiants'}
+                        <button class="btn-delete" onclick="releaseLocker('${locker.number}')">
+                            🧹 Libérer
                         </button>
-                        <button onclick="toggleMarque('${locker.number}', ${locker.marque ? 'true' : 'false'})">
-                            ${locker.marque ? '🔖 Retirer marque' : '🔖 Marquer'}
+                        <button onclick="printSingleLockerLabels('${locker.number}')">
+                            🏷️ Imprimer étiquettes
                         </button>
-                        <button class="btn-delete" onclick="releaseLocker('${locker.number}')">🧹 Libérer</button>
+                        <!-- SOUS-MENU MARQUEURS -->
+                        <div class="dropdown-submenu">
+                            <button class="has-submenu">
+                                🔖 Marqueurs ›
+                            </button>
+                            <div class="dropdown-submenu-content">
+                                <button onclick="openHospitalisationModal('${locker.number}')">
+                                    ${locker.stup ? '❌ Retour d\'hospi' : '🚑 Hospitalisation'}
+                                </button>
+                                <button onclick="toggleMarker('${locker.number}', 'idel', ${locker.idel ? 'true' : 'false'})">
+                                    ${locker.idel ? '❌ Dissocier IDEL' : 'ℹ️ Associer IDEL'}
+                                </button>
+                                <button onclick="toggleMarker('${locker.number}', 'stup', ${locker.stup ? 'true' : 'false'})">
+                                    ${locker.stup ? '❌ Sans stupéfiants' : '💊 Avec stupéfiants'}
+                                </button>
+                                <button onclick="toggleMarker('${locker.number}', 'marque', ${locker.marque ? 'true' : 'false'})">
+                                    ${locker.marque ? '❌ Retirer marque' : '🔖 Marquer'}
+                                </button>
+                            </div>
+                        </div>
                     </div>
                 </div>
             </td>
@@ -2615,8 +2721,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-
-// @DEPRECATED
+// DEPRECATED Export des données : anciennes fonctions
 function exportData(format) {
     const occupied = DATA.filter(l => l.occupied);
     
@@ -2687,7 +2792,7 @@ function importCSV() {
         // LOADING STATE
         if (importBtn) {
             importBtn.disabled = true;
-            importBtn.innerHTML = '⏳ Import...';
+            importBtn.innerHTML = '⏳ Import CSV legacy...';
             importBtn.classList.add('btn-loading');
         }
       
@@ -2962,7 +3067,8 @@ function selectFileForLockersImport() {
 async function handleLockersFileSelected(e) {
     const file = e.target.files[0];
     if (!file) return;
-    
+    if (!isEditAllowed()) return;
+
     // Trouver le bouton d'import
     const importBtn = Array.from(document.querySelectorAll('.admin-tools-content button'))
         .find(btn => btn.textContent.includes('Import casiers'));
@@ -2985,7 +3091,7 @@ async function handleLockersFileSelected(e) {
         let data;
         let metadata = null;
         
-        // Parser selon le format
+        //--- Parser selon le format
         if (selectedLockersImportFormat === 'json') {
             const jsonData = JSON.parse(text);
             
@@ -3001,12 +3107,12 @@ async function handleLockersFileSelected(e) {
             data = null;  // On n'envoie plus le data parsé côté client
         }
         
-        if (data.length === 0) {
+/*        if (data.length === 0) {
             alert('❌ Aucune donnée valide trouvée dans le fichier');
             return;
         }
-        
-        // Confirmation
+*/        
+        //--- Confirmation
         let confirmMsg = `⬆️ IMPORT CASIERS\n\n`;
         confirmMsg += `Fichier : ${file.name}\n`;
         confirmMsg += `Format : ${selectedLockersImportFormat.toUpperCase()}\n`;
@@ -3025,12 +3131,11 @@ async function handleLockersFileSelected(e) {
             confirmMsg += `\n⚠️ ATTENTION :\n`;
             confirmMsg += `TOUS les casiers seront libérés avant l'import !\n`;
         }
-        
         confirmMsg += `\nVoulez-vous continuer ?`;
         
         if (!confirm(confirmMsg)) return;
         
-        // Import
+        //--- Import
         const res = await fetch(`${API_URL}/import`, {
             method: 'POST',
             headers: { 
@@ -3560,8 +3665,10 @@ async function clearClientsDatabase() {
         
         alert(`✓ Base patients vidée avec succès\n\n${data.deleted} client(s) supprimé(s)`);
         
-        updateImportStatus(); // Rafraîchir le statut d'import
         closeImportOptions(); // Fermer le modal
+
+        // Mettre à jour le statut immédiatement
+        await updateImportStatus();
         
     } catch (err) {
         console.error('Erreur suppression clients:', err);
@@ -3625,7 +3732,7 @@ const debouncedSearch = debounce((query) => {
     }
 }, 400); // Attendre 400ms après la dernière frappe (range 250-500ms conseillé)
 
-
+// Imprimer le tableau affiché
 function printTable() {
     window.print();
 }
@@ -3759,6 +3866,343 @@ async function showClientsStats() {
     }
 }
 
+// --------- MODAL Listes de patients  --------------
+
+// Ouvrir le modal de consultation
+function openConsultationCasiers(filterType = 'idel') {
+    const modal = document.getElementById('consultationCasiersModal');
+    
+    // Remplir le sélecteur de zones dynamiquement
+    const zoneSelect = document.getElementById('consultationZone');
+    zoneSelect.innerHTML = '<option value="all">Toutes les zones</option>';
+    ZONES_CONFIG.forEach(zone => {
+        const option = document.createElement('option');
+        option.value = zone.name;
+        option.textContent = zone.name;
+        zoneSelect.appendChild(option);
+    });
+    
+    // Définir le filtre par défaut
+    document.getElementById('consultationFilter').value = filterType;
+    document.getElementById('consultationZone').value = 'all';
+    
+    // Réinitialiser le tri
+    consultationSortColumn = 'name';
+    consultationSortDirection = 'asc';
+    
+    // Charger les données
+    updateConsultationTable();
+    
+    // Afficher le modal
+    modal.classList.add('active');
+}
+
+// Fermer le modal
+function closeConsultationCasiers() {
+    document.getElementById('consultationCasiersModal').classList.remove('active');
+    consultationData = [];
+}
+
+// Mettre à jour la table selon les filtres
+function updateConsultationTable() {
+    const filterType = document.getElementById('consultationFilter').value;
+    const zone = document.getElementById('consultationZone').value;
+    
+    // Filtrer les données
+    let filtered = DATA.filter(l => l.occupied);
+    
+    // Appliquer le filtre de type
+    switch(filterType) {
+        case 'idel':
+            filtered = filtered.filter(l => l.idel);
+            break;
+        case 'had':
+            filtered = filtered.filter(l => !l.idel);
+            break;
+        case 'hosp':
+            filtered = filtered.filter(l => l.hosp);
+            break;
+        case 'stup':
+            filtered = filtered.filter(l => l.stup);
+            break;
+        case 'marked':
+            filtered = filtered.filter(l => l.marque);
+            break;
+        case 'duplicates':
+            const duplicateInfo = detectDuplicates();
+            filtered = filtered.filter(l => duplicateInfo.duplicates.has(l.number));
+            break;
+        case 'homonyms':
+            const homonymInfo = detectHomonyms();
+            filtered = filtered.filter(l => homonymInfo.homonyms.has(l.number));
+            break;
+    }
+    
+    // Appliquer le filtre de zone
+    if (zone !== 'all') {
+        filtered = filtered.filter(l => l.zone === zone);
+    }
+    consultationData = filtered;
+
+    sortConsultationData(); // Appliquer le tri actuel
+    renderConsultationTable(); // Mettre à jour l'affichage
+}
+
+// Trier les données
+function sortConsultationTable(column) {
+    if (consultationSortColumn === column) {
+        // Inverser la direction si même colonne
+        consultationSortDirection = consultationSortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        // Nouvelle colonne, tri ascendant par défaut
+        consultationSortColumn = column;
+        consultationSortDirection = 'asc';
+    }
+    
+    sortConsultationData();
+    renderConsultationTable();
+}
+
+// Fonction de tri des données
+function sortConsultationData() {
+    consultationData.sort((a, b) => {
+        let valA = a[consultationSortColumn] || '';
+        let valB = b[consultationSortColumn] || '';
+        
+        // Pour les dates, convertir en timestamp
+        if (consultationSortColumn === 'birthDate') {
+            valA = valA ? new Date(valA).getTime() : 0;
+            valB = valB ? new Date(valB).getTime() : 0;
+        } else if (typeof valA === 'string') {
+            valA = valA.toLowerCase();
+            valB = valB.toLowerCase();
+        }
+        
+        if (consultationSortDirection === 'asc') {
+            return valA > valB ? 1 : valA < valB ? -1 : 0;
+        } else {
+            return valA < valB ? 1 : valA > valB ? -1 : 0;
+        }
+    });
+}
+
+// Afficher la table
+function renderConsultationTable() {
+    const tbody = document.getElementById('consultationTableBody');
+    const countEl = document.getElementById('consultationCount');
+    
+    // Mettre à jour le compteur
+    countEl.textContent = `${consultationData.length} patient${consultationData.length > 1 ? 's' : ''}`;
+    
+    if (consultationData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                    Aucun patient trouvé avec ces critères
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    // Générer les lignes
+    tbody.innerHTML = consultationData.map(locker => {
+        const name = anonymizeName(locker.name);
+        const firstName = anonymizeFirstName(locker.firstName);
+        const birthDate = locker.birthDate ? formatDate(locker.birthDate) : '—';
+        const comment = locker.comment || '—';
+        
+        return `
+            <tr>
+                <td><strong>${name}</strong></td>
+                <td>${firstName}</td>
+                <td>${birthDate}</td>
+                <td>${locker.code}</td>
+                <td><strong>${locker.number}</strong> <span style="font-size: 11px; color: var(--text-secondary);">(${locker.zone})</span></td>
+                <td style="font-size: 12px; color: var(--text-secondary);">${comment}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Exporter consultation en CSV
+function exportConsultationCSV() {
+    if (consultationData.length === 0) {
+        alert('Aucune donnée à exporter');
+        return;
+    }
+    
+    const filterType = document.getElementById('consultationFilter').value;
+    const filterLabels = {
+        'idel': 'IDEL-AS',
+        'had': 'nonIDEL',
+        'hosp': 'Hospi',
+        'stup': 'Stupefiants',
+        'marked': 'Marques',
+        'duplicates': 'Doublons',
+        'homonyms': 'Homonymes'
+    };
+    
+    const headers = ['Nom', 'Prenom', 'Date de naissance', 'N°IPP', 'N° Casier', 'Zone', 'Commentaire'];
+    const rows = consultationData.map(l => [
+        l.name,
+        l.firstName,
+        l.birthDate || '',
+        l.code,
+        l.number,
+        l.zone,
+        l.comment || ''
+    ]);
+    
+    const csv = [
+        headers.join(';'),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(';'))
+    ].join('\n');
+    
+    const now = new Date();
+    const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const filename = `consultation_${filterLabels[filterType]}_${timestamp}.csv`;
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    showStatus(`✓ ${consultationData.length} patients exportés`, 'success');
+}
+
+// Imprimer la table de consultation
+function printConsultationTable() {
+    // Récupérer les données actuelles du modal
+    const filterType = document.getElementById('consultationFilter').value;
+    const zone = document.getElementById('consultationZone').value;
+    
+    const filterLabels = {
+        'idel': 'IDEL-AS',
+        'had': '100% HAD',
+        'hosp': 'Hospitalisations',
+        'stup': 'Stupéfiants',
+        'marked': 'Marqués',
+        'duplicates': 'Doublons',
+        'homonyms': 'Homonymes'
+    };
+    
+    const title = `Consultation : ${filterLabels[filterType]}${zone !== 'all' ? ` - Zone ${zone}` : ''}`;
+    
+    // Créer une fenêtre d'impression
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    
+    const html = `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>${title}</title>
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: 15mm;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 11pt;
+        }
+        
+        h1 {
+            font-size: 16pt;
+            margin-bottom: 10px;
+        }
+        
+        .info {
+            font-size: 10pt;
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10pt;
+        }
+        
+        th, td {
+            border: 1px solid #000;
+            padding: 6px 8px;
+            text-align: left;
+        }
+        
+        th {
+            background: #f0f0f0;
+            font-weight: bold;
+        }
+        
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>${title}</h1>
+    <div class="info">
+        ${consultationData.length} patient${consultationData.length > 1 ? 's' : ''} - 
+        Édité le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Nom</th>
+                <th>Prénom</th>
+                <th>Date de naissance</th>
+                <th>N°IPP</th>
+                <th>N° Casier</th>
+                <th>Commentaire</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${consultationData.map(locker => {
+                const name = anonymizeName(locker.name);
+                const firstName = anonymizeFirstName(locker.firstName);
+                const birthDate = locker.birthDate ? formatDate(locker.birthDate) : '—';
+                const comment = locker.comment || '—';
+                
+                return `
+                    <tr>
+                        <td><strong>${name}</strong></td>
+                        <td>${firstName}</td>
+                        <td>${birthDate}</td>
+                        <td>${locker.code}</td>
+                        <td><strong>${locker.number}</strong> <span style="font-size: 9pt; color: #666;">(${locker.zone})</span></td>
+                        <td style="font-size: 9pt;">${comment}</td>
+                    </tr>
+                `;
+            }).join('')}
+        </tbody>
+    </table>
+</body>
+</html>
+    `;
+    
+    printWindow.document.write(html);
+    printWindow.document.close();
+    
+    // Attendre le chargement puis imprimer
+    printWindow.onload = function() {
+        setTimeout(() => {
+            printWindow.print();
+        }, 250);
+    };
+}
+// ------------------- Stats Patients ------------------------------
+
 function renderClientsStats(data) {
     const content = document.getElementById('clientsStatsContent');
     
@@ -3766,8 +4210,9 @@ function renderClientsStats(data) {
     let lastImportInfo = 'Aucun import';
     if (data.lastImport) {
         const importDate = new Date(data.lastImport.importDate);
+        console.log(data.lastImport.importDate, 'Date import', importDate, 'Now:', Date.now())
         const daysSince = Math.floor((Date.now() - importDate) / (1000 * 60 * 60 * 24));
-        lastImportInfo = `${importDate.toLocaleDateString('fr-FR')} (il y a ${daysSince} jour${daysSince > 1 ? 's' : ''})`;
+        lastImportInfo = `${importDate} (il y a ${daysSince} jour${daysSince > 1 ? 's' : ''})`;
     }
     
     // Construire le HTML
@@ -4450,14 +4895,15 @@ function renderConnectionStats(data) {
                 `;
             } else {
                 // Si c'est une connexion individuelle (avec timestamp)
-                const timestamp = new Date(conn.timestamp);
+                const timestamp = new Date(conn.timestamp + 'Z');
                 const formattedDateTime = timestamp.toLocaleString('fr-FR', {
                     day: '2-digit',
                     month: '2-digit',
                     year: 'numeric',
                     hour: '2-digit',
                     minute: '2-digit',
-                    second: '2-digit'
+                    second: '2-digit',
+                    timeZone: 'Europe/Paris' // Force le fuseau horaire
                 });
                 
                 const roleClass = conn.role === 'admin' ? 'admin-col' : 'guest-col';
@@ -4731,12 +5177,14 @@ function renderModificationStats(data) {
         `;
         
         data.recentModifications.forEach(mod => {
-            const timestamp = new Date(mod.timestamp);
+            const timestamp = new Date(mod.timestamp + 'Z');
             const formattedDate = timestamp.toLocaleDateString('fr-FR', {
                 day: '2-digit',
                 month: '2-digit',
                 hour: '2-digit',
-                minute: '2-digit'
+                minute: '2-digit',
+                second: '2-digit',
+                timeZone: 'Europe/Paris'
             });
             
             const actionColor = mod.action === 'ATTRIBUTION' ? '#10b981' : 
@@ -4886,35 +5334,328 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// ============ MARQUES CASIER ============
+
+// AVANT : 3 fonctions séparées // APRÈS : 1 fonction générique
+async function toggleMarker(lockerNumber, marker, currentValue) {
+    const locker = DATA.find(l => l.number === lockerNumber);
+    if (!locker) {
+        alert('Casier non trouvé');
+        return;
+    }
+    if (!locker.occupied) {
+        alert('Ce casier n\'est pas attribué, impossible de modifier cet indicateur!');
+        return;
+    }
+
+    // Configuration des labels par type de marqueur
+    const markerConfig = {
+        'marque': { 
+            icon: '🔖', 
+            label: 'marque',
+            actionAdd: 'Marquer',
+            actionRemove: 'Retirer marque'
+        },
+        'stup': { 
+            icon: '💊', 
+            label: 'stup',
+            actionAdd: 'Avec stupéfiants',
+            actionRemove: 'Sans stupéfiants'
+        },
+        'idel': { 
+            icon: 'ℹ️', 
+            label: 'idel',
+            actionAdd: 'Associer IDEL',
+            actionRemove: 'Dissocier IDEL'
+        },
+        'hosp': {
+            icon: '🚑',
+            label: 'hospi',
+            actionAdd: 'Hospitalisation',
+            actionRemove: 'Retour d\'hospi'
+        }
+    };
+
+    const config = markerConfig[marker];
+    if (!config) {
+        console.error('Marqueur invalide:', marker);
+        return;
+    }
+
+    const action = currentValue ? config.actionRemove : config.actionAdd;
+    const confirmMsg = `${action.charAt(0).toUpperCase() + action.slice(1)} le casier ${lockerNumber} ?\n\n` +
+        (locker.occupied ? `Patient: ${locker.name} ${locker.firstName}` : 'Casier vide');
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        const response = await fetch(`${API_URL}/lockers/${lockerNumber}/toggle/${marker}`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: {
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': CSRF_TOKEN
+            }
+        });
+
+        if (!response.ok) {
+            handleCsrfError(response);
+            throw new Error('Erreur ' + response.status);
+        }
+
+        const updatedLocker = await response.json();
+        
+        // Mettre à jour DATA
+        const index = DATA.findIndex(l => l.number === lockerNumber);
+        if (index !== -1) {
+            DATA[index] = updatedLocker;
+        }
+
+        // Rafraîchir l'affichage
+        renderAllTables();
+
+        const icon = updatedLocker[marker] ? config.icon : '✓';
+        const message = updatedLocker[marker] 
+            ? `${icon} Casier ${lockerNumber} marqué ${config.label}`
+            : `${icon} Marquage ${config.label} retiré du casier ${lockerNumber}`;
+        
+        showStatus(message, 'success');
+
+    } catch (err) {
+        console.error(`Erreur toggle ${config.label}:`, err);
+        showStatus('Erreur: ' + err.message, 'error');
+    }
+}
+
+// ============ STATISTIQUES STUPÉFIANTS ============
+//Fonction utilitaire : Compter les stupéfiants
+function getStupStats() {
+    const stupLockers = DATA.filter(l => l.stup);
+    const occupied = stupLockers.filter(l => l.occupied);
+    
+    const byZone = {};
+    ZONES_CONFIG.forEach(zone => {
+        byZone[zone.name] = stupLockers.filter(l => l.zone === zone.name).length;
+    });
+
+    return {
+        total: stupLockers.length,
+        occupied: occupied.length,
+        empty: stupLockers.length - occupied.length,
+        byZone: byZone
+    };
+}
+
+// Afficher les stats Stup
+function showStupStats() {
+    const stats = getStupStats();
+    
+    let message = `📊 STATISTIQUES STUPÉFIANTS\n======================\n\n`;
+    message += `Total casiers avec Stupéfiants: ${stats.total}\n`
+    message += `\n  • Occupés: ${stats.occupied}`
+    message += `\n  • Vides: ${stats.empty}`
+    message += `\n\nPar zone:`
+    Object.entries(stats.byZone).forEach(([zone, count]) => {
+        message += `\n  • ${zone}: ${count}`;
+         });   
+    message += `\n`
+
+    if (VERBCONSOLE>0) { console.log(message) }
+    alert(message);
+}
+
+
+// ============ HOSPITALISATION ============
+
+function openHospitalisationModal(lockerNumber) {
+    const locker = DATA.find(l => l.number === lockerNumber);
+    
+    if (!locker) {
+        alert('Casier non trouvé');
+        return;
+    }
+    if (!locker.occupied) {
+        alert('Ce casier n\'est pas attribué, impossible de lui associer une hospitalisation!');
+        return;
+    }
+
+    CURRENT_LOCKER_FOR_HOSP = locker;
+    
+    // Remplir les infos
+    const infoDiv = document.getElementById('hospitalisationInfo');
+    infoDiv.innerHTML = `
+        <div style="font-size: 14px;">
+            <strong style="font-size: 16px;">${locker.number} - Zone ${locker.zone}</strong><br>
+            ${locker.occupied 
+                ? `<span style="color: var(--text-secondary);">
+                    ${locker.name} ${locker.firstName}<br>
+                    IPP: ${locker.code}
+                   </span>`
+                : '<span style="color: var(--text-secondary);">Casier vide</span>'
+            }
+        </div>
+    `;
+    
+    // Pré-remplir le formulaire
+    const hospCheckbox = document.getElementById('hospCheckbox');
+    const hospDateInput = document.getElementById('hospDateInput');
+    const hospDateGroup = document.getElementById('hospDateGroup');
+    
+    hospCheckbox.checked = locker.hosp ? true : false;
+    hospDateInput.value = locker.hospDate || '';
+    
+    // Afficher/masquer le champ date selon la checkbox
+    hospDateGroup.style.display = hospCheckbox.checked ? 'block' : 'none';
+    
+    // Event listener pour la checkbox
+    hospCheckbox.onchange = function() {
+        hospDateGroup.style.display = this.checked ? 'block' : 'none';
+        if (!this.checked) {
+            hospDateInput.value = '';
+        }
+    };
+    
+    // Reset status message
+    document.getElementById('hospitalisationStatus').innerHTML = '';
+    
+    // Ouvrir le modal
+    document.getElementById('hospitalisationModal').classList.add('active');
+}
+
+function closeHospitalisationModal() {
+    document.getElementById('hospitalisationModal').classList.remove('active');
+    CURRENT_LOCKER_FOR_HOSP = null;
+}
+
+// Gérer la soumission du formulaire d'hospitalisation
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('hospitalisationForm');
+    if (form) {
+        form.addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            if (!CURRENT_LOCKER_FOR_HOSP) return;
+            
+            const submitBtn = e.target.querySelector('button[type="submit"]');
+            const originalText = submitBtn.textContent;
+            const statusEl = document.getElementById('hospitalisationStatus');
+            
+            // LOADING STATE
+            submitBtn.disabled = true;
+            submitBtn.innerHTML = '⏳ Enregistrement...';
+            submitBtn.classList.add('btn-loading');
+            
+            try {
+                const hospCheckbox = document.getElementById('hospCheckbox');
+                const hospDateInput = document.getElementById('hospDateInput');
+                
+                const hosp = hospCheckbox.checked;
+                const hospDate = hosp ? hospDateInput.value : '';
+                
+                const response = await fetch(`${API_URL}/lockers/${CURRENT_LOCKER_FOR_HOSP.number}/hospitalisation`, {
+                    method: 'POST',
+                    credentials: 'include',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'X-CSRF-Token': CSRF_TOKEN
+                    },
+                    body: JSON.stringify({ hosp, hospDate })
+                });
+                
+                if (!response.ok) {
+                    handleCsrfError(response);
+                    const error = await response.json();
+                    throw new Error(error.error || 'Erreur ' + response.status);
+                }
+                
+                const updatedLocker = await response.json();
+                
+                // Mettre à jour DATA
+                const index = DATA.findIndex(l => l.number === CURRENT_LOCKER_FOR_HOSP.number);
+                if (index !== -1) {
+                    DATA[index] = updatedLocker;
+                }
+                
+                // Rafraîchir l'affichage
+                renderAllTables();
+                
+                // Fermer le modal
+                closeHospitalisationModal();
+                
+                // Message de succès
+                const icon = updatedLocker.hosp ? '🏥' : '✓';
+                const message = updatedLocker.hosp 
+                    ? `${icon} Hospitalisation enregistrée pour ${CURRENT_LOCKER_FOR_HOSP.number}${updatedLocker.hospDate ? ` (${formatDate(updatedLocker.hospDate)})` : ''}`
+                    : `${icon} Hospitalisation retirée du casier ${CURRENT_LOCKER_FOR_HOSP.number}`;
+                
+                showStatus(message, 'success');
+                
+            } catch (err) {
+                console.error('Erreur modification hospitalisation:', err);
+                statusEl.className = 'status-message status-error';
+                statusEl.textContent = '✗ Erreur : ' + err.message;
+            } finally {
+                // RESET STATE
+                submitBtn.disabled = false;
+                submitBtn.innerHTML = originalText;
+                submitBtn.classList.remove('btn-loading');
+            }
+        });
+    }
+});
+
+function showHospitalisationList() {
+    // Filtrer les casiers occupés avec hosp = 1
+    const hospLockers = DATA.filter(l => l.occupied && l.hosp);
+    
+    if (hospLockers.length === 0) {
+        alert('✓ Aucun casier avec hospitalisation');
+        return;
+    }
+    
+    // Trier par zone puis par numéro
+    hospLockers.sort((a, b) => {
+        if (a.zone !== b.zone) {
+            return a.zone.localeCompare(b.zone);
+        }
+        return a.number.localeCompare(b.number);
+    });
+    
+    // Construire le message
+    let message = `🏥 CASIERS AVEC HOSPITALISATION\n`;
+    message += `═══════════════════════════════\n\n`;
+    message += `Total : ${hospLockers.length} casier${hospLockers.length > 1 ? 's' : ''}\n\n`;
+    
+    // Grouper par zone
+    const byZone = {};
+    hospLockers.forEach(locker => {
+        if (!byZone[locker.zone]) {
+            byZone[locker.zone] = [];
+        }
+        byZone[locker.zone].push(locker);
+    });
+    
+    // Afficher par zone
+    Object.keys(byZone).sort().forEach(zone => {
+        message += `─── Zone ${zone} (${byZone[zone].length}) ───\n`;
+        
+        byZone[zone].forEach(locker => {
+            const name = anonymizeName(locker.name);
+            const firstName = anonymizeFirstName(locker.firstName);
+            const dateInfo = locker.hospDate ? ` - ${formatDate(locker.hospDate)}` : '';
+            
+            message += `  • ${locker.number} : ${name} ${firstName}${dateInfo}\n`;
+            if (locker.comment) {
+                message += `    💬 ${locker.comment}\n`;
+            }
+        });
+        message += `\n`;
+    });
+    
+    alert(message);
+}
+
 // ============ IMPRESSION ÉTIQUETTES ============
-
-function showLabelPrintDialog() {
-    const modal = document.getElementById('labelPrintModal');
-    
-    // Remplir le sélecteur de zones
-    const zoneSelect = document.getElementById('labelZone');
-    zoneSelect.innerHTML = ZONES_CONFIG.map(zone => 
-        `<option value="${zone.name}">${zone.name}</option>`
-    ).join('');
-    
-    // Réinitialiser
-    document.getElementById('labelFormat').value = '3x9';
-    document.getElementById('labelSelection').value = 'all';
-    document.getElementById('labelRepetition').value = '1';
-    document.getElementById('zoneSelector').style.display = 'none';
-    document.getElementById('rangeSelector').style.display = 'none';
-    // Pré-cocher selon ANONYMIZE_ENABLED
-    document.getElementById('labelAnonymize').checked = ANONYMIZE_ENABLED;    
-    //document.getElementById('labelHomonymes').checked = false;
-    
-
-    updateLabelPreview();
-    modal.classList.add('active');
-}
-
-function closeLabelPrintDialog() {
-    document.getElementById('labelPrintModal').classList.remove('active');
-}
 
 function updateLabelPreview() {
     const selection = document.getElementById('labelSelection').value;
@@ -4948,6 +5689,30 @@ function updateLabelPreview() {
             ${pagesNeeded > 1 ? `<br><span style="font-size: 11px;">(Dernière page : ${lastPageLabels} étiquette${lastPageLabels > 1 ? 's' : ''})</span>` : ''}
         `;
     }
+}
+
+function showLabelPrintDialog() {
+    const modal = document.getElementById('labelPrintModal');
+    
+    // Remplir le sélecteur de zones
+    const zoneSelect = document.getElementById('labelZone');
+    zoneSelect.innerHTML = ZONES_CONFIG.map(zone => 
+        `<option value="${zone.name}">${zone.name}</option>`
+    ).join('');
+    
+    // Réinitialiser
+    document.getElementById('labelFormat').value = '3x9';
+    document.getElementById('labelSelection').value = 'all';
+    document.getElementById('labelRepetition').value = '1';
+    document.getElementById('zoneSelector').style.display = 'none';
+    document.getElementById('rangeSelector').style.display = 'none';
+    // Pré-cocher selon ANONYMIZE_ENABLED
+    document.getElementById('labelAnonymize').checked = ANONYMIZE_ENABLED;    
+    //document.getElementById('labelHomonymes').checked = false;
+    
+
+    updateLabelPreview();
+    modal.classList.add('active');
 }
 
 function getSelectedLockersForLabels() {
@@ -5228,7 +5993,7 @@ function generateLabelHTML(lockers, format, anonymize) {
                 const locker = pageLockers[j];
                 const name = anonymizeNameLocal(locker.name);
                 const firstName = anonymizeFirstNameLocal(locker.firstName);               console.log(`  Casier ${locker.number}: "${locker.name}" → "${name}"`);
-                console.log(`  Prénom: "${locker.firstName}" → "${firstName}"`);
+                //console.log(`  Prénom: "${locker.firstName}" → "${firstName}"`);
                 const zoneColor = zoneColors[locker.zone] || '#667eea';
                 
                 html += `
@@ -5262,9 +6027,10 @@ function generateLabelHTML(lockers, format, anonymize) {
     return html;
 }
 
-// ============ IMPRESSION ÉTIQUETTES POUR UN CASIER ============
+function closeLabelPrintDialog() {
+    document.getElementById('labelPrintModal').classList.remove('active');
+}
 
-let CURRENT_LOCKER_FOR_PRINT = null;
 
 function printSingleLockerLabels(lockerNumber) {
     const locker = DATA.find(l => l.number === lockerNumber);
@@ -5273,9 +6039,8 @@ function printSingleLockerLabels(lockerNumber) {
         alert('Casier non trouvé');
         return;
     }
-    
     if (!locker.occupied) {
-        alert('Ce casier est vide, impossible d\'imprimer des étiquettes.');
+        alert('Ce casier n\'est pas attribué, impossible d\'imprimer des étiquettes!');
         return;
     }
     
@@ -5285,11 +6050,10 @@ function printSingleLockerLabels(lockerNumber) {
     const infoDiv = document.getElementById('singleLabelInfo');
     infoDiv.innerHTML = `
         <div style="font-size: 14px;">
-            <strong style="font-size: 16px;">${locker.number} - Zone ${locker.zone}</strong><br>
-            <span style="color: var(--text-secondary);">
-                ${locker.name} ${locker.firstName}<br>
-                IPP: ${locker.code} | ${locker.birthDate ? formatDate(locker.birthDate) : ''}
-            </span>
+            <span style="color: var(--text-secondary); text-align: center;">IPP: ${locker.code}</span>            
+            <strong style="font-size: 16px; text-align: center;">${locker.name} ${locker.firstName}</strong><br>
+            <span style="color: var(--text-secondary);">DDN: ${locker.birthDate ? formatDate(locker.birthDate) : ''}</span>
+            <span style="color: var(--text-secondary);">${locker.number}</span>
         </div>
     `;
     
@@ -5342,373 +6106,4 @@ function confirmPrintSingleLabel() {
             printWindow.print();
         }, 250);
     };
-}
-
-// ============ MARQUE CASIER ============
-
-let CURRENT_LOCKER_FOR_MARQUE = null;
-
-async function toggleMarque(lockerNumber, currentMarque) {
-    const locker = DATA.find(l => l.number === lockerNumber);
-    if (!locker) {
-        alert('Casier non trouvé');
-        return;
-    }
-
-    const action = currentMarque ? 'retirer la marque de' : 'marquer';
-    const confirmMsg = `${action.charAt(0).toUpperCase() + action.slice(1)} le casier ${lockerNumber} ?\n\n` +
-        (locker.occupied ? `Patient: ${locker.name} ${locker.firstName}` : 'Casier vide');
-
-    if (!confirm(confirmMsg)) return;
-
-    try {
-        const response = await fetch(`${API_URL}/lockers/${lockerNumber}/marque`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': CSRF_TOKEN
-            }
-        });
-
-        if (!response.ok) {
-            handleCsrfError(response);
-            throw new Error('Erreur ' + response.status);
-        }
-
-        const updatedLocker = await response.json();
-        
-        // Mettre à jour DATA
-        const index = DATA.findIndex(l => l.number === lockerNumber);
-        if (index !== -1) {
-            DATA[index] = updatedLocker;
-        }
-
-        // Rafraîchir l'affichage
-        renderAllTables();
-
-        const icon = updatedLocker.marque ? '🔖' : '✓';
-        const message = updatedLocker.marque 
-            ? `${icon} Casier ${lockerNumber} marqué`
-            : `${icon} Marque retirée du casier ${lockerNumber}`;
-        
-        showStatus(message, 'success');
-
-    } catch (err) {
-        console.error('Erreur toggle marque:', err);
-        showStatus('Erreur: ' + err.message, 'error');
-    }
-}
-
-// ============ STUPÉFIANTS CASIER ============
-
-async function toggleStup(lockerNumber, currentStup) {
-    const locker = DATA.find(l => l.number === lockerNumber);
-    if (!locker) {
-        alert('Casier non trouvé');
-        return;
-    }
-
-    const action = currentStup ? 'retirer le marquage stupéfiants de' : 'marquer stupéfiants pour';
-    const confirmMsg = `${action.charAt(0).toUpperCase() + action.slice(1)} le casier ${lockerNumber} ?\n\n` +
-        (locker.occupied ? `Patient: ${locker.name} ${locker.firstName}` : 'Casier vide');
-
-    if (!confirm(confirmMsg)) return;
-
-    try {
-        const response = await fetch(`${API_URL}/lockers/${lockerNumber}/stup`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': CSRF_TOKEN
-            }
-        });
-
-        if (!response.ok) {
-            handleCsrfError(response);
-            throw new Error('Erreur ' + response.status);
-        }
-
-        const updatedLocker = await response.json();
-        
-        // Mettre à jour DATA
-        const index = DATA.findIndex(l => l.number === lockerNumber);
-        if (index !== -1) {
-            DATA[index] = updatedLocker;
-        }
-
-        // Rafraîchir l'affichage
-        renderAllTables();
-
-        const icon = updatedLocker.stup ? '💊' : '✓';
-        const message = updatedLocker.stup 
-            ? `${icon} Casier ${lockerNumber} marqué stupéfiants`
-            : `${icon} Marquage stupéfiants retiré du casier ${lockerNumber}`;
-        
-        showStatus(message, 'success');
-
-    } catch (err) {
-        console.error('Erreur toggle stupéfiants:', err);
-        showStatus('Erreur: ' + err.message, 'error');
-    }
-}
-
-// ============ STATISTIQUES STUPÉFIANTS ============
-//Fonction utilitaire : Compter les stupéfiants
-function getStupStats() {
-    const stupLockers = DATA.filter(l => l.stup);
-    const occupied = stupLockers.filter(l => l.occupied);
-    
-    const byZone = {};
-    ZONES_CONFIG.forEach(zone => {
-        byZone[zone.name] = stupLockers.filter(l => l.zone === zone.name).length;
-    });
-
-    return {
-        total: stupLockers.length,
-        occupied: occupied.length,
-        empty: stupLockers.length - occupied.length,
-        byZone: byZone
-    };
-}
-
-// Afficher les stats dans la console
-function showStupStats() {
-
-    const stats = getStupStats();
-    
-    let message = `📊 STATISTIQUES STUPÉFIANTS\n======================\n\n`;
-    message += `Total casiers avec Stupéfiants: ${stats.total}\n`
-    message += `\n  • Occupés: ${stats.occupied}`
-    message += `\n  • Vides: ${stats.empty}`
-    message += `\n\nPar zone:`
-    Object.entries(stats.byZone).forEach(([zone, count]) => {
-        message += `\n  • ${zone}: ${count}`;
-         });   
-    message += `\n`
-
-    if (VERBCONSOLE>0) { console.log(message) }
-    alert(message);
-}
-
-// ============ IMPLICATION IDEL ============
-
-async function toggleIDEL(lockerNumber, currentStup) {
-    const locker = DATA.find(l => l.number === lockerNumber);
-    if (!locker) {
-        alert('Casier non trouvé');
-        return;
-    }
-
-    const action = currentStup ? 'dissocier IDEL de' : 'associer IDEL à';
-    const confirmMsg = `${action.charAt(0).toUpperCase() + action.slice(1)} le casier ${lockerNumber} ?\n\n` +
-        (locker.occupied ? `Patient: ${locker.name} ${locker.firstName}` : 'Casier vide');
-
-    if (!confirm(confirmMsg)) return;
-
-    try {
-        const response = await fetch(`${API_URL}/lockers/${lockerNumber}/idel`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: {
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': CSRF_TOKEN
-            }
-        });
-
-        if (!response.ok) {
-            handleCsrfError(response);
-            throw new Error('Erreur ' + response.status);
-        }
-
-        const updatedLocker = await response.json();
-        
-        // Mettre à jour DATA
-        const index = DATA.findIndex(l => l.number === lockerNumber);
-        if (index !== -1) {
-            DATA[index] = updatedLocker;
-        }
-
-        // Rafraîchir l'affichage
-        renderAllTables();
-
-        const icon = updatedLocker.idel ? 'ℹ️' : '✓';
-        const message = updatedLocker.idel 
-            ? `${icon} Casier ${lockerNumber} marqué IDEL`
-            : `${icon} Marquage IDEL retiré du casier ${lockerNumber}`;
-        
-        showStatus(message, 'success');
-
-    } catch (err) {
-        console.error('Erreur toggle IDEL:', err);
-        showStatus('Erreur: ' + err.message, 'error');
-    }
-}
-
-// ============ HOSPITALISATION ============
-
-function openHospitalisationModal(lockerNumber) {
-    const locker = DATA.find(l => l.number === lockerNumber);
-    
-    if (!locker) {
-        alert('Casier non trouvé');
-        return;
-    }
-    
-    CURRENT_LOCKER_FOR_HOSP = locker;
-    
-    // Remplir les infos
-    const infoDiv = document.getElementById('hospitalisationInfo');
-    infoDiv.innerHTML = `
-        <div style="font-size: 14px;">
-            <strong style="font-size: 16px;">${locker.number} - Zone ${locker.zone}</strong><br>
-            ${locker.occupied 
-                ? `<span style="color: var(--text-secondary);">
-                    ${locker.name} ${locker.firstName}<br>
-                    IPP: ${locker.code}
-                   </span>`
-                : '<span style="color: var(--text-secondary);">Casier vide</span>'
-            }
-        </div>
-    `;
-    
-    // Pré-remplir le formulaire
-    const hospCheckbox = document.getElementById('hospCheckbox');
-    const hospDateInput = document.getElementById('hospDateInput');
-    const hospDateGroup = document.getElementById('hospDateGroup');
-    
-    hospCheckbox.checked = locker.hosp ? true : false;
-    hospDateInput.value = locker.hospDate || '';
-    
-    // Afficher/masquer le champ date selon la checkbox
-    hospDateGroup.style.display = hospCheckbox.checked ? 'block' : 'none';
-    
-    // Event listener pour la checkbox
-    hospCheckbox.onchange = function() {
-        hospDateGroup.style.display = this.checked ? 'block' : 'none';
-        if (!this.checked) {
-            hospDateInput.value = '';
-        }
-    };
-    
-    // Reset status message
-    document.getElementById('hospitalisationStatus').innerHTML = '';
-    
-    // Ouvrir le modal
-    document.getElementById('hospitalisationModal').classList.add('active');
-}
-
-function closeHospitalisationModal() {
-    document.getElementById('hospitalisationModal').classList.remove('active');
-    CURRENT_LOCKER_FOR_HOSP = null;
-}
-
-// Gérer la soumission du formulaire d'hospitalisation
-document.addEventListener('DOMContentLoaded', function() {
-    const form = document.getElementById('hospitalisationForm');
-    if (form) {
-        form.addEventListener('submit', async function(e) {
-            e.preventDefault();
-            
-            if (!CURRENT_LOCKER_FOR_HOSP) return;
-            
-            const submitBtn = e.target.querySelector('button[type="submit"]');
-            const originalText = submitBtn.textContent;
-            const statusEl = document.getElementById('hospitalisationStatus');
-            
-            // LOADING STATE
-            submitBtn.disabled = true;
-            submitBtn.innerHTML = '⏳ Enregistrement...';
-            submitBtn.classList.add('btn-loading');
-            
-            try {
-                const hospCheckbox = document.getElementById('hospCheckbox');
-                const hospDateInput = document.getElementById('hospDateInput');
-                
-                const hosp = hospCheckbox.checked;
-                const hospDate = hosp ? hospDateInput.value : '';
-                
-                const response = await fetch(`${API_URL}/lockers/${CURRENT_LOCKER_FOR_HOSP.number}/hospitalisation`, {
-                    method: 'POST',
-                    credentials: 'include',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'X-CSRF-Token': CSRF_TOKEN
-                    },
-                    body: JSON.stringify({ hosp, hospDate })
-                });
-                
-                if (!response.ok) {
-                    handleCsrfError(response);
-                    const error = await response.json();
-                    throw new Error(error.error || 'Erreur ' + response.status);
-                }
-                
-                const updatedLocker = await response.json();
-                
-                // Mettre à jour DATA
-                const index = DATA.findIndex(l => l.number === CURRENT_LOCKER_FOR_HOSP.number);
-                if (index !== -1) {
-                    DATA[index] = updatedLocker;
-                }
-                
-                // Rafraîchir l'affichage
-                renderAllTables();
-                
-                // Fermer le modal
-                closeHospitalisationModal();
-                
-                // Message de succès
-                const icon = updatedLocker.hosp ? '🏥' : '✓';
-                const message = updatedLocker.hosp 
-                    ? `${icon} Hospitalisation enregistrée pour ${CURRENT_LOCKER_FOR_HOSP.number}${updatedLocker.hospDate ? ` (${formatDate(updatedLocker.hospDate)})` : ''}`
-                    : `${icon} Hospitalisation retirée du casier ${CURRENT_LOCKER_FOR_HOSP.number}`;
-                
-                showStatus(message, 'success');
-                
-            } catch (err) {
-                console.error('Erreur modification hospitalisation:', err);
-                statusEl.className = 'status-message status-error';
-                statusEl.textContent = '✗ Erreur : ' + err.message;
-            } finally {
-                // RESET STATE
-                submitBtn.disabled = false;
-                submitBtn.innerHTML = originalText;
-                submitBtn.classList.remove('btn-loading');
-            }
-        });
-    }
-});
-
-// ================  DEBUG   =========================
-// à lancer dans la console du navigateur
-function debugAppState() {
-    if (VERBCONSOLE>0) { 
-        console.log('🔍 État de l\'application:');
-        console.log('  ZONES_CONFIG:', ZONES_CONFIG);
-        console.log('  DATA:', DATA ? DATA.length + ' casiers' : 'non chargé');
-        console.log('  CURRENT_FILTER:', CURRENT_FILTER);
-        console.log('  IS_GUEST:', IS_GUEST);
-        console.log('  IS_AUTHENTICATED:', IS_AUTHENTICATED);
-
-        console.log('\n📊 Compteurs:');
-        ZONES_CONFIG.forEach(zone => {
-            const counter = document.getElementById(`counter-${zone.name}`);
-            console.log(`  ${zone.name}:`, counter ? counter.textContent : 'NON TROUVÉ');
-        });
-        
-        console.log('\n📋 Tableaux:');
-        ZONES_CONFIG.forEach(zone => {
-            const tbody = document.getElementById(`tbody-${zone.name}`);
-            console.log(`  tbody-${zone.name}:`, tbody ? tbody.children.length + ' lignes' : 'NON TROUVÉ');
-        });
-        
-        console.log('\n🔘 Onglets:');
-        const tabs = document.querySelectorAll('.tab-button');
-        console.log(`  ${tabs.length} onglets générés`);
-        tabs.forEach(tab => {
-            console.log(`    - ${tab.textContent.trim()} (${tab.classList.contains('active') ? 'actif' : 'inactif'})`);
-        });
-    }
 }

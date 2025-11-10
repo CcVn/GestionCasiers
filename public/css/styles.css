@@ -975,7 +975,7 @@ tr.duplicate-row td:first-child strong::after {
 
 /* Highlight des lignes avec hospi */
 tr.hosp-row {
-    background: linear-gradient(90deg, rgba(147, 51, 234, 0.5) 0%, transparent 100%);
+    background: linear-gradient(90deg, rgba(102, 102, 153, 0.5) 0%, transparent 90%);
 }
 
 /* Style pour la checkbox stupéfiants dans le modal */
@@ -1040,4 +1040,50 @@ select option[value="idel"] {
 
 #btnToggleMarkResults.active:hover {
     transform: scale(0.98);
+}
+
+
+/* Sous-menu dropdown */
+.dropdown-submenu {
+    position: relative;
+}
+
+.dropdown-submenu .has-submenu {
+    width: 100%;
+    text-align: left;
+    padding-right: 24px;
+    position: relative;
+}
+
+.dropdown-submenu-content {
+    display: none;
+    position: absolute;
+    left: 100%;
+    top: 0;
+    min-width: 200px;
+    background: var(--bg-primary);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    z-index: 1001;
+    padding: 4px 0;
+}
+
+.dropdown-submenu:hover > .dropdown-submenu-content {
+    display: block;
+}
+
+.dropdown-submenu-content button {
+    width: 100%;
+    padding: 10px 16px;
+    border: none;
+    background: none;
+    text-align: left;
+    cursor: pointer;
+    font-size: 14px;
+    transition: background 0.2s;
+}
+
+.dropdown-submenu-content button:hover {
+    background: var(--bg-secondary);
 }

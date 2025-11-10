@@ -67,14 +67,22 @@
                 <button class="btn-secondary btn-small" onclick="toggleAdminTools()" style="padding: 4px 8px; font-size: 11px;">❌</button>
             </div>
             <div class="admin-tools-content">
+                <fieldset class="group-box">
+                    <legend>Outils</legend>
+                    <div class="buttons-container" id="blocSettings" title="Outils">
+                        <button class="btn-secondary" onclick="showLabelPrintDialog()" title="Imprimer des étiquettes">
+                            🏷️ Étiquettes
+                        </button>
+                    </div>
+                </fieldset>
                 <fieldset id="blocPatients" class="group-box">
                     <legend>Patients</legend>
                     <div class="buttons-container" title="Patients">
                        <button class="btn-secondary" onclick="importClients()" title="Importer les patients présents depuis un export MH ou Winpharm">
-                            ⬆️ Import patients
+                            ⬆️ Import
                        </button>
                        <button class="btn-secondary" onclick="showAnonymizationConfig()" title="Configurer l'anonymisation">
-                            🎭 Anonymisation
+                            🎭 Anon.
                         </button>
                         <!--<button class="btn-secondary" onclick="clearClientsDatabase()" title="Vider la base patients">🧹 Vider la base</button> -->
                     </div>
@@ -82,15 +90,30 @@
                 <fieldset id="blocAnalyseCasiers" class="group-box">
                     <legend>Contrôle des casiers</legend>
                     <div class="buttons-container" title="Contrôle des casiers">
+                        <button class="btn-secondary" onclick="openConsultationCasiers('had')">👁️ par thème</button>
                         <button class="btn-secondary" onclick="showDuplicatesPanel()" title="Afficher la liste des doublons détectés">
-                            ⚠️ Doublons
+                            ⚠️ Doubl.
                         </button>
                         <button class="btn-secondary" onclick="showHomonymsPanel()" title="Afficher la liste des homonymes détectés">
-                            👥 Homonymes
+                            👥 Hom.
+                        </button>
+                        <button class="btn-secondary" onclick="showHospitalisationList()" title="Afficher la liste des casiers avec patients hospitalisés">
+                            🏥 Hosp.
+                        </button>
+                        <button class="btn-secondary" onclick="showStupStats()" title="Afficher les statistiques de la base patients (dans la console)">
+                            💊 Stup.
                         </button>
                         <button class="btn-secondary" onclick="clearAllMarks()" title="Retirer toutes les marques des casiers">
                             🔖→🗑️ 
                         </button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('idel')">ℹ️ IDEL</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('hosp')">🏥 Hospitalisations</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('stup')">💊 Stupéfiants</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('marked')">🔖 Marqués</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('duplicates')">⚠️ Doublons</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('homonyms')">👥 Homonymes</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('frigo')">❄ Frigo</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('pca')">💉 PCA</button>
                     </div>
                 </fieldset>
                 <fieldset id="blocStats" class="group-box">
@@ -104,9 +127,6 @@
                         </button>
                         <button class="btn-secondary" onclick="showClientsStats()" title="Afficher les statistiques de la base patients">
                             📊 Patients
-                        </button>
-                        <button class="btn-secondary" onclick="showStupStats()" title="Afficher les statistiques de la base patients (dans la console)">
-                            💊 Stup.
                         </button>
                     </div>
                 </fieldset>
@@ -125,10 +145,10 @@
                         <button class="btn-secondary" onclick="showLockersImportOptions()" title="Importer des casiers">
                                 ⬆️ Import
                         </button>
-                        <button class="btn-secondary" onclick="importCSV()" style="display: none;" title="Importer des données casiers depuis un CSV">
+                        <button class="btn-small" onclick="importCSV()" style="display: inline-block;" title="Importer des données casiers depuis un CSV">
                             ⬆️ CSV
                         </button>
-                        <button class="btn-secondary" onclick="importJSON()" style="display: none;" title="Importer des casiers depuis un fichier JSON">
+                        <button class="btn-small" onclick="importJSON()" style="display: inline-block;" title="Importer des casiers depuis un fichier JSON">
                             ⬆️ JSON
                         </button>
                     </div>
@@ -141,14 +161,6 @@
                         </button>
                         <button class="btn-secondary" onclick="showRestorePanel()" title="Restaurer la base depuis un backup">
                             🔄 Restaurer
-                        </button>
-                    </div>
-                </fieldset>
-                <fieldset class="group-box">
-                    <legend>Outils</legend>
-                    <div class="buttons-container" id="blocSettings" title="Outils">
-                        <button class="btn-secondary" onclick="showLabelPrintDialog()" title="Imprimer des étiquettes">
-                            🏷️ Étiquettes
                         </button>
                     </div>
                 </fieldset>
@@ -181,11 +193,11 @@
 
         <!-- FOOTER -->
         <footer class="app-footer">
-            <p>C.Vinson, Nov 2025</p>
+            <p>Version 0.9, C.Vinson, Oct-Nov 2025</p>
         </footer>        
     </div>
 
-    <!-- Modal Attribuer casier -->
+    <!-- ==============================  Modal Attribuer casier  ============================== -->
     <div id="modal" class="modal">
         <div class="modal-content">
             <div class="modal-header" id="modalTitle">Attribuer un casier</div>
@@ -254,7 +266,7 @@
         </div>
     </div>
 
-    <!-- Modal options d'import clients -->
+    <!--   ==============================  Modal d'import clients  ============================== -->
     <div id="importOptionsModal" class="modal">
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">📥 Options d'import clients</div>
@@ -304,27 +316,27 @@
                     </small>
                 </div>
                 
+                <!-- Bouton pour effacer la base patients -->
+                <div style="border-top: 1px solid var(--border-color); margin-top: 20px; padding-top: 20px;">
+                    <button type="button" class="btn-secondary" onclick="clearClientsDatabase()" style="width: 100%; background: #fee2e2; color: #991b1b; border-color: #fecaca;">
+                        🗑️ Vider la base clients
+                    </button>
+                    <p style="font-size: 11px; color: var(--text-tertiary); margin: 8px 0 0 0; text-align: center;">
+                        Supprime tous les clients de la base de données
+                    </p>
+                </div>
+
                 <div class="modal-footer">
                     <button type="button" class="btn-secondary" onclick="closeImportOptions()">Annuler</button>
                     <button type="button" class="btn-primary" onclick="selectFileForImport()">Choisir le fichier</button>
                 </div>
             </form>
-            <!-- Bouton effacer la base patients -->
-            <div style="border-top: 1px solid var(--border-color); margin-top: 20px; padding-top: 20px;">
-                <button type="button" class="btn-secondary" onclick="clearClientsDatabase()" style="width: 100%; background: #fee2e2; color: #991b1b; border-color: #fecaca;">
-                    🗑️ Vider la base clients
-                </button>
-                <p style="font-size: 11px; color: var(--text-tertiary); margin: 8px 0 0 0; text-align: center;">
-                    Supprime tous les clients de la base de données
-                </p>
-            </div>
-
         </div>
     </div>
     
     <input type="file" id="clientFileInput" accept=".csv" style="display: none;">
 
-    <!-- Modal options d'import casiers -->
+    <!-- ==============================  Modal d'import casiers  ============================== -->
     <div id="lockersImportOptionsModal" class="modal">
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">⬆️ Options d'import casiers</div>
@@ -734,9 +746,77 @@
         </div>
     </div>
 
+    <!-- Modal Consultation Casiers -->
+    <div id="consultationCasiersModal" class="modal">
+        <div class="modal-content" style="max-width: 1200px; width: 95%;">
+            <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h2 style="margin: 0; font-size: 18px;">🔍 Consultation des casiers occupés</h2>
+                <button class="btn-secondary btn-small" onclick="closeConsultationCasiers()" style="padding: 4px 8px; font-size: 11px;">✕</button>
+            </div>
+            
+            <!-- Filtres -->
+            <div style="display: flex; gap: 10px; margin: 16px 0; align-items: center; flex-wrap: wrap;">
+                <div style="flex: 1; min-width: 200px;">
+                    <label for="consultationFilter" style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Type de patients</label>
+                    <select id="consultationFilter" onchange="updateConsultationTable()" style="width: 100%;">
+                        <option value="idel">ℹ️ Patients IDEL+AS</option>
+                        <option value="had">👨‍⚕️ Patients 100% HAD</option>
+                        <option value="hosp">🏥 Patients hospitalisés</option>
+                        <option value="stup">💊 Patients avec stupéfiants</option>
+                        <option value="marked">🔖 Patients avec marque</option>
+                        <option value="duplicates">⚠️ Doublons (IPP ou identité)</option>
+                        <option value="homonyms">👥 Homonymes</option>
+                    </select>
+                </div>
+                
+                <div style="flex: 1; min-width: 150px;">
+                    <label for="consultationZone" style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Zone</label>
+                    <select id="consultationZone" onchange="updateConsultationTable()" style="width: 100%;">
+                        <option value="all">Toutes les zones</option>
+                        <!-- Sera rempli dynamiquement -->
+                    </select>
+                </div>
+                
+                <div style="display: flex; align-items: flex-end; gap: 10px;">
+                    <button class="btn-secondary" onclick="exportConsultationCSV()" title="Exporter en CSV">
+                        ⬇ CSV
+                    </button>
+                    <button class="btn-secondary" onclick="printConsultationTable()" title="Imprimer">
+                        🖨️ Imprimer
+                    </button>
+                </div>
+            </div>
+            
+            <!-- Compteur -->
+            <div style="padding: 8px 12px; background: var(--bg-secondary); border-radius: 6px; margin-bottom: 16px; font-size: 14px;">
+                <strong id="consultationCount">0 patient(s)</strong>
+            </div>
+            
+            <!-- Table -->
+            <div style="max-height: 500px; overflow-y: auto;">
+                <table class="clients-preview-table" id="consultationTable">
+                    <thead style="position: sticky; top: 0; background: var(--bg-primary); z-index: 10;">
+                        <tr>
+                            <th style="cursor: pointer;" onclick="sortConsultationTable('name')">Nom ▼</th>
+                            <th style="cursor: pointer;" onclick="sortConsultationTable('firstName')">Prénom ▼</th>
+                            <th style="cursor: pointer;" onclick="sortConsultationTable('birthDate')">Date de naissance ▼</th>
+                            <th style="cursor: pointer;" onclick="sortConsultationTable('code')">N°IPP ▼</th>
+                            <th style="cursor: pointer;" onclick="sortConsultationTable('number')">N° Casier ▼</th>
+                            <th>Commentaire</th>
+                        </tr>
+                    </thead>
+                    <tbody id="consultationTableBody">
+                        <!-- Rempli dynamiquement -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
 
 <!--    <script src="/js/admintools.js"></script> -->
+<!--    <script src="modal_labels.js"></script>  -->
     <script src="app.js"></script>
+<!--    <script src="modal_consultation.js"></script> -->
     <script>
         // Fonction pour toggle le container des outils admin
         function toggleAdminTools() {

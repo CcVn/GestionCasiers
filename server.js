@@ -3,6 +3,7 @@ require('dotenv').config({path: './config.env'});
 
 const isProduction = process.env.NODE_ENV === 'production';
 const { z } = require('zod');
+process.env.TZ = 'UTC';
 
 // ============ SCHÉMAS DE VALIDATION ZOD ============
 
@@ -21,6 +22,8 @@ const lockerSchema = z.object({
     hospDate: z.string().optional().default(''),
     idel: z.boolean().optional().default(false),
     stup: z.boolean().optional().default(false),
+    frigo: z.boolean().optional().default(false),
+    pca: z.boolean().optional().default(false),
     expectedVersion: z.union([z.number(), z.null()]).optional()  // accepter number, null ou undefined
 });
 
@@ -48,7 +51,9 @@ const importCasierSchema = z.object({
     marque: z.boolean().optional().default(false),
     hosp: z.boolean().optional().default(false),
     hospDate: z.string().optional().default(''),
-    stup: z.boolean().optional().default(false)
+    stup: z.boolean().optional().default(false),
+    frigo: z.boolean().optional().default(false),
+    pca: z.boolean().optional().default(false)
 });
 
 // Schéma pour restauration backup
@@ -112,12 +117,6 @@ if (!ADMIN_PASSWORD_HASH) {
     console.error('   Utilisez: node generate-password.js pour générer un hash');
     process.exit(1);
 }
-
-/*if (ADMIN_PASSWORD_LEGACY && !ADMIN_PASSWORD_HASH) {
-    console.warn('⚠️  ATTENTION: ADMIN_PASSWORD en clair détecté !');
-    console.warn('   Utilisez: node generate-password.js pour générer un hash');
-    console.warn('   Puis ajoutez ADMIN_PASSWORD_HASH dans .env');
-} */
 if (!isProduction && VERBOSE) console.log('🔐 Authentification configurée');
 
 const ANONYMIZE_GUEST = process.env.ANONYMIZE_GUEST === 'true';
@@ -170,12 +169,18 @@ const ZONES_CONFIG = parseZonesConfig();
 // Gestion des sessions en mémoire
 const sessions = new Map();
 
-// Fonction pour enregistrer une connexion dans les stats
+//==== Fonction pour enregistrer une connexion dans les stats
 async function recordConnection(role, userName = null, ipAddress = null) {
   const today = new Date().toISOString().split('T')[0];
   
   try {
-    // Stats agrégées (existant)
+    //--- Log individuel
+    await dbRun(
+      'INSERT INTO connection_logs (role, userName, ipAddress) VALUES (?, ?, ?)',
+      [role, userName || null, ipAddress || null]
+    );
+
+    //--- Stats de connexion agrégées
     const existing = await dbGet(
       'SELECT * FROM connection_stats WHERE date = ? AND role = ?',
       [today, role]
@@ -192,18 +197,12 @@ async function recordConnection(role, userName = null, ipAddress = null) {
         [today, role]
       );
     }
-    
-    // Log individuel
-    await dbRun(
-      'INSERT INTO connection_logs (role, userName, ipAddress) VALUES (?, ?, ?)',
-      [role, userName || null, ipAddress || null]
-    );
   } catch (err) {
     console.error('Erreur enregistrement stats connexion:', err);
   }
 }
 
-// Fonction pour enregistrer une modification dans l'historique
+//==== Fonction pour enregistrer une modification dans l'historique
 async function recordHistory(lockerNumber, action, userName, userRole, details = '') {
   try {
     await dbRun(
@@ -271,7 +270,7 @@ const loginLimiter = rateLimit({
 // Limiteur pour les imports (opérations lourdes)
 const importLimiter = rateLimit({
   windowMs: 60 * 60 * 1000, // 1 heure
-  max: 15, // Max 10 imports par heure
+  max: 100, // Max 10 imports par heure
   message: { error: 'Trop d\'imports. Limite: 15 par heure.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -295,7 +294,7 @@ const backupLimiter = rateLimit({
   legacyHeaders: false,
 });
 
-// ============ APP & MIDDLEWARE ============
+// ====================== APP & MIDDLEWARE ===========================
 const app = express();
 
 // Middleware
@@ -317,7 +316,7 @@ app.use('/api/', generalLimiter); // Appliquer le rate limiting général
 
 // ---- HELMET : voir plus tard pour ajouter les nonces avec crypto
 // par ex remplacer <button onclick="toggleAdminTools()">...</button> par <button id="btnToggleAdminTools">...</button>
-/* app.use(
+app.use(
   helmet({
     contentSecurityPolicy: {
       directives: {
@@ -326,38 +325,40 @@ app.use('/api/', generalLimiter); // Appliquer le rate limiting général
         styleSrc: ["'self'", "'unsafe-inline'"], // Pour les styles inline dans vos composants
         scriptSrcAttr: ["'unsafe-inline'"], 
         imgSrc: ["'self'", "data:"],   // Pour les images en base64 si nécessaire
-        fontSrc: ["'self'"],
         connectSrc: ["'self'"], // Connexions : autoriser self (pour vos API fetch)
         frameSrc: ["'none'"], // Frames : bloquer (pas besoin d'iframes)
         objectSrc: ["'none'"], // Objects : bloquer (pas de Flash, etc.)
+        fontSrc: ["'self'"],
         baseUri: ["'self'"], // Base URI : restreindre
         formAction: ["'self'"],  // Form actions : autoriser self
-        // Activer upgradeInsecureRequests SEULEMENT en production
-        ...(isProduction && { upgradeInsecureRequests: [] })
-      }
+//        ...(isProduction && { upgradeInsecureRequests: [] })   // Activer upgradeInsecureRequests SEULEMENT en production
+      },
+      reportOnly: true, // <-- Mode "Report-Only"
+      reportUri: '/csp-report', // URL où les rapports seront envoyés
+      browserSniff: false,
     },
-    crossOriginEmbedderPolicy: false,  // Désactiver si problèmes CORS
-    crossOriginResourcePolicy: { policy: "same-origin" },
+//    crossOriginEmbedderPolicy: false,  // Désactiver si problèmes CORS
+//    crossOriginResourcePolicy: { policy: "same-origin" },
     frameguard: { action: 'deny' }, // Protection contre le clickjacking
     // Force HTTPS en production
     // HSTS seulement en production
-    hsts: isProduction ? {
-      maxAge: 31536000,
-      includeSubDomains: true,
-      preload: true
-    } : false,
+//    hsts: isProduction ? {
+//      maxAge: 31536000,
+//      includeSubDomains: true,
+//      preload: true
+//    } : false,
     hidePoweredBy: true, // Cache les headers serveur
-    //noSniff: true,  // Bloque le MIME sniffing
-    //ieNoOpen: true, // Force le téléchargement au lieu de l'affichage
     xssFilter: true, // Protection XSS (ancienne méthode, mais garde-fou)
-  })
-); */
-app.use(
-  helmet({
-    contentSecurityPolicy: false,  // Désactive toute la CSP
+
+    //noSniff: true,  // Bloque le MIME sniffing
   })
 );
-// Pour les étiquettes
+// app.use(
+//   helmet({
+//     contentSecurityPolicy: false,  // Désactive toute la CSP
+//   })
+// );
+// Pour les étiquettes (alt, non utilisé pour l'instant)
 app.set("views", path.join(__dirname, 'views')); // Définir le dossier des vues
 app.set("view engine", "ejs"); // Choisir le moteur de rendu (EJS dans cet exemple)
 
@@ -445,6 +446,9 @@ function initializeDatabase() {
         hospDate TEXT DEFAULT '',
         stup BOOLEAN DEFAULT 0,
         idel BOOLEAN DEFAULT 0,
+        frigo BOOLEAN DEFAULT 0,
+        pca BOOLEAN DEFAULT 0,
+        meopa BOOLEAN DEFAULT 0,
         updatedAt DATETIME DEFAULT CURRENT_TIMESTAMP,
         updatedBy TEXT DEFAULT '',
         version INTEGER DEFAULT 0
@@ -655,7 +659,7 @@ const IMPORT_FORMATS = {
             'Nom': 'name',
             'Prénom': 'firstName',
             'Nom Naissance': 'birthName',
-            'Date Naissance': 'birthDate',
+            'DDN': 'birthDate',
             'Sexe': 'sex',
             'Zone': 'zone',
             'Date Entrée': 'entryDate'
@@ -1252,52 +1256,6 @@ app.post('/api/lockers', requireAuth, csrfProtection, async (req, res) => {
   }
 });
 
-// POST Toggle marque d'un casier
-app.post('/api/lockers/:number/marque', requireAuth, csrfProtection, async (req, res) => {
-  try {
-    const token = req.cookies.auth_token;
-    const session = sessions.get(token);
-    const userName = session?.userName || 'Inconnu';
-
-    const locker = await dbGet(
-      'SELECT * FROM lockers WHERE number = ?',
-      [req.params.number]
-    );
-
-    if (!locker) {
-      return res.status(404).json({ error: 'Casier non trouvé' });
-    }
-
-    // Toggle la marque
-    const newMarque = locker.marque ? 0 : 1;
-
-    await dbRun(
-      `UPDATE lockers 
-       SET marque = ?, updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
-       WHERE number = ?`,
-      [newMarque, userName, req.params.number]
-    );
-
-    // Logger dans l'historique
-    const action = newMarque ? 'MARQUE_AJOUTÉE' : 'MARQUE_RETIRÉE';
-    const details = locker.occupied 
-      ? `${locker.name} ${locker.firstName} (IPP: ${locker.code})`
-      : 'Casier vide';
-    
-    await recordHistory(req.params.number, action, userName, 'admin', details);
-
-    const updatedLocker = await dbGet(
-      'SELECT * FROM lockers WHERE number = ?',
-      [req.params.number]
-    );
-
-    res.json(updatedLocker);
-  } catch (err) {
-    console.error('Erreur toggle marque:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // POST marquer plusieurs casiers
 app.post('/api/lockers/bulk-mark', requireAuth, csrfProtection, async (req, res) => {
   try {
@@ -1400,97 +1358,66 @@ app.delete('/api/lockers/clear-marks', requireAuth, csrfProtection, async (req, 
   }
 });
 
-// POST Toggle stupéfiants d'un casier
-app.post('/api/lockers/:number/stup', requireAuth, csrfProtection, async (req, res) => {
+
+// AVANT : 3 routes séparées /lockers/:number/marque, /stup, /idel
+// POST Toggle marqueur générique d'un casier
+app.post('/api/lockers/:number/toggle/:marker', requireAuth, csrfProtection, async (req, res) => {
   try {
+    const { number } = req.params;
+    const { marker } = req.params;
+    
+    // Validation du marqueur
+    const validMarkers = ['marque', 'stup', 'idel', 'hosp', 'frigo', 'pca'];
+    if (!validMarkers.includes(marker)) {
+      return res.status(400).json({ error: 'Marqueur invalide' });
+    }
+    
     const token = req.cookies.auth_token;
     const session = sessions.get(token);
     const userName = session?.userName || 'Inconnu';
 
-    const locker = await dbGet(
-      'SELECT * FROM lockers WHERE number = ?',
-      [req.params.number]
-    );
+    const locker = await dbGet('SELECT * FROM lockers WHERE number = ?', [number]);
 
     if (!locker) {
       return res.status(404).json({ error: 'Casier non trouvé' });
     }
 
-    // Toggle stup
-    const newStup = locker.stup ? 0 : 1;
+    // Toggle le marqueur
+    const newValue = locker[marker] ? 0 : 1;
 
     await dbRun(
       `UPDATE lockers 
-       SET stup = ?, updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
+       SET ${marker} = ?, updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
        WHERE number = ?`,
-      [newStup, userName, req.params.number]
+      [newValue, userName, number]
     );
 
-    // Logger dans l'historique
-    const action = newStup ? 'STUPÉFIANTS_AJOUTÉS' : 'STUPÉFIANTS_RETIRÉS';
+    // Logger dans l'historique avec labels appropriés
+    const markerLabels = {
+      'marque': { add: 'MARQUE_AJOUTÉE', remove: 'MARQUE_RETIRÉE' },
+      'stup': { add: 'STUPÉFIANTS_AJOUTÉS', remove: 'STUPÉFIANTS_RETIRÉS' },
+      'idel': { add: 'IDEL_AJOUTÉ', remove: 'IDEL_RETIRÉ' },
+      'hosp': { add: 'HOSPITALISATION_AJOUTÉE', remove: 'HOSPITALISATION_RETIRÉE' },
+      'frigo': { add: 'FRIGO_AJOUTÉ', remove: 'FRIGO_RETIRÉ' },
+      'pca': { add: 'PCA_AJOUTÉ', remove: 'PCA_RETIRÉ' }
+    };
+    
+    const action = newValue ? markerLabels[marker].add : markerLabels[marker].remove;
     const details = locker.occupied 
       ? `${locker.name} ${locker.firstName} (IPP: ${locker.code})`
       : 'Casier vide';
     
-    await recordHistory(req.params.number, action, userName, 'admin', details);
+    await recordHistory(number, action, userName, 'admin', details);
 
-    const updatedLocker = await dbGet(
-      'SELECT * FROM lockers WHERE number = ?',
-      [req.params.number]
-    );
+    const updatedLocker = await dbGet('SELECT * FROM lockers WHERE number = ?', [number]);
 
     res.json(updatedLocker);
   } catch (err) {
-    console.error('Erreur toggle stupéfiants:', err);
+    console.error('Erreur toggle marqueur:', err);
     res.status(500).json({ error: err.message });
   }
 });
 
-// POST Toggle idel d'un casier
-app.post('/api/lockers/:number/idel', requireAuth, csrfProtection, async (req, res) => {
-  try {
-    const token = req.cookies.auth_token;
-    const session = sessions.get(token);
-    const userName = session?.userName || 'Inconnu';
-
-    const locker = await dbGet(
-      'SELECT * FROM lockers WHERE number = ?',
-      [req.params.number]
-    );
-
-    if (!locker) {
-      return res.status(404).json({ error: 'Casier non trouvé' });
-    }
-
-    // Toggle IDEL
-    const newIDEL = locker.idel ? 0 : 1;
-
-    await dbRun(
-      `UPDATE lockers 
-       SET idel = ?, updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
-       WHERE number = ?`,
-      [newIDEL, userName, req.params.number]
-    );
-
-    // Logger dans l'historique
-    const action = newIDEL ? 'IDEL_AJOUTÉ' : 'IDEL_RETIRÉ';
-    const details = locker.occupied 
-      ? `${locker.name} ${locker.firstName} (IPP: ${locker.code})`
-      : 'Casier vide';
-    
-    await recordHistory(req.params.number, action, userName, 'admin', details);
-
-    const updatedLocker = await dbGet(
-      'SELECT * FROM lockers WHERE number = ?',
-      [req.params.number]
-    );
-
-    res.json(updatedLocker);
-  } catch (err) {
-    console.error('Erreur toggle IDEL:', err);
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // POST Modifier l'hospitalisation d'un casier
 app.post('/api/lockers/:number/hospitalisation', requireAuth, csrfProtection, async (req, res) => {
@@ -1914,8 +1841,8 @@ app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, asyn
         
         // rawContent fourni → parser avec le format
         if (rawContent) {
-            const formatName = format || process.env.CLIENT_IMPORT_FORMAT || 'BASIQUE';
-            const csvSeparator = separator || ',';
+            const formatName = format; // || process.env.CLIENT_IMPORT_FORMAT || 'BASIQUE';
+            const csvSeparator = separator; // || ',';
             const result = parseClientsWithFormat(rawContent, formatName, csvSeparator);
             clients = result.clients;
             stats = result.stats;
@@ -2005,8 +1932,8 @@ app.post('/api/clients/import', requireAuth, importLimiter, csrfProtection, asyn
             const userName = session?.userName || 'Inconnu';
             
             await dbRun(
-                'INSERT INTO client_imports (recordCount, userName) VALUES (?, ?)',
-                [importedCount, userName]
+              'INSERT INTO client_imports (recordCount, userName, importDate) VALUES (?, ?, ?)',
+              [importedCount, userName, new Date().toISOString()]
             );
             
             // Compter le total en base (pour mode merge)
@@ -2047,11 +1974,6 @@ app.delete('/api/clients/clear', requireAuth, csrfProtection, async (req, res) =
     const resultClients = await dbRun('DELETE FROM clients');
     const countClients = resultClients.changes || 0;
     if (true) { console.log(`✓ ${countClients} clients supprimés`); }
-    
-    // Supprimer aussi l'historique des imports ? pour détection mise à jour... bof bof...
-/*    const resultImports = await dbRun('DELETE FROM client_imports');
-    const countImports = resultImports.changes || 0;
-    console.log(`✓ ${countImports} historique(s) d'import supprimé(s)`);*/
     
     // Log de sécurité
     await dbRun(
@@ -2204,8 +2126,6 @@ app.get('/api/exports/history', async (req, res) => {
 app.post('/api/import', requireAuth, importLimiter, csrfProtection, async (req, res) => {
   try {
     const { data, mode, separator, rawContent } = req.body;  // AJOUTER separator et rawContent
-    
-    if (!isEditAllowed()) return;
     
     let parsedData = [];
     
@@ -2435,7 +2355,19 @@ app.post('/api/import-json', requireAuth, importLimiter, csrfProtection, async (
   }
 });
 
-// POST export unifié
+async function logExport(format, count, userName, role) {
+  try {
+      return await dbRun(
+          'INSERT INTO export_logs (format, recordCount, userName, userRole) VALUES (?, ?, ?, ?)',
+          [format, lockers.length, userName, role]
+      );
+  } catch (logErr) {
+      console.error('Erreur enregistrement log export:', logErr);
+      // Ne pas bloquer l'export si le log échoue
+  }
+}
+
+// POST export unifié avec log internalisé
 app.post('/api/export', requireAuth, exportLimiter, csrfProtection, async (req, res) => {
     try {
         const { format, separator, includeEmpty } = req.body;
@@ -2509,8 +2441,17 @@ app.post('/api/export', requireAuth, exportLimiter, csrfProtection, async (req, 
             return res.status(400).json({ error: 'Format invalide' });
         }
         
-        // Logger l'export
-        await logExport(format, lockers.length, userName, role);
+        //await logExport(format, lockers.length, userName, role);
+        // LOGGER L'EXPORT DIRECTEMENT ICI (au lieu de logExport)
+        try {
+            await dbRun(
+                'INSERT INTO export_logs (format, recordCount, userName, userRole) VALUES (?, ?, ?, ?)',
+                [format, lockers.length, userName, role]
+            );
+        } catch (logErr) {
+            console.error('Erreur enregistrement log export:', logErr);
+            // Ne pas bloquer l'export si le log échoue
+        }
         
         res.json({
             success: true,
@@ -2529,7 +2470,7 @@ app.post('/api/export', requireAuth, exportLimiter, csrfProtection, async (req, 
 // ============ ROUTES IMPORT CLIENTS ============
 
 // POST import clients depuis CSV
-app.post('/api/clients/import', requireAuth, csrfProtection, async (req, res) => {
+app.post('/api/clients/import_legacy', requireAuth, csrfProtection, async (req, res) => {
   try {
     const { data } = req.body;
     
@@ -2582,8 +2523,8 @@ app.post('/api/clients/import', requireAuth, csrfProtection, async (req, res) =>
       const userName = session?.userName || 'Inconnu';
       
       await dbRun(
-        'INSERT INTO client_imports (recordCount, userName) VALUES (?, ?)',
-        [imported, userName]
+        'INSERT INTO client_imports (recordCount, userName, importDate) VALUES (?, ?, ?)',
+        [imported, userName, new Date().toISOString()]
       );
       
       res.json({
@@ -2605,27 +2546,44 @@ app.post('/api/clients/import', requireAuth, csrfProtection, async (req, res) =>
 app.get('/api/clients/import-status', async (req, res) => {
   try {
 
+    // Récupérer le dernier import (même avec recordCount négatif)
     const lastImport = await dbGet(
       'SELECT * FROM client_imports ORDER BY importDate DESC LIMIT 1'
     );
-    //console.log(lastImport)
-    
-    const rows = await dbGet(
-      'SELECT COUNT(*)=0 AS is_empty FROM clients'
-    );
-    const isempty = rows[0].is_empty
-    console.log(isempty)
+        
+    // Vérifier si la base clients est vide
+    const clientCount = await dbGet('SELECT COUNT(*) as count FROM clients');
+    const isBaseEmpty = clientCount.count === 0;
 
-    if (!lastImport) {
+    // Si base vide ET pas d'import, ou si dernier import est un effacement
+    if (!lastImport || isBaseEmpty) {
       return res.json({
         hasImport: false,
+        isEmpty: true,
         warning: true,
-        warningThreshold: CLIENT_IMPORT_WARNING_DAYS
+        warningThreshold: CLIENT_IMPORT_WARNING_DAYS,
+        message: 'Aucune donnée patient en base'
       });
     }
-    
+
+    // Si le dernier import est un effacement (recordCount négatif)
+    if (lastImport.recordCount < 0) {
+      return res.json({
+        hasImport: true,
+        lastImportDate: lastImport.importDate,
+        wasCleared: true,
+        clearedBy: lastImport.userName,
+        isEmpty: isBaseEmpty,
+        warning: true,
+        warningThreshold: CLIENT_IMPORT_WARNING_DAYS,
+        message: `Base vidée le ${new Date(lastImport.importDate).toLocaleDateString('fr-FR')}`
+      });
+    }
+
+    // Calcul du temps écoulé
     const importDate = new Date(lastImport.importDate);
     const now = new Date();
+    //console.log('Now:', now, ' importDate:', importDate);
     const daysSince = Math.floor((now - importDate) / (1000 * 60 * 60 * 24));
     const hoursSince = Math.floor((now - importDate) / (1000 * 60 * 60));
     
@@ -2636,10 +2594,13 @@ app.get('/api/clients/import-status', async (req, res) => {
       hoursSinceImport: hoursSince,
       recordCount: lastImport.recordCount,
       userName: lastImport.userName,
-      warning: daysSince > CLIENT_IMPORT_WARNING_DAYS,
+      clientCount: clientCount.count,
+      isEmpty: isBaseEmpty,
+      warning: daysSince > CLIENT_IMPORT_WARNING_DAYS || isBaseEmpty,
       warningThreshold: CLIENT_IMPORT_WARNING_DAYS
     });
   } catch (err) {
+    console.error('Erreur récupération statut import:', err);
     res.status(500).json({ error: err.message });
   }
 });
@@ -3007,6 +2968,14 @@ app.get('/api/config', (req, res) => {
 app.get('/api/client-ip', (req, res) => {
   const clientIP = getClientIP(req);
   res.json({ ip: clientIP });
+});
+
+// Rapports helmet
+app.post('/csp-report', express.json(), (req, res) => {
+  const report = req.body;
+  console.log('Violation CSP rapportée :', report);
+  // Vous pouvez aussi enregistrer ces rapports dans un fichier ou une base de données.
+  res.status(204).end();
 });
 
 // Route par défaut pour servir index.html

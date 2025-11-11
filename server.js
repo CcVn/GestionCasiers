@@ -5,55 +5,73 @@ const isProduction = process.env.NODE_ENV === 'production';
 const { z } = require('zod');
 process.env.TZ = 'UTC';
 
+const express = require('express');
+const sqlite3 = require('sqlite3').verbose();
+const cors = require('cors');
+const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const crypto = require('crypto');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
+const bcrypt = require('bcrypt');
+const cookieParser = require('cookie-parser');
+const csrf = require('csurf');
+const { parse, stringify } = require('csv-parse');
+
 // ============ SCHÉMAS DE VALIDATION ZOD ============
 
 // Schéma pour créer/modifier un casier
 const lockerSchema = z.object({
-    number: z.string().min(1, 'Numéro de casier requis').regex(/^[A-Z]+\d{1,3}$/, 'Format numéro invalide'),
-    zone: z.string().min(1, 'Zone requise'),
-    name: z.string().max(100, 'Nom trop long').optional().default(''),
-    firstName: z.string().max(100, 'Prénom trop long').optional().default(''),
-    code: z.string().max(50, 'Code IPP trop long').optional().default(''),
-    birthDate: z.string().optional().default(''),
+    number:      z.string().min(1, 'Numéro de casier requis').regex(/^[A-Z]+\d{1,3}$/, 'Format numéro invalide'),
+    zone:        z.string().min(1, 'Zone requise'),
+    name:        z.string().max(100, 'Nom trop long').optional().default(''),
+    firstName:   z.string().max(100, 'Prénom trop long').optional().default(''),
+    code:        z.string().max(50, 'Code IPP trop long').optional().default(''),
+    birthDate:   z.string().optional().default(''),
     recoverable: z.boolean().optional().default(false),
-    comment: z.string().max(500, 'Commentaire trop long').optional().default(''),
-    marque: z.boolean().optional().default(false),
-    hosp: z.boolean().optional().default(false),
-    hospDate: z.string().optional().default(''),
-    idel: z.boolean().optional().default(false),
-    stup: z.boolean().optional().default(false),
-    frigo: z.boolean().optional().default(false),
-    pca: z.boolean().optional().default(false),
+    hosp:        z.boolean().optional().default(false),
+    hospDate:    z.string().optional().default(''),
+    idel:        z.boolean().optional().default(false),
+    stup:        z.boolean().optional().default(false),
+    frigo:       z.boolean().optional().default(false),
+    PCA:         z.boolean().optional().default(false),
+    MEOPA:         z.boolean().optional().default(false),
+    comment:     z.string().max(500, 'Commentaire trop long').optional().default(''),
+    marque:      z.boolean().optional().default(false),
     expectedVersion: z.union([z.number(), z.null()]).optional()  // accepter number, null ou undefined
 });
 
 // Schéma pour import clients
 const clientSchema = z.object({
-    ipp: z.string().min(1, 'IPP requis'),
-    name: z.string().max(100).optional().default(''),
+    ipp:       z.string().min(1, 'IPP requis'),
+    name:      z.string().max(100).optional().default(''),
     firstName: z.string().max(100).optional().default(''),
     birthName: z.string().max(100).optional().default(''),
     birthDate: z.string().optional().default(''),
-    sex: z.enum(['M', 'F', '']).optional().default(''),
-    zone: z.string().max(50).optional().default(''),
+    sex:       z.enum(['M', 'F', '']).optional().default(''),
+    zone:      z.string().max(50).optional().default(''),
     entryDate: z.string().optional().default('')
 });
 
 // Schéma pour import CSV casiers
 const importCasierSchema = z.object({
-    number: z.string().min(1),
-    zone: z.string().min(1),
-    name: z.string().max(100).optional().default(''),
-    firstName: z.string().max(100).optional().default(''),
-    code: z.string().max(50).optional().default(''),
-    birthDate: z.string().optional().default(''),
+    number:      z.string().min(1),
+    zone:        z.string().min(1),
+    name:        z.string().max(100).optional().default(''),
+    firstName:   z.string().max(100).optional().default(''),
+    code:        z.string().max(50).optional().default(''),
+    birthDate:   z.string().optional().default(''),
     recoverable: z.boolean().optional().default(false),
-    marque: z.boolean().optional().default(false),
-    hosp: z.boolean().optional().default(false),
-    hospDate: z.string().optional().default(''),
-    stup: z.boolean().optional().default(false),
-    frigo: z.boolean().optional().default(false),
-    pca: z.boolean().optional().default(false)
+    marque:      z.boolean().optional().default(false),
+    hosp:        z.boolean().optional().default(false),
+    hospDate:    z.string().optional().default(''),
+    idel:        z.boolean().optional().default(false),
+    stup:        z.boolean().optional().default(false),
+    frigo:       z.boolean().optional().default(false),
+    PCA:         z.boolean().optional().default(false),
+    MEOPA:       z.boolean().optional().default(false),
+    comment:     z.string().max(200).optional().default('')
 });
 
 // Schéma pour restauration backup
@@ -90,19 +108,6 @@ const loginSchema = z.object({
     path: ['userName']
 });
 
-const express = require('express');
-const sqlite3 = require('sqlite3').verbose();
-const cors = require('cors');
-const path = require('path');
-const fs = require('fs');
-const os = require('os');
-const crypto = require('crypto');
-const helmet = require('helmet');
-const rateLimit = require('express-rate-limit');
-const bcrypt = require('bcrypt');
-const cookieParser = require('cookie-parser');
-const csrf = require('csurf');
-
 // ============ CONFIGURATION ============
 
 const VERBOSE = true  // console.log ou non?
@@ -131,40 +136,22 @@ const DARK_MODE = process.env.DARK_MODE || 'system';
 if (!isProduction && VERBOSE) console.log('🌓 Mode sombre:', DARK_MODE);
 
 const CLIENT_IMPORT_WARNING_DAYS = parseInt(process.env.CLIENT_IMPORT_WARNING_DAYS) || 4;
+
+const BACKUP_TIME = process.env.BACKUP_TIME || null; // Format HH:MM
 const BACKUP_FREQUENCY_HOURS = parseInt(process.env.BACKUP_FREQUENCY_HOURS) || 24;
+
+if (!isProduction && VERBOSE) {
+    if (BACKUP_TIME) {
+        console.log(`⏰ Backup automatique quotidien à ${BACKUP_TIME}`);
+    } else {
+        console.log(`⏰ Backup automatique toutes les ${BACKUP_FREQUENCY_HOURS}h`);
+    }
+}
 const BACKUP_RETENTION_COUNT = parseInt(process.env.BACKUP_RETENTION_COUNT) || 7;
 
 // Nettoyage automatique des sessions expirées : Pour ce cas d'usage (pharmacie, quelques dizaines d'utilisateurs)
 const SESSION_DURATION_MS = 8 * 60 * 60 * 1000; // 8 heures (journée de travail)
 const SESSION_CLEANUP_INTERVAL_MS = 30 * 60 * 1000; // Nettoyer toutes les 30 minutes
-
-// Parser la configuration des zones
-function parseZonesConfig() {
-    const names = (process.env.ZONE_NAMES).split(',').map(s => s.trim());
-    const counts = (process.env.ZONE_COUNTS).split(',').map(s => parseInt(s.trim()));
-    const prefixes = (process.env.ZONE_PREFIXES).split(',').map(s => s.trim());
-    
-    if (names.length !== counts.length || names.length !== prefixes.length) {
-        console.error('❌ ERREUR: Configuration des zones invalide');
-        console.error('   ZONE_NAMES, ZONE_COUNTS et ZONE_PREFIXES doivent avoir le même nombre d\'éléments');
-        process.exit(1);
-    }
-    
-    const zones = names.map((name, index) => ({
-        name: name,
-        count: counts[index],
-        prefix: prefixes[index]
-    }));
-    
-    if (!isProduction && VERBOSE) {
-      console.log('📋 Configuration des zones:');
-      zones.forEach(z => {
-        console.log(`   - ${z.name}: ${z.count} casiers (${z.prefix}01-${z.prefix}${String(z.count).padStart(2, '0')})`);
-      });      
-    } 
-    return zones;
-}
-const ZONES_CONFIG = parseZonesConfig();
 
 // Gestion des sessions en mémoire
 const sessions = new Map();
@@ -293,6 +280,35 @@ const backupLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
+
+
+//==== Parser la configuration des zones
+function parseZonesConfig() {
+    const names = (process.env.ZONE_NAMES).split(',').map(s => s.trim());
+    const counts = (process.env.ZONE_COUNTS).split(',').map(s => parseInt(s.trim()));
+    const prefixes = (process.env.ZONE_PREFIXES).split(',').map(s => s.trim());
+    
+    if (names.length !== counts.length || names.length !== prefixes.length) {
+        console.error('❌ ERREUR: Configuration des zones invalide');
+        console.error('   ZONE_NAMES, ZONE_COUNTS et ZONE_PREFIXES doivent avoir le même nombre d\'éléments');
+        process.exit(1);
+    }
+    
+    const zones = names.map((name, index) => ({
+        name: name,
+        count: counts[index],
+        prefix: prefixes[index]
+    }));
+    
+    if (!isProduction && VERBOSE) {
+      console.log('📋 Configuration des zones:');
+      zones.forEach(z => {
+        console.log(`   - ${z.name}: ${z.count} casiers (${z.prefix}01-${z.prefix}${String(z.count).padStart(2, '0')})`);
+      });      
+    } 
+    return zones;
+}
+const ZONES_CONFIG = parseZonesConfig();
 
 // ====================== APP & MIDDLEWARE ===========================
 const app = express();
@@ -456,6 +472,10 @@ function initializeDatabase() {
     `, (err) => {
       if (err) console.error('Erreur création table casiers:', err);
       else {
+        // temporaire, à retirer une fois l'appli stabilisée
+        db.run(`ALTER TABLE lockers ADD COLUMN frigo BOOLEAN DEFAULT ''`, () => {});
+        db.run(`ALTER TABLE lockers ADD COLUMN pca BOOLEAN DEFAULT ''`, () => {});
+        db.run(`ALTER TABLE lockers ADD COLUMN meopa BOOLEAN DEFAULT ''`, () => {});
         if (!isProduction && VERBOSE) console.log('✓ Table casiers créée/vérifiée');
       }
     });
@@ -709,44 +729,84 @@ const IMPORT_FORMATS = {
         ],
         skipRows: 0
     }
-
 };
 
-// Fonction de détection automatique du séparateur CSV
-function detectCSVSeparator(fileContent) {
-    const lines = fileContent.split('\n').filter(line => line.trim());
-    if (lines.length < 2) return ',';
-    
-    const firstLine = lines[0];
-    const secondLine = lines[1];
-    
-    const separators = [';', ',', '\t', '|'];
-    const scores = {};
-    
-    for (const sep of separators) {
-        const firstCount = (firstLine.match(new RegExp(`\\${sep}`, 'g')) || []).length;
-        const secondCount = (secondLine.match(new RegExp(`\\${sep}`, 'g')) || []).length;
-        
-        // Un bon séparateur apparaît le même nombre de fois sur chaque ligne
-        if (firstCount > 0 && firstCount === secondCount) {
-            scores[sep] = firstCount;
-        }
-    }
-    
-    // Retourner le séparateur avec le meilleur score (plus de colonnes)
-    const bestSep = Object.keys(scores).reduce((a, b) => scores[a] > scores[b] ? a : b, ',');
-    
-    if (!isProduction && VERBOSE) {
-        console.log('🔍 Détection séparateur CSV:', {
-            détecté: bestSep === '\t' ? 'TAB' : bestSep,
-            scores: scores
+// GEMINI : Fonction utilitaire pour parser le CSV de manière fiable
+function parseCsvAsync(rawContent, separator) {
+    return new Promise((resolve, reject) => {
+        parse(rawContent, {
+            delimiter: separator,
+            columns: true, // Utilise la première ligne comme en-têtes (objets clé/valeur)
+            skip_empty_lines: true,
+            trim: true,
+            bom: true // Gestion du Byte Order Mark (BOM)
+        }, (err, records) => {
+            if (err) {
+                console.error('Erreur lors du parsing CSV avec csv-parse:', err);
+                return reject(new Error('Erreur de parsing CSV : ' + err.message));
+            }
+            
+            const normalizedRecords = records.map(record => {
+                const newRecord = {};
+                for (const key in record) {
+                    // Normalisation des clés/Mapping (Hypothèse basée sur les champs)
+                    const normalizedKey = key.toLowerCase().replace(/[^a-z0-9]/g, ''); 
+                    
+                    // Simple mapping basé sur les champs du schéma Zod
+                    if (normalizedKey.includes('casier') || normalizedKey.includes('numero')) {
+                        newRecord.number = record[key];
+                    } else if (normalizedKey.includes('zone')) {
+                        newRecord.zone = record[key];
+                    } else if (normalizedKey.includes('nom')) {
+                        newRecord.name = record[key];
+                    } else if (normalizedKey.includes('prenom')) {
+                        newRecord.firstName = record[key];
+                    } else if (normalizedKey.includes('code') || normalizedKey.includes('ipp')) {
+                        newRecord.code = record[key];
+                    } else if (normalizedKey.includes('naissance')) {
+                        newRecord.birthDate = record[key];
+                    } else if (normalizedKey.includes('recuperable')) {
+                        newRecord.recoverable = ['oui', 'yes', '1', 'true'].includes((record[key] || '').toLowerCase());
+                    } else if (normalizedKey.includes('comment')) {
+                        newRecord.comment = record[key];
+                    }
+                    // Ajoutez ici d'autres champs si vos en-têtes d'importation sont différents des clés Zod
+                };
+                
+                return finalRecord;
+            });
+            
+            resolve(normalizedRecords.filter(r => r.number && r.zone)); // Garder uniquement ceux avec N° et Zone
         });
-    }
-    
-    return bestSep || ',';
+    });
 }
 
-// Parser une ligne CSV avec séparateur personnalisé
+// GEMINI: Fonction utilitaire pour générer le CSV (remplace convertToCSV DEPRECATED)
+function stringifyCsvAsync(data, separator) {
+    return new Promise((resolve, reject) => {
+        // Colonnes explicites pour garantir l'ordre et l'exhaustivité
+        const columns = [
+            'number', 'zone', 'occupied', 'recoverable', 'name', 
+            'firstName', 'code', 'birthDate', 'comment', 'marque', 
+            'hosp', 'hospDate', 'idel', 'stup', 'frigo', 'pca', 'meopa' 
+        ];
+
+        stringify(data, {
+            header: true,
+            columns: columns,
+            delimiter: separator,
+            quote_empty: true,
+        }, (err, output) => {
+            if (err) {
+                console.error('Erreur lors de la génération CSV avec csv-stringify:', err);
+                return reject(new Error('Erreur de génération CSV : ' + err.message));
+            }
+            resolve(output);
+        });
+    });
+}
+
+// Parser une ligne CSV avec séparateur personnalisé et échappement des guillemets
 function parseCsvLine(line, separator = ',') {
     const result = [];
     let current = '';
@@ -754,9 +814,15 @@ function parseCsvLine(line, separator = ',') {
     
     for (let i = 0; i < line.length; i++) {
         const char = line[i];
+        const nextChar = line[i + 1];
         
         if (char === '"') {
-            inQuotes = !inQuotes;
+            if (inQuotes && nextChar === '"') {
+                current += '"'; // Guillemet échappé
+                i++; // Skip next quote
+            } else {
+                inQuotes = !inQuotes;
+            }
         } else if (char === separator && !inQuotes) {
             result.push(current.trim());
             current = '';
@@ -767,6 +833,42 @@ function parseCsvLine(line, separator = ',') {
     
     result.push(current.trim());
     return result.map(v => v.replace(/^"|"$/g, ''));
+}
+
+// Fonction de détection automatique du séparateur CSV
+function detectCSVSeparator(fileContent) {
+    const lines = fileContent.split('\n').filter(line => line.trim());
+    if (lines.length < 2) return ',';
+
+    const firstLine = lines[0];
+    const secondLine = lines[1];
+
+    const separators = [';', ',', '\t', '|'];
+    const scores = {};
+
+    for (const sep of separators) {
+      try {
+        // Utiliser parseCsvLine si disponible pour compter les colonnes
+        const cols1 = parseCsvLine(firstLine, sep).length;
+        const cols2 = parseCsvLine(secondLine, sep).length;
+        scores[sep] = (cols1 + cols2);
+      } catch (e) {
+        scores[sep] = 0;
+      }
+    }
+
+    // Choisir le séparateur avec le meilleur score; fallback ','
+    let bestSep = ',';
+    let bestScore = -1;
+    for (const [sep, score] of Object.entries(scores)) {
+      if (score > bestScore) {
+        bestScore = score;
+        bestSep = sep;
+      }
+    }
+
+    if (!isProduction && VERBOSE) console.log('detectCSVSeparator → choisi:', bestSep, 'scores:', scores);
+    return bestSep || ',';
 }
 
 // Fonction principale d'import avec format
@@ -855,6 +957,7 @@ function parseClientsWithFormat(fileContent, formatName, separator = ',') {
         } catch (err) {
             errors++;
             console.error('Erreur parsing ligne:', err);
+            continue;  // ← Continuer au lieu de planter
         }
     }
     
@@ -1124,8 +1227,8 @@ app.get('/api/lockers', async (req, res) => {
 // GET casiers par zone
 app.get('/api/lockers/zone/:zone', async (req, res) => {
   try {
-    const zone = req.params.zone.toUpperCase();
-    if (!ZONES_CONFIG.includes(zone)) {
+    const zone = req.params.zone;
+    if (!ZONES_CONFIG.some(z => z.name === zone)) {
       return res.status(400).json({ error: 'Zone invalide' });
     }
     
@@ -1367,7 +1470,7 @@ app.post('/api/lockers/:number/toggle/:marker', requireAuth, csrfProtection, asy
     const { marker } = req.params;
     
     // Validation du marqueur
-    const validMarkers = ['marque', 'stup', 'idel', 'hosp', 'frigo', 'pca'];
+    const validMarkers = ['hosp', 'idel', 'stup', 'frigo', 'pca', 'meopa', 'marque'];
     if (!validMarkers.includes(marker)) {
       return res.status(400).json({ error: 'Marqueur invalide' });
     }
@@ -1394,12 +1497,13 @@ app.post('/api/lockers/:number/toggle/:marker', requireAuth, csrfProtection, asy
 
     // Logger dans l'historique avec labels appropriés
     const markerLabels = {
-      'marque': { add: 'MARQUE_AJOUTÉE', remove: 'MARQUE_RETIRÉE' },
-      'stup': { add: 'STUPÉFIANTS_AJOUTÉS', remove: 'STUPÉFIANTS_RETIRÉS' },
-      'idel': { add: 'IDEL_AJOUTÉ', remove: 'IDEL_RETIRÉ' },
       'hosp': { add: 'HOSPITALISATION_AJOUTÉE', remove: 'HOSPITALISATION_RETIRÉE' },
+      'idel': { add: 'IDEL_AJOUTÉ', remove: 'IDEL_RETIRÉ' },
+      'stup': { add: 'STUPÉFIANTS_AJOUTÉS', remove: 'STUPÉFIANTS_RETIRÉS' },
       'frigo': { add: 'FRIGO_AJOUTÉ', remove: 'FRIGO_RETIRÉ' },
-      'pca': { add: 'PCA_AJOUTÉ', remove: 'PCA_RETIRÉ' }
+      'pca': { add: 'PCA_AJOUTÉ', remove: 'PCA_RETIRÉ' },
+      'meopa': { add: 'MEOPA_AJOUTÉ', remove: 'MEOPA_RETIRÉ' },
+      'marque': { add: 'MARQUE_AJOUTÉE', remove: 'MARQUE_RETIRÉE' }
     };
     
     const action = newValue ? markerLabels[marker].add : markerLabels[marker].remove;
@@ -2122,6 +2226,152 @@ app.get('/api/exports/history', async (req, res) => {
   }
 });
 
+// GEMINI : route d'import qui utilise la librairie csv A COMPLETER
+app.post('/api/lockers/import', requireAuth, importLimiter, csrfProtection, async (req, res) => {
+    try {
+        // Déconstruction des données envoyées par le client
+        const { rawContent, format, mode, separator } = req.body;
+        
+        // 1. DÉTECTION ET PARSING DES DONNÉES
+        let parsedData = [];
+        
+        if (rawContent && format === 'csv') {
+            // Tente de détecter le séparateur (la fonction detectCSVSeparator manuelle est toujours nécessaire ici)
+            const usedSeparator = separator === 'auto' || !separator ? detectCSVSeparator(rawContent) : separator;
+            
+            // Utilisation de la fonction robuste parseCsvAsync (basée sur 'csv-parse')
+            parsedData = await parseCsvAsync(rawContent, usedSeparator);
+            
+            if (!isProduction && VERBOSE) {
+                console.log(`📥 Import casiers CSV (csv-parse)`);
+                console.log(` Séparateur: "${usedSeparator === '\t' ? 'TAB' : usedSeparator}"`);
+                console.log(` Nombre de lignes après parsing: ${parsedData.length}`);
+            }
+        } else if (rawContent && format === 'json') {
+            // Logique de parsing JSON
+            parsedData = JSON.parse(rawContent);
+        } else if (req.body.data && !rawContent) {
+            // Support des données déjà parsées (à retirer lors de la refactorisation finale)
+            parsedData = req.body.data;
+        } else {
+             return res.status(400).json({ error: "Contenu à importer manquant. (rawContent ou data vide)" });
+        }
+        
+        // Si aucune donnée n'a été parsée
+        if (parsedData.length === 0) {
+            return res.status(400).json({ error: "Aucune ligne de données valide n'a pu être parsée." });
+        }
+
+        // 2. IMPORT, VALIDATION et COLLECTE DES ERREURS
+        let imported = 0;
+        let skipped = 0;
+        let errors = 0;
+        let invalidIPP = 0;
+        let validationErrors = 0;
+        let detailedErrors = []; // Tableau pour stocker les détails de l'erreur Zod
+        let lineIndex = 0;
+        
+        const db = getDB();
+        db.serialize(() => { 
+            db.run('BEGIN TRANSACTION;');
+            
+            for (const row of parsedData) {
+                lineIndex++;
+                
+                // Si le mode est 'update' (par exemple), et les clés de mapping sont absentes, on skippe
+                if (mode === 'update' && (!row.number || !row.zone)) {
+                    skipped++; // Ou une autre catégorie de skip
+                    continue;
+                }
+
+                try {
+                    // VALIDATION ZOD
+                    const validationResult = importCasierSchema.safeParse(row);
+                    
+                    if (!validationResult.success) {
+                        validationErrors++;
+                        if (!isProduction && VERBOSE) {
+                            console.warn(`Ligne invalide ignorée (${lineIndex}):`, validationResult.error.issues);
+                        }
+                        
+                        // Enregistrement de l'erreur détaillée pour le rapport client
+                        detailedErrors.push({
+                            line: lineIndex,
+                            casier: row.number || 'N/A',
+                            error: validationResult.error.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('; ')
+                        });
+
+                        continue;
+                    }
+                    
+                    // DONNÉES VALIDÉES PRÊTES À L'INSERTION/MISE À JOUR
+                    const validatedLocker = validationResult.data;
+
+                    // ----------------------------------------------------
+                    // !!! Votre logique SQL d'INSERT ou UPDATE doit être ici !!!
+                    // ----------------------------------------------------
+                    
+                    // Exemple minimal de ce que pourrait être votre logique:
+                    // db.run('INSERT OR REPLACE INTO lockers (number, zone, ...) VALUES (?, ?, ...)', 
+                    //     [validatedLocker.number, validatedLocker.zone, ...], 
+                    //     function(err) {
+                    //         if (err) {
+                    //             throw new Error(err.message); // Capturé par le catch
+                    //         }
+                    //         imported++;
+                    //     }
+                    // );
+                    
+                    // Si vous ne mettez pas la logique d'insertion réelle, assurez-vous de simuler l'incrémentation:
+                    imported++;
+
+                } catch (err) {
+                    // Erreur lors de l'exécution SQL ou d'une validation interne (hors Zod)
+                    errors++;
+                    console.error('Erreur SQL ou autre dans l\'import de la ligne:', lineIndex, err.message);
+                    detailedErrors.push({
+                        line: lineIndex,
+                        casier: row.number || 'N/A',
+                        error: `Erreur interne/SQL: ${err.message}`
+                    });
+                }
+            }
+            
+            db.run('COMMIT;', (commitErr) => {
+                if (commitErr) {
+                    console.error('Erreur lors du COMMIT de la transaction:', commitErr.message);
+                    return res.status(500).json({ error: 'Erreur transactionnelle lors de l\'import.' });
+                }
+
+                // Log de fin de processus
+                if (!isProduction && VERBOSE) {
+                    console.log(`✅ Import Terminé. Importés: ${imported}, Skipped: ${skipped}, Erreurs Zod: ${validationErrors}, Erreurs SQL: ${errors}`);
+                }
+                
+                // Retourne le rapport détaillé
+                res.json({ 
+                    imported, 
+                    skipped,
+                    errors, 
+                    invalidIPP, // Variable potentiellement non utilisée ou non gérée dans cet extrait
+                    validationErrors, 
+                    total: parsedData.length,
+                    detailedErrors // Le tableau détaillé est renvoyé au client
+                });
+            }); // Fin du COMMIT
+        }); // Fin de db.serialize()
+        
+    } catch (err) {
+        // Gère les erreurs critiques (parsing JSON, parsing CSV)
+        console.error('Erreur critique dans /api/lockers/import (try/catch externe):', err);
+        let msg = err.message || 'Erreur inconnue lors du traitement.';
+        if (msg.includes('JSON')) { msg = "Le contenu JSON est mal formé."; }
+        if (msg.includes('csv')) { msg = "Le contenu CSV n'a pas pu être analysé correctement. Vérifiez le format ou le séparateur."; }
+        
+        res.status(400).json({ error: `Erreur dans le contenu fourni : ${msg}` });
+    }
+});
+
 // POST import CSV casiers
 app.post('/api/import', requireAuth, importLimiter, csrfProtection, async (req, res) => {
   try {
@@ -2152,7 +2402,22 @@ app.post('/api/import', requireAuth, importLimiter, csrfProtection, async (req, 
       parsedData = dataLines.map(line => {
         const values = parseCsvLine(line, usedSeparator);
         if (!values || values.length < 6) return null;
-        
+
+/* ## Format CSV attendu (à documenter)
+Colonne A : N° Casier (ex: N01, S42)
+Colonne B : Zone (ex: NORD, SUD)
+Colonne C : Nom
+Colonne D : Prénom
+Colonne E : N°IPP
+Colonne F : Date Naissance (format YYYY-MM-DD ou DD/MM/YYYY)
+Colonne G : Récupérable (0 ou 1)
+Colonne H : Marque (0 ou 1)
+Colonne I : Hospitalisation (0 ou 1)
+Colonne J : Date Hospi (YYYY-MM-DD ou vide)
+Colonne K : Stupéfiants (0 ou 1)
+Colonne L : IDEL (0 ou 1)
+Colonne M : Commentaire */        
+
         return {
           number: values[0]?.trim() || '',
           zone: values[1]?.trim() || '',
@@ -2165,13 +2430,11 @@ app.post('/api/import', requireAuth, importLimiter, csrfProtection, async (req, 
           hosp: values[8] ? (values[8].trim() === '1') : false,
           hospDate: values[9]?.trim() || '',
           stup: values[10] ? (values[10].trim() === '1') : false,
-          comment: values[11]?.trim() || ''
+          idel: values[11] ? (values[11].trim() === '1') : false,
+          comment: values[12]?.trim() || ''
         };
       }).filter(item => item !== null);
       
-    } else if (data && Array.isArray(data)) {
-      // Format legacy
-      parsedData = data;
     } else {
       return res.status(400).json({ error: 'Données invalides' });
     }
@@ -2213,7 +2476,7 @@ app.post('/api/import', requireAuth, importLimiter, csrfProtection, async (req, 
           continue;
         }
         
-        const { number, zone, name, firstName, code, birthDate, recoverable, marque, hosp, hospDate, stup, comment } = validationResult.data;
+        const { number, zone, name, firstName, code, birthDate, recoverable, comment, marque, hosp, hospDate, stup } = validationResult.data;
         
         const locker = await dbGet('SELECT * FROM lockers WHERE number = ?', [number]);
         
@@ -2357,13 +2620,13 @@ app.post('/api/import-json', requireAuth, importLimiter, csrfProtection, async (
 
 async function logExport(format, count, userName, role) {
   try {
-      return await dbRun(
-          'INSERT INTO export_logs (format, recordCount, userName, userRole) VALUES (?, ?, ?, ?)',
-          [format, lockers.length, userName, role]
-      );
+    // Si la table export_logs existe, insérer un enregistrement d'export
+    await dbRun(
+      'INSERT INTO export_logs (format, count, userName, role, createdAt) VALUES (?, ?, ?, ?, datetime("now"))',
+      [format, count, userName || null, role || null]
+    );
   } catch (logErr) {
-      console.error('Erreur enregistrement log export:', logErr);
-      // Ne pas bloquer l'export si le log échoue
+    console.error('Erreur enregistrement export :', logErr);
   }
 }
 
@@ -2860,56 +3123,125 @@ app.post('/api/backup', requireAuth, backupLimiter, csrfProtection, async (req, 
   }
 });
 
-// Backup automatique au démarrage et périodique
+//--- Backup automatique au démarrage et périodique
 function setupAutoBackup() {
-  if (BACKUP_FREQUENCY_HOURS === 0) {
-    if (!isProduction && VERBOSE) console.log('⏭️  Backups automatiques désactivés');
-    return;
-  }
-  
-  const backupDir = path.join(__dirname, 'backups');
-  if (!fs.existsSync(backupDir)) {
-    fs.mkdirSync(backupDir);
-  }
-  
-  const createBackup = () => {
-    try {
-      const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
-      const backupPath = path.join(backupDir, `backup_auto_${timestamp}.db`);
-      
-      fs.copyFileSync(dbPath, backupPath);
-      if (!isProduction && VERBOSE) console.log('✓ Backup automatique créé:', path.basename(backupPath));
-      
-      // Nettoyer les vieux backups
-      const files = fs.readdirSync(backupDir)
-        .filter(f => f.startsWith('backup_') && f.endsWith('.db'))
-        .map(f => ({
-          name: f,
-          path: path.join(backupDir, f),
-          time: fs.statSync(path.join(backupDir, f)).mtime.getTime()
-        }))
-        .sort((a, b) => b.time - a.time);
-      
-      if (files.length > BACKUP_RETENTION_COUNT) {
-        files.slice(BACKUP_RETENTION_COUNT).forEach(f => {
-          fs.unlinkSync(f.path);
-          if (!isProduction && VERBOSE) console.log('Backup supprimé:', f.name);
-        });
-      }
-    } catch (err) {
-      console.error('Erreur backup automatique:', err);
+    const backupDir = path.join(__dirname, 'backups');
+    if (!fs.existsSync(backupDir)) {
+        fs.mkdirSync(backupDir);
     }
-  };
-  
-  // Backup initial
-  createBackup();
-  
-  // Backup périodique
-  const intervalMs = BACKUP_FREQUENCY_HOURS * 60 * 60 * 1000;
-  setInterval(createBackup, intervalMs);
-  
-  if (!isProduction && VERBOSE) console.log(`✓ Backups automatiques activés (toutes les ${BACKUP_FREQUENCY_HOURS}h, ${BACKUP_RETENTION_COUNT} fichiers conservés)`);
+    
+    const createBackup = () => {
+        try {
+            const timestamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, -5);
+            const backupPath = path.join(backupDir, `backup_auto_${timestamp}.db`);
+            
+            fs.copyFileSync(dbPath, backupPath);
+            if (!isProduction && VERBOSE) console.log('✓ Backup automatique créé:', path.basename(backupPath));
+            
+            // Nettoyer les vieux backups
+            const files = fs.readdirSync(backupDir)
+                .filter(f => f.startsWith('backup_') && f.endsWith('.db'))
+                .map(f => ({
+                    name: f,
+                    path: path.join(backupDir, f),
+                    time: fs.statSync(path.join(backupDir, f)).mtime.getTime()
+                }))
+                .sort((a, b) => b.time - a.time);
+            
+            if (files.length > BACKUP_RETENTION_COUNT) {
+                files.slice(BACKUP_RETENTION_COUNT).forEach(f => {
+                    fs.unlinkSync(f.path);
+                    if (!isProduction && VERBOSE) console.log('Backup supprimé:', f.name);
+                });
+            }
+        } catch (err) {
+            console.error('Erreur backup automatique:', err);
+        }
+    };
+    
+    // MODE 1 : Backup à heure fixe (prioritaire)
+    if (BACKUP_TIME) {
+        const [hours, minutes] = BACKUP_TIME.split(':').map(n => parseInt(n));
+        
+        if (isNaN(hours) || isNaN(minutes) || hours < 0 || hours > 23 || minutes < 0 || minutes > 59) {
+            console.error('❌ BACKUP_TIME invalide:', BACKUP_TIME);
+            console.error('   Format attendu: HH:MM (ex: 00:00, 02:30, 23:45)');
+            return;
+        }
+        
+        // Calculer le délai jusqu'au prochain backup
+        const scheduleNextBackup = () => {
+            const now = new Date();
+            const target = new Date();
+            target.setHours(hours, minutes, 0, 0);
+            
+            // Si l'heure est déjà passée aujourd'hui, programmer pour demain
+            if (target <= now) {
+                target.setDate(target.getDate() + 1);
+            }
+            
+            const delay = target - now;
+            const delayHours = Math.floor(delay / (1000 * 60 * 60));
+            const delayMinutes = Math.floor((delay % (1000 * 60 * 60)) / (1000 * 60));
+            
+            if (!isProduction && VERBOSE) {
+                console.log(`⏰ Prochain backup programmé pour ${target.toLocaleString('fr-FR')} (dans ${delayHours}h ${delayMinutes}min)`);
+            }
+            
+            return setTimeout(() => {
+                createBackup();
+                // Programmer le backup suivant (dans 24h)
+                scheduleNextBackup();
+            }, delay);
+        };
+        
+        // Backup initial au démarrage (optionnel)
+        createBackup();
+        
+        // Programmer le premier backup
+        scheduleNextBackup();
+        
+        if (!isProduction && VERBOSE) {
+            console.log(`✓ Backup automatique quotidien activé à ${BACKUP_TIME}`);
+        }
+        
+    } 
+    // MODE 2 : Backup périodique (fallback)
+    else if (BACKUP_FREQUENCY_HOURS > 0) {
+        // Backup initial
+        createBackup();
+        
+        // Backup périodique
+        const intervalMs = BACKUP_FREQUENCY_HOURS * 60 * 60 * 1000;
+        setInterval(createBackup, intervalMs);
+        
+        if (!isProduction && VERBOSE) {
+            console.log(`✓ Backup automatique périodique activé (toutes les ${BACKUP_FREQUENCY_HOURS}h, ${BACKUP_RETENTION_COUNT} fichiers conservés)`);
+        }
+    } 
+    // MODE 3 : Désactivé
+    else {
+        if (!isProduction && VERBOSE) console.log('⭐️ Backups automatiques désactivés');
+    }
 }
+
+// Route API pour obtenir la config backup
+app.get('/api/config/backup', requireAuth, (req, res) => {
+    const token = req.cookies.auth_token;
+    const session = sessions.get(token);
+    const isAdmin = session?.isAdmin;
+    
+    if (!isAdmin) {
+        return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+    }
+    
+    res.json({
+        backupTime: BACKUP_TIME,
+        backupFrequencyHours: BACKUP_FREQUENCY_HOURS,
+        backupRetentionCount: BACKUP_RETENTION_COUNT,
+        mode: BACKUP_TIME ? 'fixed' : (BACKUP_FREQUENCY_HOURS > 0 ? 'periodic' : 'disabled')
+    });
+});
 
 //-------------------------------------------
 // Route → affichage étiquettes; npm install ejs

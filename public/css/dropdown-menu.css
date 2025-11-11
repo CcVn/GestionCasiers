@@ -1,0 +1,130 @@
+
+/* ===== DROPDOWN MENUS ===== */
+
+.dropdown-menu {
+    display: none;
+    position: absolute;
+    background-color: var(--bg-secondary);
+    min-width: 150px;
+    box-shadow: 0 4px 12px var(--shadow-hover);
+    padding: 4px 0;
+    z-index: 1000;
+    border: 1px solid var(--border-color);
+    border-radius: 6px; /* Coins légèrement arrondis */
+    right: 0; /* Positionne à droite par défaut */
+    top: 100%;
+    margin-top: 4px;
+}
+
+.dropdown-menu.active {
+    display: block;
+}
+
+.dropdown-menu button {
+    display: block;
+    color: var(--text-primary);
+    padding: 10px 15px;
+    border: none;
+    background: none;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    font-size: 13px; /* Taille de police réduite */
+    font-family: inherit;
+    transition: background-color 0.2s;
+    border-bottom: 1px solid var(--border-light);
+}
+
+.dropdown-menu button:hover {
+    background-color: var(--bg-tertiary);
+}
+
+.dropdown-menu button:first-child {
+    border-radius: 4px 4px 0 0;
+}
+
+.dropdown-menu button:last-child {
+    border-radius: 0 0 4px 4px;
+    border-bottom: none;
+}
+.dropdown-menu .btn-delete:hover {
+    background-color: #fee2e2;
+    color: #991b1b;
+}
+
+/* ===== SOUS-MENU (Marqueurs) ===== */
+
+.dropdown-submenu {
+    position: relative;
+    display: inline-block;
+    width: 100%;
+}
+
+.dropdown-submenu .has-submenu {
+    padding-right: 16px; /* Réduit l'espace pour un aspect compact */
+    position: relative;
+    width: 100%;
+    text-align: left;
+}
+
+.dropdown-submenu .has-submenu::after {
+    content: '';
+    position: absolute;
+    right: 8px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 0;
+    height: 0;
+    border-left: 4px solid var(--text-primary);
+    border-top: 3px solid transparent;
+    border-bottom: 3px solid transparent;
+}
+
+.dropdown-submenu-content {
+    display: none;
+    position: absolute;
+    background-color: var(--bg-secondary);
+    left: -160px; /* Positionne le sous-menu à gauche */
+    top: 0;
+    min-width: 160px; /* Compact comme le menu principal */
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    border-radius: 4px;
+    border: 1px solid var(--border-color);
+    z-index: 1001;
+    overflow: hidden;
+}
+
+.dropdown-submenu:hover .dropdown-submenu-content {
+    display: block;
+}
+
+.dropdown-submenu-content button {
+    color: var(--text-primary);
+    padding: 8px 12px; /* Compact comme le menu principal */
+    border: none;
+    background: transparent;
+    width: 100%;
+    text-align: left;
+    cursor: pointer;
+    font-size: 13px;
+    font-family: inherit;
+    transition: background-color 0.2s;
+    display: block;
+}
+
+.dropdown-submenu-content button:hover {
+    background-color: var(--bg-tertiary);
+}
+
+.dropdown-submenu-content button:first-child {
+    border-radius: 4px 4px 0 0;
+}
+
+.dropdown-submenu-content button:last-child {
+    border-radius: 0 0 4px 4px;
+}
+
+.dropdown-submenu-content .btn-delete:hover {
+    background-color: #fee2e2;
+    color: #991b1b;
+}

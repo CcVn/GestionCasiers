@@ -6,6 +6,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' 'unsafe-eval';">
     <title>HADO - Casiers PUI zone départ</title>
     <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/dropdown-menu.css">
     <link rel="stylesheet" href="css/mobile.css">
     <link rel="stylesheet" href="css/print.css">
     <link rel="stylesheet" href="css/admintools.css">
@@ -40,7 +41,7 @@
                     <h1>HADO - Casiers PUI zone départ</h1>
                     <div style="display: flex; gap: 20px; align-items: center;">
                         <div id="authStatus" style="font-size: 16px; color: #666; margin-top: 5px;"></div>
-                        <div class="admin-only" id="importStatus" style="font-size: 14px; color: #666; margin-top: 5px;"></div>
+                        <div class="server-status2 admin-only" id="importStatus" style="font-size: 14px; color: #666; margin-top: 5px;"><span class="status-dot"></span></div>
                     </div>
                 </div>
                 <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
@@ -84,27 +85,33 @@
                        <button class="btn-secondary" onclick="showAnonymizationConfig()" title="Configurer l'anonymisation">
                             🎭 Anon.
                         </button>
+                        <button class="btn-secondary" onclick="showClientsStats()" title="Afficher les statistiques de la base patients">
+                            📊 Stats
+                        </button>
                         <!--<button class="btn-secondary" onclick="clearClientsDatabase()" title="Vider la base patients">🧹 Vider la base</button> -->
                     </div>
                 </fieldset>
                 <fieldset id="blocAnalyseCasiers" class="group-box">
-                    <legend>Contrôle des casiers</legend>
+                    <legend>Casiers</legend>
                     <div class="buttons-container" title="Contrôle des casiers">
-                        <button class="btn-secondary" onclick="openConsultationCasiers('had')">👁️ par thème</button>
-                        <button class="btn-secondary" onclick="showDuplicatesPanel()" title="Afficher la liste des doublons détectés">
-                            ⚠️ Doubl.
-                        </button>
-                        <button class="btn-secondary" onclick="showHomonymsPanel()" title="Afficher la liste des homonymes détectés">
-                            👥 Hom.
-                        </button>
-                        <button class="btn-secondary" onclick="showHospitalisationList()" title="Afficher la liste des casiers avec patients hospitalisés">
-                            🏥 Hosp.
-                        </button>
-                        <button class="btn-secondary" onclick="showStupStats()" title="Afficher les statistiques de la base patients (dans la console)">
-                            💊 Stup.
+                        <button class="btn-secondary" onclick="openConsultationCasiers('had')">👁️ Consulter</button>
+                        <button class="btn-secondary" onclick="showModificationStats()" title="Afficher les statistiques de modifications">
+                            📝 Stats
                         </button>
                         <button class="btn-secondary" onclick="clearAllMarks()" title="Retirer toutes les marques des casiers">
                             🔖→🗑️ 
+                        </button>
+                        <button class="btn-small" onclick="showDuplicatesPanel()" title="Afficher la liste des doublons détectés">
+                            ⚠️ Doubl.
+                        </button>
+                        <button class="btn-small" onclick="showHomonymsPanel()" title="Afficher la liste des homonymes détectés">
+                            👥 Hom.
+                        </button>
+                        <button class="btn-small" onclick="showHospitalisationList()" title="Afficher la liste des casiers avec patients hospitalisés">
+                            🏥 Hosp.
+                        </button>
+                        <button class="btn-small" onclick="showStupStats()" title="Afficher les statistiques de la base patients (dans la console)">
+                            💊 Stup.
                         </button>
                         <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('idel')">ℹ️ IDEL</button>
                         <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('hosp')">🏥 Hospitalisations</button>
@@ -114,19 +121,14 @@
                         <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('homonyms')">👥 Homonymes</button>
                         <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('frigo')">❄ Frigo</button>
                         <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('pca')">💉 PCA</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('meopa')">⛽️ MEOPA</button>
                     </div>
                 </fieldset>
                 <fieldset id="blocStats" class="group-box">
-                    <legend>Statistiques</legend>
+                    <legend>Utilisateurs</legend>
                     <div class="buttons-container" title="Statistiques">
                         <button class="btn-secondary" onclick="showConnectionStats()" title="Afficher les statistiques de connexion">
                             📈 Connexions
-                        </button>
-                        <button class="btn-secondary" onclick="showModificationStats()" title="Afficher les statistiques de modifications">
-                            📝 Casiers
-                        </button>
-                        <button class="btn-secondary" onclick="showClientsStats()" title="Afficher les statistiques de la base patients">
-                            📊 Patients
                         </button>
                     </div>
                 </fieldset>
@@ -154,13 +156,16 @@
                     </div>
                 </fieldset>
                 <fieldset id="blocBackups" class="group-box">
-                    <legend>Base de données SQLite</legend>
+                    <legend>Backup SQLite</legend>
                     <div class="buttons-container">
                         <button class="btn-secondary" onclick="createBackup()" title="Créer un backup manuel de la base Sqlite">
-                            💾 Sauvegarder
+                            💾 Sauver
                         </button>
                         <button class="btn-secondary" onclick="showRestorePanel()" title="Restaurer la base depuis un backup">
                             🔄 Restaurer
+                        </button>
+                        <button class="btn-secondary" onclick="showBackupInfo()" title="Stats backup">
+                            🕛️ Infos
                         </button>
                     </div>
                 </fieldset>
@@ -376,7 +381,7 @@
                             <option value="json">JSON (export backup)</option>
                         </select>
                         <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
-                            Le CSV doit contenir les colonnes : Numéro, Zone, Nom, Prénom, IPP, Date Naissance, Récupérable, Commentaire
+                            Le CSV doit contenir les colonnes : N°Casier, Zone, Nom, Prénom, IPP, DDN, Récupérable, Marque, Hosp, DateHosp, Stup, IDEL, Commentaire
                         </small>
                     </div>
 
@@ -750,7 +755,7 @@
     <div id="consultationCasiersModal" class="modal">
         <div class="modal-content" style="max-width: 1200px; width: 95%;">
             <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">
-                <h2 style="margin: 0; font-size: 18px;">🔍 Consultation des casiers occupés</h2>
+                <h2 style="margin: 0; font-size: 18px;">🔍 Consultation globale (multi-zones) des casiers occupés</h2>
                 <button class="btn-secondary btn-small" onclick="closeConsultationCasiers()" style="padding: 4px 8px; font-size: 11px;">✕</button>
             </div>
             
@@ -763,6 +768,9 @@
                         <option value="had">👨‍⚕️ Patients 100% HAD</option>
                         <option value="hosp">🏥 Patients hospitalisés</option>
                         <option value="stup">💊 Patients avec stupéfiants</option>
+                        <option value="frigo">❄️ Patients avec traitement frigo</option>
+                        <option value="pca">💉 Patients avec PCA</option>
+                        <option value="meopa">⛽️ Patients avec MEOPA</option>
                         <option value="marked">🔖 Patients avec marque</option>
                         <option value="duplicates">⚠️ Doublons (IPP ou identité)</option>
                         <option value="homonyms">👥 Homonymes</option>

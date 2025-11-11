@@ -1,18 +1,19 @@
 // Configuration
 let API_URL = 'http://localhost:5000/api';
-let DATA = [];
+let DATA = []; // données casiers
 let ZONES_CONFIG = []; // Variable globale pour stocker la config des zones
 let IS_AUTHENTICATED = false;
 let IS_GUEST = false;
 let IS_MOBILE = false;
 let USER_NAME = '';
+
 let DARK_MODE_SETTING = 'system'
 let EDITING_LOCKER_NUMBER = null; // Mémoriser le casier en cours d'édition
 let EDITING_LOCKER_VERSION = null; // Mémoriser la version du casier en cours d'édition
-let VERBCONSOLE = 1
 let CURRENT_LOCKER_FOR_HOSP = null;
 let SEARCH_RESULTS = []; 
 let SEARCH_RESULTS_MARKED = false;
+let VERBCONSOLE = 1   // Console verbeuse si >0
 
 let ANONYMIZE_ENABLED = false;
 let NB_MAX_ANON_PRENOM = 2;   // nombre de caractères gardés pour le nom à l'écran lors de l'anonymisation
@@ -27,8 +28,21 @@ let consultationData = [];
 let consultationSortColumn = 'name';
 let consultationSortDirection = 'asc';
 
+// Wrapper générique avec retry  (A IMPLEMENTER)
+async function fetchWithRetry(url, options, retries = 3) {
+    for (let i = 0; i < retries; i++) {
+        try {
+            const res = await fetch(url, options);
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            return res;
+        } catch (err) {
+            if (i === retries - 1) throw err;
+            await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+        }
+    }
+}
 
-// ============ CONFIG DES ZONES ============
+// =============== CONFIG DES ZONES ======================
 
 function sanitizeName(name) {
   // Nettoie d'abord le nom
@@ -76,6 +90,54 @@ async function loadZonesConfig() {
         ];
         return ZONES_CONFIG; 
     }
+}
+
+// =============== TOKEN CSRF =============================
+// Fonction pour charger le token CSRF
+async function loadCsrfToken() {
+    try {
+        const response = await fetch(`${API_URL}/csrf-token`, {
+            credentials: 'include'
+        });
+        
+        if (!response.ok) {
+            console.warn('⚠️ Impossible de charger le token CSRF');
+            return;
+        }
+        
+        const data = await response.json();
+        CSRF_TOKEN = data.csrfToken;
+        if (VERBCONSOLE>0) { console.log('✓ Token CSRF chargé'); }
+    } catch (err) {
+        console.error('❌ Erreur chargement token CSRF:', err);
+        CSRF_TOKEN = null;
+    }
+}
+
+// ===============  ONGLETS & CONTENU  ===================
+
+// Charger les données casiers (appel route [public_url]/api/lockers)
+// ---> SELECT * FROM lockers ORDER BY number ASC
+function loadData() {
+    fetch(`${API_URL}/lockers`, {
+        credentials: 'include'
+    }) 
+        .then(res => {
+            if (!res.ok) throw new Error('Erreur ' + res.status);
+            return res.json();
+        })
+        .then(data => {
+            DATA = data;
+            if (VERBCONSOLE>0) { console.log('📦 Données chargées:', DATA.length); }
+            if (VERBCONSOLE>0) { console.log('📋 ZONES_CONFIG:', ZONES_CONFIG); }
+            
+            renderAllTables();
+            updateCounters();
+        })
+        .catch(err => {
+            console.error('Erreur chargement:', err);
+            alert('Erreur: Impossible de charger les données.\n\nAssurez-vous que:\n1. Le serveur Node.js est lancé (npm run dev)\n2. L\'URL est: ' + API_URL);
+        });
 }
 
 // Fonction pour générer les onglets dynamiquement
@@ -135,7 +197,8 @@ function generateContentSections() {
     const oldSections = container.querySelectorAll('.content-section');
     oldSections.forEach(section => section.remove());
     
-    // Générer les sections pour chaque zone
+    //---- Sections/onglets pour chaque zone ------------------
+
     ZONES_CONFIG.forEach((zone, index) => {
         const section = document.createElement('div');
         section.id = `content-${zone.name}`;
@@ -156,13 +219,13 @@ function generateContentSections() {
                         ✕ Quitter la recherche
                     </button>
                     <button class="btn-secondary btn-big admin-only pulse" onclick="openModal('${zone.name}')">➕ Attribuer</button>
-                    <div>
+                    <div class="admin-only">
                         <label for="Filtre" style="margin: 0px; font-size: 11px;">Filtrer</label>
-                        <select id="Filtre" class="admin-only" onchange="filterTable('${zone.name}', this.value)" id="filter-${zone.name}">
+                        <select id="Filtre" onchange="filterTable('${zone.name}', this.value)" id="filter-${zone.name}">
                             <option value="all" class="admin-only">Tous</option>
                             <option value="occupied" class="status-occupied">✕ Occupés</option>
-                            <option value="empty" class="admin-only" class="status-empty">✓ Vides</option>
                             <option value="recoverable" class="status-recoverable admin-only">⟳ Récupérables</option>
+                            <option value="empty" class="admin-only" class="status-empty">✓ Vides</option>
                             <option value="duplicates" class="admin-only">⚠️ Doublons</option>
                             <option value="idel">ℹ️ IDEL+AS</option>
                             <option value="hosp">🚑 Hospitalisation</option>
@@ -170,9 +233,9 @@ function generateContentSections() {
                             <option value="marked" class="admin-only">🔖 Marqués</option>
                         </select>
                     </div>
-                    <div>
+                    <div class="admin-only">
                         <label for="Tri" style="margin: 0px; font-size: 11px;">Trier</label>
-                        <select id="Tri" class="admin-only" onchange="sortTable('${zone.name}', this.value)">
+                        <select id="Tri" onchange="sortTable('${zone.name}', this.value)">
                             <option value="number">par numéro</option>
                             <option value="name">par nom</option>
                         </select>
@@ -198,11 +261,12 @@ function generateContentSections() {
                 </table>
             </div>
         `;
-        
+ 
         container.insertBefore(section, footerElement);
     });
     
-    // AJOUTER la section de recherche
+    //--------------  Section/onglet recherche ---------------------------
+
     const searchSection = document.createElement('div');
     searchSection.id = 'content-SEARCH';
     searchSection.className = 'content-section';
@@ -239,7 +303,7 @@ function generateContentSections() {
     
     container.insertBefore(searchSection, footerElement);
     
-    //----------- Section d'aide
+    //---- Section/onglet d'aide
     const helpSection = document.createElement('div');
     helpSection.id = 'content-HELP';
     helpSection.className = 'content-section';
@@ -365,6 +429,18 @@ function generateContentSections() {
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <span style="font-size: 18px;">💊</span>
                                 <span>Contient des stupéfiants</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 18px;">❄</span>
+                                <span>Médicaments au réfrigérateur</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 18px;">💉</span>
+                                <span>Casier PCA associé</span>
+                            </div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 18px;">⛽️</span>
+                                <span>Patient avec MEOPA</span>
                             </div>
                             <div style="display: flex; align-items: center; gap: 8px;">
                                 <span style="font-size: 18px;">🔖</span>
@@ -520,7 +596,7 @@ function generateContentSections() {
     });
 }
 
-// ============ UTILITAIRES D'ANONYMISATION ============
+// ============ UTILITAIRES D'ANONYMISATION ===============
 
 // non utilisée pour le moment
 function anonMaxName(name) {
@@ -556,29 +632,7 @@ function formatDate(inputDate) {
   return `${day}/${month}/${year}`;
 }
 
-// ============ TOKEN CSRF ============
-// Fonction pour charger le token CSRF
-async function loadCsrfToken() {
-    try {
-        const response = await fetch(`${API_URL}/csrf-token`, {
-            credentials: 'include'
-        });
-        
-        if (!response.ok) {
-            console.warn('⚠️ Impossible de charger le token CSRF');
-            return;
-        }
-        
-        const data = await response.json();
-        CSRF_TOKEN = data.csrfToken;
-        if (VERBCONSOLE>0) { console.log('✓ Token CSRF chargé'); }
-    } catch (err) {
-        console.error('❌ Erreur chargement token CSRF:', err);
-        CSRF_TOKEN = null;
-    }
-}
-
-// ============ MODE SOMBRE ============
+// ============ MODE SOMBRE ===============================
 
 function applyDarkMode(setting) {
     DARK_MODE_SETTING = setting || 'system';
@@ -678,82 +732,14 @@ function updateThemeIcon() {
     }
 }
 
-// ============ DÉTECTION MOBILE ============
+// ============ UTILISATION SUR MOBILE =====================
 function detectMobile() {
     IS_MOBILE = window.innerWidth <= 768;
     if (VERBCONSOLE>0) { console.log('Mode mobile:', IS_MOBILE); }
     return IS_MOBILE;
 }
 
-// ============ INITIALISATION de la page ============
-document.addEventListener('DOMContentLoaded', async function() {
-    if (VERBCONSOLE>0) { console.log('Page chargée'); }
-    
-    const protocol = window.location.protocol;
-    const host = window.location.host;
-    API_URL = `${protocol}//${host}/api`;
-    if (VERBCONSOLE>0) { console.log('API_URL configurée:', API_URL); }
-    
-    detectMobile();
-    
-    // Charger le token CSRF immédiatement
-    await loadCsrfToken();
-
-    // Vérifier si le paramètre ?guest est présent dans l'URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const autoGuest = urlParams.get('guest') !== null;
-    if (autoGuest) {
-        if (VERBCONSOLE>0) { console.log('Mode guest automatique détecté via URL'); }
-        loginAsGuestAuto();
-        return;
-    }
-
-    // Vérifier si une session existe via cookie
-    fetch(`${API_URL}/auth/check`, {
-        credentials: 'include'  // Envoie le cookie automatiquement
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.authenticated) {
-            if (VERBCONSOLE>0) { console.log('Session valide, rôle:', data.role); }
-            IS_AUTHENTICATED = data.role === 'admin';
-            IS_GUEST = data.role === 'guest';
-            ANONYMIZE_ENABLED = data.anonymize || false;
-            USER_NAME = data.userName || '';
-            applyDarkMode(data.darkMode || 'system');
-            if (VERBCONSOLE>0) { console.log('Anonymisation activée:', ANONYMIZE_ENABLED); }
-            if (VERBCONSOLE>0) { console.log('Utilisateur:', USER_NAME); }
-            showLoginPage(false);
-            updateAuthStatus();
-            setupApp();
-        } else {
-            if (VERBCONSOLE>0) { console.log('Pas de session valide'); }
-            setupLoginPage();
-        }
-    })
-    .catch(err => {
-        console.error('Erreur vérification session:', err);
-        setupLoginPage();
-    });
-
-    // Gérer le changement de sélection d'étiquettes
-    const labelSelection = document.getElementById('labelSelection');
-    if (labelSelection) {
-        labelSelection.addEventListener('change', updateLabelPreview);
-    }
-
-    CURRENT_ZONE = 'NORD';
-    
-    window.addEventListener('resize', () => {
-        detectMobile();
-        if (DATA.length > 0) {
-            renderAllTables();
-        }
-    });
-});
-
-// ============ SUPPORT SWIPE TACTILE ============
-
+//----- SUPPORT SWIPE TACTILE
 function initSwipeSupport() {
     let touchStartX = 0;
     let touchEndX = 0;
@@ -824,7 +810,75 @@ function initSwipeSupport() {
     }
 }
 
-// ============ AUTHENTIFICATION ============
+// ============ INITIALISATION DE LA PAGE ==================
+
+document.addEventListener('DOMContentLoaded', async function() {
+    if (VERBCONSOLE>0) { console.log('Page chargée'); }
+    
+    const protocol = window.location.protocol;
+    const host = window.location.host;
+    API_URL = `${protocol}//${host}/api`;
+    if (VERBCONSOLE>0) { console.log('API_URL configurée:', API_URL); }
+    
+    detectMobile();
+    
+    // Charger le token CSRF immédiatement
+    await loadCsrfToken();
+
+    // Vérifier si le paramètre ?guest est présent dans l'URL
+    const urlParams = new URLSearchParams(window.location.search);
+    const autoGuest = urlParams.get('guest') !== null;
+    if (autoGuest) {
+        if (VERBCONSOLE>0) { console.log('Mode guest automatique détecté via URL'); }
+        loginAsGuestAuto();
+        return;
+    }
+
+    // Vérifier si une session existe via cookie
+    fetch(`${API_URL}/auth/check`, {
+        credentials: 'include'  // Envoie le cookie automatiquement
+    })
+    .then(res => res.json())
+    .then(data => {
+        if (data.authenticated) {
+            if (VERBCONSOLE>0) { console.log('Session valide, rôle:', data.role); }
+            IS_AUTHENTICATED = data.role === 'admin';
+            IS_GUEST = data.role === 'guest';
+            ANONYMIZE_ENABLED = data.anonymize || false;
+            USER_NAME = data.userName || '';
+            applyDarkMode(data.darkMode || 'system');
+            if (VERBCONSOLE>0) { console.log('Anonymisation activée:', ANONYMIZE_ENABLED); }
+            if (VERBCONSOLE>0) { console.log('Utilisateur:', USER_NAME); }
+            showLoginPage(false);
+            updateAuthStatus();
+            setupApp();
+        } else {
+            if (VERBCONSOLE>0) { console.log('Pas de session valide'); }
+            setupLoginPage();
+        }
+    })
+    .catch(err => {
+        console.error('Erreur vérification session:', err);
+        setupLoginPage();
+    });
+
+    // Gérer le changement de sélection d'étiquettes
+    const labelSelection = document.getElementById('labelSelection');
+    if (labelSelection) {
+        labelSelection.addEventListener('change', updateLabelPreview);
+    }
+
+    CURRENT_ZONE = 'NORD';
+    
+    window.addEventListener('resize', () => {
+        detectMobile();
+        if (DATA.length > 0) {
+            renderAllTables();
+        }
+    });
+});
+
+// ============  AUTHENTIFICATION / LOGIN  =================
 async function setupLoginPage() {
     const form = document.getElementById('loginForm');
     const passwordInput = document.getElementById('loginPassword');
@@ -1125,7 +1179,7 @@ function updateAuthStatus() {
     //updateImportExportButtons();
 }
 
-// pour l'info sur le dernier import patients
+// Info sur le dernier import patients
 async function updateImportStatus() {
     try {
         const res = await fetch(`${API_URL}/clients/import-status`, {
@@ -1184,12 +1238,12 @@ async function updateImportStatus() {
 
         if (daysSince < 1) {
             // Moins de 24h
-            message = `✓ Import patients il y a ${hoursSince}h (${clientCount})`;
+            message = `<span class="status-dot">✓</span> Import patients il y a ${hoursSince}h (${clientCount})`;
             color = '#10b981';
             title = `Dernière mise à jour : ${formattedDateTime}`;
         } else if (daysSince <= data.warningThreshold) {
             // Entre 1 jour et seuil
-            message = `✓ Import patients il y a ${daysSince}j (${clientCount})`;
+            message = `<span class="status-dot">✓</span> Import patients il y a ${daysSince}j (${clientCount})`;
             color = '#e6e600';
             title = `Dernière mise à jour : ${formattedDateTime}`;
         } else {
@@ -1214,7 +1268,7 @@ async function updateImportStatus() {
     }
 }
 
-// @TODO plus utilisée pour l'instant
+// @TODO plus utilisée pour l'instant?
 function updateImportExportButtons() {
     const importExportButtons = document.querySelectorAll('.search-bar button');
     if (VERBCONSOLE>0) { console.log('Mise à jour des boutons header, IS_GUEST:', IS_GUEST); }
@@ -1276,10 +1330,8 @@ function isEditAllowed() {
     return true;
 }
 
-// ============================================
+// ================== MODE ADMIN ===========================
 // Masquer tous les éléments admin
-// ============================================
-
 function hideAdminElements() {
     if (VERBCONSOLE>0) { console.log('🙈 Masquage des éléments admin en mode guest'); }
     
@@ -1330,10 +1382,7 @@ function hideAdminElements() {
     if (VERBCONSOLE>0) { console.log('✓ Éléments admin masqués'); }
 }
 
-// ============================================
 // Réafficher les éléments admin
-// ============================================
-
 function showAdminElements() {
     if (VERBCONSOLE>0) { console.log('👁️ Affichage des éléments admin'); }
     
@@ -1378,7 +1427,7 @@ function showAdminElements() {
     if (VERBCONSOLE>0) { console.log('✓ Éléments admin réaffichés'); }
 }
 
-// ============ CONFIGURATION API ============================
+// ============ CONFIGURATION API ==========================
 
 async function setupApp() {
     if (VERBCONSOLE>0) { console.log('🚀 Setup de l\'application...'); }
@@ -1551,7 +1600,7 @@ function applyAdminDefaults() {
     if (VERBCONSOLE>0) { console.log('✓ Mode guest appliqué'); }
 }
 
-// ============ MARQUAGE GROUPÉ DES RÉSULTATS DE RECHERCHE ============
+// ===== MARQUAGE GROUPÉ DES RÉSULTATS DE RECHERCHE ==========
 
 function showMarkButtons() {
     const btnMark = document.getElementById('btnMarkSearchResults');
@@ -1567,7 +1616,7 @@ function hideMarkButtons() {
     if (btnUnmark) btnUnmark.style.display = 'none';
 }
 
-// ============ BACKUP =============================================
+// ============ BACKUP =======================================
 
 function createBackup() {
     if (!isEditAllowed()) return;
@@ -1633,29 +1682,7 @@ async function checkServerStatus() {
     }
 }
 
-function loadData() {
-    fetch(`${API_URL}/lockers`, {
-        credentials: 'include'
-    }) 
-        .then(res => {
-            if (!res.ok) throw new Error('Erreur ' + res.status);
-            return res.json();
-        })
-        .then(data => {
-            DATA = data;
-            if (VERBCONSOLE>0) { console.log('📦 Données chargées:', DATA.length); }
-            if (VERBCONSOLE>0) { console.log('📋 ZONES_CONFIG:', ZONES_CONFIG); }
-            
-            renderAllTables();
-            updateCounters();
-        })
-        .catch(err => {
-            console.error('Erreur chargement:', err);
-            alert('Erreur: Impossible de charger les données.\n\nAssurez-vous que:\n1. Le serveur Node.js est lancé (npm run dev)\n2. L\'URL est: ' + API_URL);
-        });
-}
-
-// ============ COMPTEURS TABS ============
+// ============ SUIVI OCCUPATION CASIERS ============
 
 function updateCounters() {
     if (!DATA || DATA.length === 0) {
@@ -1715,302 +1742,7 @@ function switchTab(zone) {
     if (contentSection) contentSection.classList.add('active');
 }
 
-// ============ AFFICHAGE TABLEAUX ============
-
-function renderAllTables() {
-    // Vérifier s'il y a une recherche active
-    const searchInput = document.getElementById('globalSearch');
-    const searchQuery = searchInput ? searchInput.value.trim() : '';
-    
-    if (searchQuery) {
-        // Si recherche active, lancer la recherche
-        searchLockers(searchQuery);
-    } else {
-        // Sinon, affichage normal
-        ZONES_CONFIG.forEach(zone => {
-            renderTable(zone.name);
-        });
-    }
-}
-
-// Modifier le modal pour supporter les zones dynamiques
-function populateZoneSelect() {
-    const zoneSelect = document.getElementById('zone');
-    if (!zoneSelect) return;
-    
-    zoneSelect.innerHTML = ZONES_CONFIG.map(zone => 
-        `<option value="${zone.name}">${zone.name}</option>`
-    ).join('');
-}
-
-// ============ GÉNÉRATION LIGNE TABLEAU (FACTORISATION) ============
-
-function generateTableRow(locker, showZone = false) {
-    // Détection des doublons et homonymes
-    const duplicateInfo = detectDuplicates();
-    const homonymInfo = detectHomonyms();
-    const duplicateNumbers = duplicateInfo.duplicates;
-    const homonymNumbers = homonymInfo.homonyms;
-    
-    const isDuplicate = duplicateNumbers.has(locker.number);
-    const duplicateClass = isDuplicate ? 'duplicate-row' : '';
-    const hospiClass = locker.hosp ? 'hosp-row' : '';
-    
-    // Fonction pour obtenir les infos de doublon
-    const getDuplicateInfo = (locker) => {
-        if (!duplicateNumbers.has(locker.number)) return null;
-        
-        const ipp = locker.code?.trim();
-        const identity = `${locker.name}|${locker.firstName}|${locker.birthDate}`.toUpperCase();
-        
-        let reasons = [];
-        if (ipp && duplicateInfo.byIPP[ipp] && duplicateInfo.byIPP[ipp].length > 1) {
-            const others = duplicateInfo.byIPP[ipp].filter(n => n !== locker.number);
-            reasons.push(`IPP identique (casier${others.length > 1 ? 's' : ''}: ${others.join(', ')})`);
-        }
-        if (duplicateInfo.byIdentity[identity] && duplicateInfo.byIdentity[identity].length > 1) {
-            const others = duplicateInfo.byIdentity[identity].filter(n => n !== locker.number);
-            reasons.push(`Identité identique (casier${others.length > 1 ? 's' : ''}: ${others.join(', ')})`);
-        }
-        
-        return reasons.join(' + ');
-    };
-    const duplicateTitle = isDuplicate ? getDuplicateInfo(locker) : '';
-    
-    const hasHospiDate = false
-    const hospiTitle = hasHospiDate ? ('Date d\'hospi: xxxxx') : 'Date d\'hospi non renseignée';
-
-    const getStatus = (locker) => {
-        if (!locker.occupied) {
-            return '<span class="status-empty" title="Libre"></span>';
-        } else if (locker.recoverable == 1 || locker.recoverable === true) {
-            return '<span class="status-recoverable" title="Récupérable"></span>';
-        } else {
-            return '<span class="status-occupied" title="Occupé"></span>';
-        }
-    };
-    
-    //-- MODE GUEST
-    if (IS_GUEST) {
-        // Icônes limitées en mode guest (pas de marque ni stup)
-        const hospIcon = locker.hosp ? '🚑' : '';
-        const idelIcon = locker.idel ? 'ℹ️' : '';
-        const statusIcons = [hospIcon, idelIcon].filter(i => i).join(' ');
-        
-        return `
-            <tr class="${[duplicateClass, hospiClass].filter(c => c).join(' ')}" title="${duplicateTitle}">
-                <td><strong>${locker.number}</strong> ${statusIcons}</td>
-                ${showZone ? `<td><span style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">${locker.zone}</span></td>` : ''}
-                <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeName(locker.name)}</span>` : '<span class="cell-empty">—</span>'}</td>
-                <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeFirstName(locker.firstName)}</span>` : '<span class="cell-empty">—</span>'}</td>
-                <td>${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
-                <td class="hide-mobile">${locker.occupied ? formatDate(locker.birthDate) : '<span class="cell-empty">—</span>'}</td>
-            </tr>
-        `;
-    }
-    
-    //-- MODE ADMIN
-    const marqueIcon = locker.marque ? '🔖' : '';
-    const hospIcon = locker.hosp ? '🚑' : '';
-    const stupIcon = locker.stup ? '💊' : '';
-    const idelIcon = locker.idel ? 'ℹ️' : '';
-    const statusIcons = [marqueIcon, hospIcon, stupIcon, idelIcon].filter(i => i).join(' ');
-    
-    return `
-        <tr class="${[duplicateClass, hospiClass].filter(c => c).join(' ')}" title="${duplicateTitle}">
-            <td><strong>${locker.number}</strong>${isDuplicate ? ' ⚠️' : ''} ${statusIcons}</td>
-            ${showZone ? `<td><span style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">${locker.zone}</span></td>` : ''}
-            <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeName(locker.name)}</span>` : '<span class="cell-empty">—</span>'}</td>
-            <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}">${anonymizeFirstName(locker.firstName)}</span>` : '<span class="cell-empty">—</span>'}</td>
-            <td>${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
-            <td class="hide-mobile">${locker.occupied ? formatDate(locker.birthDate) : '<span class="cell-empty">—</span>'}</td>
-            <td class="hide-mobile" style="text-align: center;">${getStatus(locker)}</td>
-            <td class="hide-mobile">${locker.comment || '<span class="cell-empty">—</span>'}</td>
-            <td class="hide-mobile">
-                <div class="menu-dot">
-                    <button class="btn-secondary" onclick="toggleDropdown(event)">⋮</button>
-                    <div class="dropdown-menu">
-                        <button onclick="openModalEdit('${locker.number}')">
-                            ✏️ Modifier
-                        </button>
-                        <button class="btn-delete" onclick="releaseLocker('${locker.number}')">
-                            🧹 Libérer
-                        </button>
-                        <button onclick="printSingleLockerLabels('${locker.number}')">
-                            🏷️ Imprimer étiquettes
-                        </button>
-                        <!-- SOUS-MENU MARQUEURS -->
-                        <div class="dropdown-submenu">
-                            <button class="has-submenu">
-                                🔖 Marqueurs ›
-                            </button>
-                            <div class="dropdown-submenu-content">
-                                <button onclick="openHospitalisationModal('${locker.number}')">
-                                    ${locker.stup ? '❌ Retour d\'hospi' : '🚑 Hospitalisation'}
-                                </button>
-                                <button onclick="toggleMarker('${locker.number}', 'idel', ${locker.idel ? 'true' : 'false'})">
-                                    ${locker.idel ? '❌ Dissocier IDEL' : 'ℹ️ Associer IDEL'}
-                                </button>
-                                <button onclick="toggleMarker('${locker.number}', 'stup', ${locker.stup ? 'true' : 'false'})">
-                                    ${locker.stup ? '❌ Sans stupéfiants' : '💊 Avec stupéfiants'}
-                                </button>
-                                <button onclick="toggleMarker('${locker.number}', 'marque', ${locker.marque ? 'true' : 'false'})">
-                                    ${locker.marque ? '❌ Retirer marque' : '🔖 Marquer'}
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            </td>
-        </tr>
-    `;
-}
-
-// Créer la table des zones
-function renderTable(zone) {
-    const tbody = document.getElementById(`tbody-${zone}`);
-    let lockers = DATA.filter(l => l.zone === zone);
-    
-    // Appliquer le filtre selon la valeur du select
-    const filter = CURRENT_FILTER[zone] || 'all';
-    if (filter === 'occupied') {
-        lockers = lockers.filter(l => l.occupied);
-    } else if (filter === 'empty') {
-        lockers = lockers.filter(l => !l.occupied);
-    } else if (filter === 'recoverable') {
-        lockers = lockers.filter(l => l.occupied && (l.recoverable == 1 || l.recoverable === true));
-    } else if (filter === 'duplicates') {
-        const duplicateInfo = detectDuplicates();
-        lockers = lockers.filter(l => duplicateInfo.duplicates.has(l.number));
-    } else if (filter === 'hosp') { 
-        lockers = lockers.filter(l => l.hosp && (l.hosp == 1 || l.hosp === true));
-    } else if (filter === 'idel') { 
-        lockers = lockers.filter(l => l.idel && (l.idel == 1 || l.idel === true));
-    } else if (filter === 'stup') { 
-        lockers = lockers.filter(l => l.occupied && (l.stup == 1 || l.stup === true));
-    } else if (filter === 'marked') {
-        lockers = lockers.filter(l => l.marque == 1 || l.marque === true);
-    }
-
-    // Appliquer le tri selon la valeur du select
-    const sortSelect = document.querySelector(`select[onchange="sortTable('${zone}', this.value)"]`);
-    const sortValue = sortSelect ? sortSelect.value : 'number';
-    if (sortValue === 'name') {
-        lockers.sort((a, b) => {
-            const nameA = (a.name || '').toLowerCase();
-            const nameB = (b.name || '').toLowerCase();
-            return nameA.localeCompare(nameB);
-        });
-    } else {
-        lockers.sort((a, b) => {
-            return a.number.localeCompare(b.number);
-        });
-    }
-        
-    if (IS_GUEST) {
-        lockers.sort((a, b) => {
-            const nameA = (a.name || '').toLowerCase();
-            const nameB = (b.name || '').toLowerCase();
-            return nameA.localeCompare(nameB);
-        });
-    }
-    
-    // UTILISER LA FONCTION COMMUNE
-    tbody.innerHTML = lockers.map(locker => generateTableRow(locker, false)).join('');
-}
-
-// Créer la table de recherche 
-function renderSearchResults(zone, results, searchTerm) {
-    const tbody = document.getElementById(`tbody-${zone}`);
-    if (!tbody) return;
-    
-    if (results.length === 0) {
-        const colspan = IS_GUEST ? (zone === 'SEARCH' ? '6' : '5') : (zone === 'SEARCH' ? '9' : '8');
-        tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align: center; padding: 30px; color: var(--text-tertiary);">
-        Aucun résultat</td></tr>`;
-        return;
-    }
-    
-    // Fonction highlight
-    const highlight = (text, search) => {
-        if (!text || !search) return text;
-        const regex = new RegExp(`(${search})`, 'gi');
-        return text.replace(regex, '<mark style="background: #fef3c7; padding: 2px 4px; border-radius: 3px; font-weight: 600;">$1</mark>');
-    };
-    
-    // UTILISER LA FONCTION COMMUNE avec surlignage
-    tbody.innerHTML = results.map(locker => {
-        let row = generateTableRow(locker, zone === 'SEARCH');
-        
-        // Appliquer le surlignage sur la ligne générée
-        if (locker.name) {
-            const highlightedName = highlight(anonymizeName(locker.name), searchTerm);
-            row = row.replace(anonymizeName(locker.name), highlightedName);
-        }
-        if (locker.firstName) {
-            const highlightedFirstName = highlight(anonymizeFirstName(locker.firstName), searchTerm);
-            row = row.replace(anonymizeFirstName(locker.firstName), highlightedFirstName);
-        }
-        if (locker.code) {
-            const highlightedCode = highlight(locker.code, searchTerm);
-            row = row.replace(locker.code, highlightedCode);
-        }
-        if (locker.comment) {
-            const highlightedComment = highlight(locker.comment, searchTerm);
-            row = row.replace(locker.comment, highlightedComment);
-        }
-        
-        return row;
-    }).join('');
-}
-
-// filterTable() avec gestion du filtre "duplicates"
-function filterTable(zone, value) {
-    CURRENT_FILTER[zone] = value;
-    
-    // Si filtre "duplicates", on doit détecter d'abord
-    if (value === 'duplicates') {
-        const duplicateInfo = detectDuplicates();
-        // Filtrer sera géré dans renderTable
-    }
-    renderTable(zone);
-}
-
-// Tri de la table
-function sortTable(zone, value) {
-    const tbody = document.getElementById(`tbody-${zone}`);
-    const rows = Array.from(tbody.querySelectorAll('tr'));
-
-    rows.sort((a, b) => {
-        const idx = value === 'name' ? 1 : 0;
-        const aText = a.cells[idx].textContent;
-        const bText = b.cells[idx].textContent;
-
-        // Remplace '—' par un caractère après 'z' (par exemple '{')
-        const aVal = aText.replace(/—/g, '{');
-        const bVal = bText.replace(/—/g, '{');
-
-        // Compare les chaînes caractère par caractère
-        for (let i = 0; i < Math.min(aVal.length, bVal.length); i++) {
-            const aCharCode = aVal.charCodeAt(i);
-            const bCharCode = bVal.charCodeAt(i);
-            if (aCharCode !== bCharCode) {
-                return aCharCode - bCharCode;
-            }
-        }
-        // Si toutes les lettres sont égales, compare la longueur
-        return aVal.length - bVal.length;
-    });
-
-    // Réattache les lignes triées
-    rows.forEach(row => tbody.appendChild(row));
-
-    // Rétablit l'affichage avec '—'
-    rows.forEach(row => {
-        const idx = value === 'name' ? 1 : 0;
-        row.cells[idx].textContent = row.cells[idx].textContent.replace(/\{/g, '—');
-    });
-}
+//======== FONCTIONS UTILITAIRES DOUBLONS & HOMONYMES ===============
 
 // Fonction de détection des doublons
 function detectDuplicates() {
@@ -2156,7 +1888,440 @@ function detectHomonyms() {
     };
 }
 
+// --- Affichage basique duplicates
+function showDuplicatesPanel() {
+    const duplicateInfo = detectDuplicates();
+    
+    if (duplicateInfo.duplicates.size === 0) {
+        alert('✓ Aucun doublon détecté');
+        return;
+    }
+    
+    let message = `⚠️ ${duplicateInfo.duplicates.size} doublons détectés\n\n`;
+    
+    // Doublons par IPP
+    const ippDupes = Object.entries(duplicateInfo.byIPP).filter(([k,v]) => v.length > 1);
+    if (ippDupes.length > 0) {
+        message += `Par IPP identique (${ippDupes.length}):\n`;
+        ippDupes.forEach(([ipp, numbers]) => {
+            message += `  • IPP ${ipp}: casiers ${numbers.join(', ')}\n`;
+        });
+    }
+    
+    // Doublons par identité
+    const identityDupes = Object.entries(duplicateInfo.byIdentity).filter(([k,v]) => v.length > 1);
+    if (identityDupes.length > 0) {
+        message += `\nPar identité (${identityDupes.length}):\n`;
+        identityDupes.forEach(([identity, numbers]) => {
+            const [name, firstName, birthDate] = identity.split('|');
+            message += `  • ${name} ${firstName} (${birthDate}): casiers ${numbers.join(', ')}\n`;
+        });
+    }
+    
+    alert(message);
+}
+
+// --- Affichage basique Homonymes
+function showHomonymsPanel() {
+    const homonymInfo = detectHomonyms();
+    
+    if (homonymInfo.homonyms.size === 0) {
+        alert('✓ Aucun homonyme détecté');
+        return;
+    }
+    
+    let message = `👥 ${homonymInfo.homonyms.size} homonymes détectés\n\n`;
+    
+    // Homonymes par nom+prénom
+    const fullNameHomonyms = Object.entries(homonymInfo.byFullName).filter(([k,v]) => {
+        if (v.length <= 1) return false;
+        const uniquePersons = new Set(v.map(l => `${l.ipp}|${l.birthDate}`));
+        return uniquePersons.size > 1;
+    });
+    
+    if (fullNameHomonyms.length > 0) {
+        message += `Même nom + prénom (${fullNameHomonyms.length}):\n`;
+        fullNameHomonyms.forEach(([fullName, lockers]) => {
+            const [name, firstName] = fullName.split('|');
+            message += `  • ${name} ${firstName}:\n`;
+            lockers.forEach(l => {
+                message += `    - Casier ${l.number} (IPP: ${l.ipp}, DDN: ${l.birthDate || 'N/A'})\n`;
+            });
+        });
+    }
+    
+    // Homonymes par nom seul
+    const lastNameHomonyms = Object.entries(homonymInfo.byLastName).filter(([k,v]) => {
+        if (v.length <= 1) return false;
+        const uniqueFirstNames = new Set(v.map(l => l.firstName?.toUpperCase()));
+        return uniqueFirstNames.size > 1;
+    });
+    
+    if (lastNameHomonyms.length > 0) {
+        message += `\nMême nom (${lastNameHomonyms.length}):\n`;
+        lastNameHomonyms.slice(0, 5).forEach(([lastName, lockers]) => {
+            message += `  • ${lastName}: ${lockers.length} casiers\n`;
+            lockers.forEach(l => {
+                message += `    - ${l.firstName || 'N/A'} (${l.number})\n`;
+            });
+        });
+        if (lastNameHomonyms.length > 5) {
+            message += `  ... et ${lastNameHomonyms.length - 5} autres noms\n`;
+        }
+    }
+    
+    alert(message);
+}
+
+// ============ AFFICHAGE TABLEAUX ============
+
+// Génération de toutes les tables, mode normal ou recherche
+function renderAllTables() {
+    // Vérifier s'il y a une recherche active
+    const searchInput = document.getElementById('globalSearch');
+    const searchQuery = searchInput ? searchInput.value.trim() : '';
+    
+    if (searchQuery) {
+        // Si recherche active, lancer la recherche
+        searchLockers(searchQuery);
+    } else {
+        // Sinon, affichage normal
+        ZONES_CONFIG.forEach(zone => {
+            renderTable(zone.name);
+        });
+    }
+}
+
+// --- Génération d'une ligne de tableau (normal ou recherche) ------
+
+function generateTableRow(locker, showZone = false) {
+    // Détection des doublons et homonymes
+    const duplicateInfo = detectDuplicates();
+    const homonymInfo = detectHomonyms();
+    const duplicateNumbers = duplicateInfo.duplicates;
+
+    const homonymNumbers = homonymInfo.homonyms;
+    const getHomonymTooltip = (locker) => {
+        if (!homonymNumbers.has(locker.number)) return '';
+        
+        const lastName = locker.name.toUpperCase();
+        const fullName = `${locker.name}|${locker.firstName}`.toUpperCase();
+        
+        let otherLockers = [];
+        
+        // Chercher par nom seul
+        if (homonymInfo.byLastName[lastName]) {
+            otherLockers = homonymInfo.byLastName[lastName]
+                .filter(l => l.number !== locker.number)
+                .map(l => `${l.number} (${l.firstName})`);
+        }
+        
+        // Ou par nom+prénom avec IPP différent
+        if (otherLockers.length === 0 && homonymInfo.byFullName[fullName]) {
+            otherLockers = homonymInfo.byFullName[fullName]
+                .filter(l => l.number !== locker.number)
+                .map(l => `${l.number} (IPP: ${l.ipp})`);
+        }
+        
+        return otherLockers.length > 0 
+            ? `Homonyme(s): ${otherLockers.join(', ')}`
+            : '';
+    }   ;
+    const homonymTooltip = getHomonymTooltip(locker);
+    
+    const isDuplicate = duplicateNumbers.has(locker.number);
+    const duplicateClass = isDuplicate ? 'duplicate-row' : '';
+    const hospiClass = locker.hosp ? 'hosp-row' : '';
+    
+    // Fonction pour obtenir les infos de doublon
+    const getDuplicateInfo = (locker) => {
+        if (!duplicateNumbers.has(locker.number)) return null;
+        
+        const ipp = locker.code?.trim();
+        const identity = `${locker.name}|${locker.firstName}|${locker.birthDate}`.toUpperCase();
+        
+        let reasons = [];
+        if (ipp && duplicateInfo.byIPP[ipp] && duplicateInfo.byIPP[ipp].length > 1) {
+            const others = duplicateInfo.byIPP[ipp].filter(n => n !== locker.number);
+            reasons.push(`IPP identique (casier${others.length > 1 ? 's' : ''}: ${others.join(', ')})`);
+        }
+        if (duplicateInfo.byIdentity[identity] && duplicateInfo.byIdentity[identity].length > 1) {
+            const others = duplicateInfo.byIdentity[identity].filter(n => n !== locker.number);
+            reasons.push(`Identité identique (casier${others.length > 1 ? 's' : ''}: ${others.join(', ')})`);
+        }
+        
+        return reasons.join(' + ');
+    };
+    const duplicateTitle = isDuplicate ? getDuplicateInfo(locker) : '';
+    
+    const hasHospiDate = false
+    const hospiTitle = hasHospiDate ? ('Date d\'hospi: xxxxx') : 'Date d\'hospi non renseignée';
+
+    const getStatus = (locker) => {
+        if (!locker.occupied) {
+            return '<span class="status-empty" title="Libre"></span>';
+        } else if (locker.recoverable == 1 || locker.recoverable === true) {
+            return '<span class="status-recoverable" title="Récupérable"></span>';
+        } else {
+            return '<span class="status-occupied" title="Occupé"></span>';
+        }
+    };
+    
+    //-- MODE GUEST
+    if (IS_GUEST) {
+        // Icônes limitées en mode guest (pas de marque ni stup)
+        const hospIcon = locker.hosp ? '🚑' : '';
+        const idelIcon = locker.idel ? 'ℹ️' : '';
+        const frigoIcon = locker.frigo ? '❄' : '';
+        const pcaIcon = locker.pca ? '💉' : '';
+        const statusIcons = [hospIcon, idelIcon, frigoIcon, pcaIcon].filter(i => i).join(' ');
+
+        return `
+            <tr class="${[duplicateClass, hospiClass].filter(c => c).join(' ')}" title="${duplicateTitle}">
+                <td><strong>${locker.number}</strong> ${statusIcons}</td>
+                ${showZone ? `<td><span style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">${locker.zone}</span></td>` : ''}
+                <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}" title="${homonymTooltip}">${anonymizeName(locker.name)}</span>` : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}" title="${homonymTooltip}">${anonymizeFirstName(locker.firstName)}</span>` : '<span class="cell-empty">—</span>'}</td>
+                <td>${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
+                <td class="hide-mobile">${locker.occupied ? formatDate(locker.birthDate) : '<span class="cell-empty">—</span>'}</td>
+            </tr>
+        `;
+    }
+    
+    //-- MODE ADMIN
+    const marqueIcon = locker.marque ? '🔖' : '';
+    //const hospIcon = locker.hosp ? '🚑' : '';
+    const hospTitle = locker.hosp 
+        ? (locker.hospDate 
+            ? `Hospitalisé(e) le ${formatDate(locker.hospDate)}` 
+            : 'Hospitalisé(e), date non renseignée')
+        : '';
+    const hospIconWithTitle = locker.hosp 
+        ? `<span title="${hospTitle}" style="cursor: help;">🚑</span>` 
+        : '';
+
+    const stupIcon = locker.stup ? '💊' : '';
+    const idelIcon = locker.idel ? 'ℹ️' : '';
+    const frigoIcon = locker.frigo ? '❄' : '';
+    const pcaIcon = locker.pca ? '💉' : '';
+    const meopaIcon = locker.meopa ? '⛽️' : '';
+
+    const statusIcons = [hospIconWithTitle, idelIcon, stupIcon, frigoIcon, pcaIcon, meopaIcon, marqueIcon ].filter(i => i).join(' ');
+    
+    return `
+        <tr class="${[duplicateClass, hospiClass].filter(c => c).join(' ')}" title="${duplicateTitle}">
+            <td><strong>${locker.number}</strong>${isDuplicate ? ' ⚠️' : ''} ${statusIcons}</td>
+            ${showZone ? `<td><span style="font-size: 11px; font-weight: 600; color: var(--text-secondary);">${locker.zone}</span></td>` : ''}
+            <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}" title="${homonymTooltip}">${anonymizeName(locker.name)}</span>` : '<span class="cell-empty">—</span>'}</td>
+            <td>${locker.occupied ? `<span class="${homonymNumbers.has(locker.number) ? 'homonym-name' : ''}" title="${homonymTooltip}">${anonymizeFirstName(locker.firstName)}</span>` : '<span class="cell-empty">—</span>'}</td>
+            <td>${locker.occupied ? locker.code : '<span class="cell-empty">—</span>'}</td>
+            <td class="hide-mobile">${locker.occupied ? formatDate(locker.birthDate) : '<span class="cell-empty">—</span>'}</td>
+            <td class="hide-mobile" style="text-align: center;">${getStatus(locker)}</td>
+            <td class="hide-mobile">${locker.comment || '<span class="cell-empty">—</span>'}</td>
+            <td class="hide-mobile">
+                <div class="menu-dot">
+                    <button class="btn-secondary" onclick="toggleDropdown(event)">⋮</button>
+                    <div class="dropdown-menu">
+                        <button onclick="openModalEdit('${locker.number}')">
+                            ✏️ Modifier
+                        </button>
+                        <button class="btn-delete" onclick="releaseLocker('${locker.number}')">
+                            🧹 Libérer
+                        </button>
+                        <button onclick="printSingleLockerLabels('${locker.number}')">
+                            🏷️ Etiquettes
+                        </button>
+                        <!-- SOUS-MENU MARQUEURS -->
+                        <div class="dropdown-submenu">
+                            <button class="has-submenu">
+                                🔖 Marqueurs ›
+                            </button>
+                            <div class="dropdown-submenu-content">
+                                <button onclick="openHospitalisationModal('${locker.number}')">
+                                    ${locker.stup ? '❌ Retirer hospi' : '🚑 Hospitalisation'}
+                                </button>
+                                <button onclick="toggleMarker('${locker.number}', 'idel', ${locker.idel ? 'true' : 'false'})">
+                                    ${locker.idel ? '❌ Retirer IDEL' : 'ℹ️ Avec IDEL'}
+                                </button>
+                                <button onclick="toggleMarker('${locker.number}', 'stup', ${locker.stup ? 'true' : 'false'})">
+                                    ${locker.stup ? '❌ Retirer stup.' : '💊 Avec stupéfiants'}
+                                </button>
+                                <button onclick="toggleMarker('${locker.number}', 'frigo', ${locker.marque ? 'true' : 'false'})">
+                                    ${locker.marque ? '❌ Retirer frigo' : '❄️ Avec frigo'}
+                                </button>
+                                <button onclick="toggleMarker('${locker.number}', 'pca', ${locker.marque ? 'true' : 'false'})">
+                                    ${locker.marque ? '❌ Retirer PCA' : '💉 Avec PCA'}
+                                </button>
+                                <button onclick="toggleMarker('${locker.number}', 'meopa', ${locker.marque ? 'true' : 'false'})">
+                                    ${locker.marque ? '❌ Retirer MEOPA' : '⛽️ Avec MEOPA'}
+                                </button>
+                                <button onclick="toggleMarker('${locker.number}', 'marque', ${locker.marque ? 'true' : 'false'})">
+                                    ${locker.marque ? '❌ Retirer marque' : '🔖 Marquer'}
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </td>
+        </tr>
+    `;
+}
+
+// --------  Créer la table pour chaque zone ------------
+function renderTable(zone) {
+    const tbody = document.getElementById(`tbody-${zone}`);
+    let lockers = DATA.filter(l => l.zone === zone);
+    
+    // Appliquer le filtre selon la valeur du select
+    const filter = CURRENT_FILTER[zone] || 'all';
+    if (filter === 'occupied') {
+        lockers = lockers.filter(l => l.occupied);
+    } else if (filter === 'empty') {
+        lockers = lockers.filter(l => !l.occupied);
+    } else if (filter === 'recoverable') {
+        lockers = lockers.filter(l => l.occupied && (l.recoverable == 1 || l.recoverable === true));
+    } else if (filter === 'duplicates') {
+        const duplicateInfo = detectDuplicates();
+        lockers = lockers.filter(l => duplicateInfo.duplicates.has(l.number));
+    } else if (filter === 'hosp') { 
+        lockers = lockers.filter(l => l.occupied && (l.hosp == 1 || l.hosp === true) );
+    } else if (filter === 'idel') { 
+        lockers = lockers.filter(l => l.occupied && (l.idel == 1 || l.idel === true) );
+    } else if (filter === 'stup') { 
+        lockers = lockers.filter(l => l.occupied && (l.stup == 1 || l.stup === true) );
+    } else if (filter === 'frigo') {
+        lockers = lockers.filter(l => l.occupied && (l.frigo == 1 || l.frigo === true) );
+    } else if (filter === 'pca') {
+        lockers = lockers.filter(l => l.occupied && (l.pca == 1 || l.pca === true) );
+    } else if (filter === 'meopa') {
+        lockers = lockers.filter(l => l.occupied && (l.meopa == 1 || l.meopa === true) );
+    } else if (filter === 'marked') {
+        lockers = lockers.filter(l => l.occupied && (l.marque == 1 || l.marque === true) );
+    }
+
+    // Appliquer le tri selon la valeur du select
+    const sortSelect = document.querySelector(`select[onchange="sortTable('${zone}', this.value)"]`);
+    const sortValue = sortSelect ? sortSelect.value : 'number';
+    if (sortValue === 'name') {
+        lockers.sort((a, b) => {
+            const nameA = (a.name || '').toLowerCase();
+            const nameB = (b.name || '').toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+    } else {
+        lockers.sort((a, b) => {
+            return a.number.localeCompare(b.number);
+        });
+    }
+        
+    if (IS_GUEST) {
+        lockers.sort((a, b) => {
+            const nameA = (a.name || '').toLowerCase();
+            const nameB = (b.name || '').toLowerCase();
+            return nameA.localeCompare(nameB);
+        });
+    }
+    
+   // Utiliser la fonction de génération de ligne (commune avec la table de recherche renderSearchResults)
+    tbody.innerHTML = lockers.map(locker => generateTableRow(locker, false)).join('');
+}
+
+// --------  Créer la table de recherche ------------
+function renderSearchResults(zone, results, searchTerm) {
+    const tbody = document.getElementById(`tbody-${zone}`);
+    if (!tbody) return;
+    
+    if (results.length === 0) {
+        const colspan = IS_GUEST ? (zone === 'SEARCH' ? '6' : '5') : (zone === 'SEARCH' ? '9' : '8');
+        tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align: center; padding: 30px; color: var(--text-tertiary);">
+        Aucun résultat</td></tr>`;
+        return;
+    }
+    
+    // Fonction highlight
+    const highlight = (text, search) => {
+        if (!text || !search) return text;
+        const regex = new RegExp(`(${search})`, 'gi');
+        return text.replace(regex, '<mark style="background: #fef3c7; padding: 2px 4px; border-radius: 3px; font-weight: 600;">$1</mark>');
+    };
+    
+    // Utiliser la fonction de génération de ligne (commune avec renderTable) avec surlignage et icones
+    tbody.innerHTML = results.map(locker => {
+        let row = generateTableRow(locker, zone === 'SEARCH');
+        
+        // Appliquer le surlignage sur la ligne générée
+        if (locker.name) {
+            const highlightedName = highlight(anonymizeName(locker.name), searchTerm);
+            row = row.replace(anonymizeName(locker.name), highlightedName);
+        }
+        if (locker.firstName) {
+            const highlightedFirstName = highlight(anonymizeFirstName(locker.firstName), searchTerm);
+            row = row.replace(anonymizeFirstName(locker.firstName), highlightedFirstName);
+        }
+        if (locker.code) {
+            const highlightedCode = highlight(locker.code, searchTerm);
+            row = row.replace(locker.code, highlightedCode);
+        }
+        if (locker.comment) {
+            const highlightedComment = highlight(locker.comment, searchTerm);
+            row = row.replace(locker.comment, highlightedComment);
+        }
+        
+        return row;
+    }).join('');
+}
+
+// ---- FILTRE de la table : avec gestion du filtre "duplicates" ----
+function filterTable(zone, value) {
+    CURRENT_FILTER[zone] = value;
+    
+    // Si filtre "duplicates", on doit détecter d'abord
+    if (value === 'duplicates') {
+        const duplicateInfo = detectDuplicates();
+        // Filtrer sera géré dans renderTable
+    }
+    renderTable(zone);
+}
+
+// ---- TRI de la table  -------------------------------------------
+function sortTable(zone, value) {
+    const tbody = document.getElementById(`tbody-${zone}`);
+    const rows = Array.from(tbody.querySelectorAll('tr'));
+
+    rows.sort((a, b) => {
+        const idx = value === 'name' ? 1 : 0;
+        const aText = a.cells[idx].textContent;
+        const bText = b.cells[idx].textContent;
+
+        // Remplace '—' par un caractère après 'z' (par exemple '{')
+        const aVal = aText.replace(/—/g, '{');
+        const bVal = bText.replace(/—/g, '{');
+
+        // Compare les chaînes caractère par caractère
+        for (let i = 0; i < Math.min(aVal.length, bVal.length); i++) {
+            const aCharCode = aVal.charCodeAt(i);
+            const bCharCode = bVal.charCodeAt(i);
+            if (aCharCode !== bCharCode) {
+                return aCharCode - bCharCode;
+            }
+        }
+        // Si toutes les lettres sont égales, compare la longueur
+        return aVal.length - bVal.length;
+    });
+
+    // Réattache les lignes triées
+    rows.forEach(row => tbody.appendChild(row));
+
+    // Rétablit l'affichage avec '—'
+    rows.forEach(row => {
+        const idx = value === 'name' ? 1 : 0;
+        row.cells[idx].textContent = row.cells[idx].textContent.replace(/\{/g, '—');
+    });
+}
+
 //=============== FONCTIONS DE RECHERCHE =========================
+
+// Gestion de la recherche
 function searchLockers(query) {
     if (!query || query.trim() === '') {
         SEARCH_RESULTS = [];
@@ -2250,7 +2415,34 @@ function clearSearch() {
     switchTab(ZONES_CONFIG[0].name);
 }
 
-// ============ MODAL ============
+// ===================== MODAL CASIER ========================
+
+// Générer dynamiquement la liste des zones (sur la base de config.env)
+function populateZoneSelect() {
+    const zoneSelect = document.getElementById('zone');
+    if (!zoneSelect) return;
+    
+    zoneSelect.innerHTML = ZONES_CONFIG.map(zone => 
+        `<option value="${zone.name}">${zone.name}</option>`
+    ).join('');
+}
+
+// Générer la liste déroulante des casiers (avec état libre/occupé) dans le modal
+function populateLockerSelect(zone, selected = null) {
+    const select = document.getElementById('lockerNumber');
+    const lockers = DATA.filter(l => l.zone === zone);
+    
+    select.innerHTML = lockers.map(locker => {
+        const isAvailable = !locker.occupied || locker.number === selected;
+        return `<option value="${locker.number}" ${!isAvailable ? 'disabled' : ''}>${locker.number}${isAvailable ? '' : ' (occupé)'}</option>`;
+    }).join('');
+    
+    if (selected) {
+        select.value = selected;
+    }
+}
+
+// --- Attribuer nouveau casier
 function openModal(zone) {
     if (!isEditAllowed()) return;
 
@@ -2282,6 +2474,7 @@ function openModal(zone) {
     document.getElementById('modal').classList.add('active');
 }
 
+// --- Editer casier existant
 function openModalEdit(lockerNumber) {
     if (!isEditAllowed()) return;
     
@@ -2317,26 +2510,12 @@ function openModalEdit(lockerNumber) {
     document.getElementById('modal').classList.add('active');
 }
 
-function populateLockerSelect(zone, selected = null) {
-    const select = document.getElementById('lockerNumber');
-    const lockers = DATA.filter(l => l.zone === zone);
-    
-    select.innerHTML = lockers.map(locker => {
-        const isAvailable = !locker.occupied || locker.number === selected;
-        return `<option value="${locker.number}" ${!isAvailable ? 'disabled' : ''}>${locker.number}${isAvailable ? '' : ' (occupé)'}</option>`;
-    }).join('');
-    
-    if (selected) {
-        select.value = selected;
-    }
-}
-
+// --- Fermeture du modal (utilisé par handleFormSubmit)
 function closeModal() {
     document.getElementById('modal').classList.remove('active');
 }
 
-// ============ FORMULAIRE ============
-
+// --- Soumission du formulaire
 async function handleFormSubmit(e) {
     e.preventDefault();
     
@@ -2462,6 +2641,7 @@ async function handleFormSubmit(e) {
     }
 }
 
+// --- Libérer un casier (bouton action)
 function releaseLocker(lockerNumber) {
     if (!isEditAllowed()) return;
     
@@ -2487,7 +2667,7 @@ function releaseLocker(lockerNumber) {
     });
 }
 
-// Enregistrer un casier (extraction du code existant)
+// --- Enregistrer un casier
 async function saveLocker(lockerNumber, zone, recoverable, comment, stup, idel) {
 
     const bodyData = {
@@ -2525,7 +2705,7 @@ async function saveLocker(lockerNumber, zone, recoverable, comment, stup, idel) 
     return response.json();
 }
 
-// Libérer un casier sans message
+// --- Libérer un casier sans message (utilisé lors d'un transfert)
 async function releaseLockerSilent(lockerNumber, reason = 'TRANSFERT') {
     const response = await fetch(`${API_URL}/lockers/${lockerNumber}?reason=${reason}`, {  
         method: 'DELETE',
@@ -2543,6 +2723,7 @@ async function releaseLockerSilent(lockerNumber, reason = 'TRANSFERT') {
     return response.json();
 }
 
+// Message affiché en haut de modal pour réussite ou échec
 function showStatus(msg, type) {
     const el = document.getElementById('statusMessage');
     el.className = 'status-message status-' + type;
@@ -2552,52 +2733,11 @@ function showStatus(msg, type) {
     }, 3000);
 }
 
-// ============ EXPORT ============
+// ======================== EXPORT ==================================
 
-async function logExport(format, count, userName, role) {
-    try {
-        await fetch(`${API_URL}/exports/log`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': CSRF_TOKEN
-            },
-            body: JSON.stringify({
-                format: format,
-                recordCount: count,
-                userName: userName,
-                userRole: role
-            })
-        });
-    } catch (err) {
-        console.error('Erreur enregistrement export:', err);
-    }
-}
+// ============ MODAL EXPORT UNIFIÉ ============
 
-function convertToCSV(data, separator = ',') {
-    const headers = ['N° Casier', 'Zone', 'Nom', 'Prénom', 'N°IPP', 'DDN', 'Récupérable', 'Marque', 'Hospitalisation', 'Date Hosp', 'Stupéfiants', 'IDEL'];
-    const rows = data.map(locker => [
-        locker.number, 
-        locker.zone, 
-        locker.name, 
-        locker.firstName, 
-        locker.code, 
-        locker.birthDate,
-        locker.recoverable ? '1' : '0',
-        locker.marque ? '1' : '0',
-        locker.hosp ? '1' : '0',
-        locker.hospDate || '',
-        locker.stup ? '1' : '0',
-        locker.idel ? '1' : '0'
-    ]);
-    
-    return [
-        headers.join(separator),
-        ...rows.map(row => row.map(cell => `"${cell}"`).join(separator))
-    ].join('\n');
-}
-
+// Fonction utilitaire
 function downloadFile(content, filename, mimeType) {
     const blob = new Blob([content], { type: mimeType });
     const url = URL.createObjectURL(blob);
@@ -2609,8 +2749,6 @@ function downloadFile(content, filename, mimeType) {
     URL.revokeObjectURL(url);
     document.body.removeChild(a);
 }
-
-// ============ EXPORT UNIFIÉ ============
 
 function showLockersExportOptions() {
     if (!isEditAllowed()) return;
@@ -2719,7 +2857,55 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// DEPRECATED Export des données : anciennes fonctions
+// ============ EXPORT LEGACY (DEPRACATED) ============
+
+// Log d'export utilisé par convertToCSV (DEPRECATED)
+async function logExport(format, count, userName, role) {
+    try {
+        await fetch(`${API_URL}/exports/log`, {
+            method: 'POST',
+            credentials: 'include',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': CSRF_TOKEN
+            },
+            body: JSON.stringify({
+                format: format,
+                recordCount: count,
+                userName: userName,
+                userRole: role
+            })
+        });
+    } catch (err) {
+        console.error('Erreur enregistrement export:', err);
+    }
+}
+
+// DEPRECATED Export des données legacy : anciennes fonctions pour export CSV ou JSON
+function convertToCSV(data, separator = ',') {
+    const headers = ['N° Casier', 'Zone', 'Nom', 'Prénom', 'N°IPP', 'DDN', 'Récupérable', 'Marque', 'Hospitalisation', 'Date Hosp', 'Stupéfiants', 'IDEL'];
+    const rows = data.map(locker => [
+        locker.number, 
+        locker.zone, 
+        locker.name, 
+        locker.firstName, 
+        locker.code, 
+        locker.birthDate,
+        locker.recoverable ? '1' : '0',
+        locker.marque ? '1' : '0',
+        locker.hosp ? '1' : '0',
+        locker.hospDate || '',
+        locker.stup ? '1' : '0',
+        locker.idel ? '1' : '0'
+    ]);
+    
+    return [
+        headers.join(separator),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(separator))
+    ].join('\n');
+}
+
+// DEPRECATED : Export JSON
 function exportData(format) {
     const occupied = DATA.filter(l => l.occupied);
     
@@ -2768,7 +2954,7 @@ function exportData(format) {
     logExport(format, occupied.length, userName, role);
 }
 
-// ============ IMPORT ============
+// ============ IMPORT LEGACY ============
 
 // DEPRECATED?
 function importCSV() {
@@ -2796,34 +2982,7 @@ function importCSV() {
       
         try {
             const text = await file.text();
-            const lines = text.split('\n').filter(line => line.trim());
-            
-            const dataLines = lines.slice(1);
-            
-            const data = dataLines.map(line => {
-                const values = line.match(/(".*?"|[^,]+)(?=\s*,|\s*$)/g);
-                if (!values || values.length < 6) return null;
-                
-                return {
-                    number: values[0].replace(/"/g, '').trim(),
-                    zone: values[1].replace(/"/g, '').trim(),
-                    name: values[2].replace(/"/g, '').trim(),
-                    firstName: values[3].replace(/"/g, '').trim(),
-                    code: values[4].replace(/"/g, '').trim(),
-                    birthDate: values[5].replace(/"/g, '').trim(),
-                    recoverable: values[6] ? (values[6].replace(/"/g, '').trim() === '1') : false
-                };
-            }).filter(item => item !== null);
-            
-            if (data.length === 0) {
-                alert('Aucune donnée valide trouvée dans le fichier CSV');
-                return;
-            }
-            
-            if (!confirm(`Importer ${data.length} casiers ?\n\nCeci va remplacer les données existantes pour ces casiers.`)) {
-                return;
-            }
-            
+            // ENVOYER LE CONTENU BRUT, laisser le serveur parser
             const res = await fetch(`${API_URL}/import`, {
                 method: 'POST',
                 credentials: 'include',
@@ -2831,14 +2990,18 @@ function importCSV() {
                     'Content-Type': 'application/json',
                     'X-CSRF-Token': CSRF_TOKEN
                 },
-                body: JSON.stringify({ data: data })
+                body: JSON.stringify({ 
+                    rawContent: text,  // Pas de parsing côté client
+                    mode: 'update',    // ou 'replace'
+                    separator: 'auto'  // Détection auto côté serveur
+                })
             });
             
             if (res.ok) {
                 const result = await res.json();
                 let message = `Import terminé !\n\n✓ Importés : ${result.imported}\n✗ Erreurs : ${result.errors}`;
                 if (result.invalidIPP > 0) {
-                    message += `\n⚠️ IPP invalides : ${result.invalidIPP} (marqués récupérables)`;
+                    message += `\n⚠️ IPP inconnus : ${result.invalidIPP} (marqués récupérables)`;
                 }
                 message += `\nTotal : ${result.total}`;
                 alert(message);
@@ -2947,7 +3110,7 @@ function importJSON() {
                     message += `⏭️ Ignorés (déjà occupés) : ${result.skipped}\n`;
                 }
                 if (result.invalidIPP > 0) {
-                    message += `⚠️ IPP invalides : ${result.invalidIPP} (marqués récupérables)\n`;
+                    message += `⚠️ IPP inconnus : ${result.invalidIPP} (marqués récupérables)\n`;
                 }
                 if (result.errors > 0) {
                     message += `✗ Erreurs : ${result.errors}\n`;
@@ -2988,7 +3151,7 @@ function importJSON() {
     input.click();
 }
 
-// ============ IMPORT CASIERS UNIFIÉ ============
+// ============ MODAL IMPORT CASIERS UNIFIÉ ============
 
 let selectedLockersImportFormat = 'csv';
 let selectedLockersImportMode = 'update';
@@ -3062,17 +3225,350 @@ function selectFileForLockersImport() {
     fileInput.click();
 }
 
+// Fonction d'analyse des fichiers casier à importer 
+function analyzeLockersFile(content, format, separator) {
+    try {
+        if (format === 'json') {
+            const jsonData = JSON.parse(content);
+            const data = jsonData.lockers || jsonData;
+            
+            if (!Array.isArray(data)) {
+                return { valid: false, error: 'Format JSON invalide : doit contenir un tableau de casiers' };
+            }
+            
+            // Vérifier les champs obligatoires
+            const requiredFields = ['number', 'zone'];
+            const sampleLocker = data[0] || {};
+            const missingFields = requiredFields.filter(f => !(f in sampleLocker));
+            
+            if (missingFields.length > 0) {
+                return { 
+                    valid: false, 
+                    error: `Champs manquants : ${missingFields.join(', ')}` 
+                };
+            }
+            
+            return {
+                valid: true,
+                format: 'JSON',
+                totalRows: data.length,
+                occupiedRows: data.filter(l => l.name && l.firstName).length,
+                columns: Object.keys(sampleLocker),
+                metadata: jsonData.metadata || null,
+                sample: data.slice(0, 3)
+            };
+            
+        } else {
+            // CSV
+            const lines = content.split('\n').filter(line => line.trim());
+            
+            if (lines.length < 2) {
+                return { valid: false, error: 'Fichier CSV vide ou invalide (moins de 2 lignes)' };
+            }
+            
+            // Détecter séparateur
+            const usedSeparator = separator === 'auto' 
+                ? detectCSVSeparator(content) 
+                : separator;
+            
+            const headers = parseCsvLine(lines[0], usedSeparator);
+            const dataLines = lines.slice(1);
+            
+            // Vérifier nombre de colonnes
+            const expectedColumns = 13; // number, zone, name, firstName, code, birthDate, recoverable, marque, hosp, hospDate, stup, idel, comment
+            
+            if (headers.length < 6) {
+                return { 
+                    valid: false, 
+                    error: `Nombre de colonnes insuffisant : ${headers.length} trouvées, au moins 6 requises\nColonnes détectées : ${headers.join(', ')}` 
+                };
+            }
+            
+            // Parser quelques lignes pour vérifier
+            const sampleData = dataLines.slice(0, 3).map(line => {
+                const values = parseCsvLine(line, usedSeparator);
+                return {
+                    number: values[0],
+                    zone: values[1],
+                    name: values[2],
+                    firstName: values[3],
+                    columnCount: values.length
+                };
+            });
+            
+            const occupiedCount = dataLines.filter(line => {
+                const values = parseCsvLine(line, usedSeparator);
+                return values[2] && values[3]; // name et firstName
+            }).length;
+            
+            return {
+                valid: true,
+                format: 'CSV',
+                separator: usedSeparator === '\t' ? 'TAB' : usedSeparator,
+                totalRows: dataLines.length,
+                occupiedRows: occupiedCount,
+                emptyRows: dataLines.length - occupiedCount,
+                columns: headers,
+                columnCount: headers.length,
+                expectedColumnCount: expectedColumns,
+                columnsMatch: headers.length >= expectedColumns,
+                sample: sampleData
+            };
+        }
+    } catch (err) {
+        return { 
+            valid: false, 
+            error: `Erreur parsing : ${err.message}` 
+        };
+    }
+}
+
 async function handleLockersFileSelected(e) {
     const file = e.target.files[0];
     if (!file) return;
     if (!isEditAllowed()) return;
 
-    // Trouver le bouton d'import
+    try {
+        const text = await file.text();
+        
+        // Analyser le fichier
+        const analysis = analyzeLockersFile(text, selectedLockersImportFormat, selectedLockersImportSeparator);
+        
+        if (!analysis.valid) {
+            alert(`❌ Fichier invalide\n\n${analysis.error}`);
+            return;
+        }
+        
+        // Afficher popup de confirmation avec analyse
+        const confirmImport = await showImportConfirmation(file.name, analysis);
+        
+        if (!confirmImport) {
+            return;
+        }
+        
+        // Procéder à l'import
+        await performLockersImport(text, file.name);
+        
+    } catch (err) {
+        console.error('Erreur lecture fichier:', err);
+        alert('❌ Erreur lecture fichier : ' + err.message);
+    }
+}
+
+// Parser une ligne CSV avec séparateur personnalisé et échappement des guillemets (copie de server.js)
+function parseCsvLine(line, separator = ',') {
+    const result = [];
+    let current = '';
+    let inQuotes = false;
+    
+    for (let i = 0; i < line.length; i++) {
+        const char = line[i];
+        const nextChar = line[i + 1];
+        
+        if (char === '"') {
+            if (inQuotes && nextChar === '"') {
+                current += '"'; // Guillemet échappé
+                i++; // Skip next quote
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (char === separator && !inQuotes) {
+            result.push(current.trim());
+            current = '';
+        } else {
+            current += char;
+        }
+    }
+    
+    result.push(current.trim());
+    return result.map(v => v.replace(/^"|"$/g, ''));
+}
+
+// // Fonction de détection automatique du séparateur CSV (copie de server.js)
+function detectCSVSeparator(fileContent) {
+    const lines = fileContent.split('\n').filter(line => line.trim());
+    if (lines.length < 2) return ',';
+
+    const firstLine = lines[0];
+    const secondLine = lines[1];
+
+    const separators = [';', ',', '\t', '|'];
+    const scores = {};
+
+    for (const sep of separators) {
+      try {
+        // Utiliser parseCsvLine si disponible pour compter les colonnes
+        const cols1 = parseCsvLine(firstLine, sep).length;
+        const cols2 = parseCsvLine(secondLine, sep).length;
+        scores[sep] = (cols1 + cols2);
+      } catch (e) {
+        scores[sep] = 0;
+      }
+    }
+
+    // Choisir le séparateur avec le meilleur score; fallback ','
+    let bestSep = ',';
+    let bestScore = -1;
+    for (const [sep, score] of Object.entries(scores)) {
+      if (score > bestScore) {
+        bestScore = score;
+        bestSep = sep;
+      }
+    }
+
+    console.log('detectCSVSeparator → choisi:', bestSep, 'scores:', scores);
+    return bestSep || ',';
+}
+
+// Fonction de confirmation avec popup
+async function showImportConfirmation(filename, analysis) {
+    const modal = document.createElement('div');
+    modal.className = 'modal active';
+    modal.style.zIndex = '10000';
+    
+    let detailsHTML = '';
+    
+    if (analysis.format === 'JSON') {
+        detailsHTML = `
+            <div class="analysis-details">
+                <div class="detail-row">
+                    <span class="label">Format :</span>
+                    <span class="value">JSON</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Casiers totaux :</span>
+                    <span class="value">${analysis.totalRows}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Casiers occupés :</span>
+                    <span class="value">${analysis.occupiedRows}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Champs détectés :</span>
+                    <span class="value">${analysis.columns.length} (${analysis.columns.join(', ')})</span>
+                </div>
+                ${analysis.metadata ? `
+                    <div class="detail-row">
+                        <span class="label">Métadonnées :</span>
+                        <span class="value">Exporté le ${new Date(analysis.metadata.exportDate).toLocaleString('fr-FR')} par ${analysis.metadata.exportBy}</span>
+                    </div>
+                ` : ''}
+            </div>
+            
+            <div class="sample-section">
+                <strong>Aperçu (3 premiers casiers) :</strong>
+                <div style="font-family: monospace; font-size: 11px; background: var(--bg-secondary); padding: 10px; border-radius: 4px; margin-top: 8px; max-height: 150px; overflow-y: auto;">
+                    ${analysis.sample.map(l => `${l.number} - ${l.zone} - ${l.name || '(vide)'} ${l.firstName || ''}`).join('<br>')}
+                </div>
+            </div>
+        `;
+    } else {
+        // CSV
+        const warningIcon = !analysis.columnsMatch ? '⚠️' : '✓';
+        const warningColor = !analysis.columnsMatch ? '#f59e0b' : '#10b981';
+        
+        detailsHTML = `
+            <div class="analysis-details">
+                <div class="detail-row">
+                    <span class="label">Format :</span>
+                    <span class="value">CSV</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Séparateur :</span>
+                    <span class="value">${analysis.separator}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Lignes totales :</span>
+                    <span class="value">${analysis.totalRows}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Casiers occupés :</span>
+                    <span class="value">${analysis.occupiedRows}</span>
+                </div>
+                <div class="detail-row">
+                    <span class="label">Casiers vides :</span>
+                    <span class="value">${analysis.emptyRows}</span>
+                </div>
+                <div class="detail-row" style="border-top: 1px solid var(--border-color); padding-top: 8px; margin-top: 8px;">
+                    <span class="label">Colonnes détectées :</span>
+                    <span class="value" style="color: ${warningColor};">${warningIcon} ${analysis.columnCount} / ${analysis.expectedColumnCount} attendues</span>
+                </div>
+            </div>
+            
+            ${!analysis.columnsMatch ? `
+                <div style="background: #fef3c7; border: 1px solid #f59e0b; border-radius: 6px; padding: 12px; margin: 16px 0;">
+                    <strong style="color: #92400e;">⚠️ Avertissement :</strong>
+                    <p style="margin: 4px 0 0 0; font-size: 13px; color: #78350f;">
+                        Le fichier contient ${analysis.columnCount} colonne(s), ${analysis.expectedColumnCount} attendues.<br>
+                        Colonnes manquantes potentielles : IDEL, Commentaire, etc.<br>
+                        L'import peut échouer ou être incomplet.
+                    </p>
+                </div>
+            ` : ''}
+            
+            <div class="sample-section">
+                <strong>En-têtes détectés :</strong>
+                <div style="font-family: monospace; font-size: 11px; background: var(--bg-secondary); padding: 10px; border-radius: 4px; margin-top: 8px;">
+                    ${analysis.columns.map((col, i) => `${i+1}. ${col}`).join('; ')}
+                </div>
+            </div>
+            
+            <div class="sample-section">
+                <strong>Aperçu (3 premières lignes) :</strong>
+                <div style="font-family: monospace; font-size: 11px; background: var(--bg-secondary); padding: 10px; border-radius: 4px; margin-top: 8px; max-height: 120px; overflow-y: auto;">
+                    ${analysis.sample.map(l => `${l.number || '?'} | ${l.zone || '?'} | ${l.name || '(vide)'} ${l.firstName || ''} | ${l.columnCount} col.`).join('<br>')}
+                </div>
+            </div>
+        `;
+    }
+    
+    modal.innerHTML = `
+        <div class="modal-content" style="max-width: 600px;">
+            <div class="modal-header">📋 Analyse du fichier</div>
+            
+            <div style="padding: 20px;">
+                <div style="background: #e0f2fe; border: 1px solid #0ea5e9; border-radius: 6px; padding: 12px; margin-bottom: 20px;">
+                    <strong style="color: #0c4a6e;">📁 ${filename}</strong>
+                </div>
+                
+                ${detailsHTML}
+                
+                <div style="margin-top: 20px; padding-top: 20px; border-top: 1px solid var(--border-color);">
+                    <strong>Mode d'import sélectionné :</strong>
+                    <p style="margin: 8px 0; font-size: 14px; color: var(--text-secondary);">
+                        ${selectedLockersImportMode === 'replace' 
+                            ? '🗑️ Remplacement complet (vide tous les casiers puis importe)' 
+                            : '📝 Mise à jour (remplace uniquement les casiers du fichier)'}
+                    </p>
+                </div>
+                
+                <div class="modal-footer" style="margin-top: 24px;">
+                    <button class="btn-secondary" id="btnCancelImport">Annuler</button>
+                    <button class="btn-primary" id="btnConfirmImport">✓ Importer</button>
+                </div>
+            </div>
+        </div>
+    `;
+    
+    document.body.appendChild(modal);
+    
+    return new Promise((resolve) => {
+        document.getElementById('btnConfirmImport').onclick = () => {
+            document.body.removeChild(modal);
+            resolve(true);
+        };
+        document.getElementById('btnCancelImport').onclick = () => {
+            document.body.removeChild(modal);
+            resolve(false);
+        };
+    });
+}
+
+async function performLockersImport(content, filename) {
     const importBtn = Array.from(document.querySelectorAll('.admin-tools-content button'))
         .find(btn => btn.textContent.includes('Import casiers'));
     const originalText = importBtn ? importBtn.innerHTML : '';
     
-    // LOADING STATE
     if (importBtn) {
         importBtn.disabled = true;
         importBtn.innerHTML = '⏳ Import...';
@@ -3080,61 +3576,11 @@ async function handleLockersFileSelected(e) {
     }
     
     try {
-        console.log('📂 Lecture du fichier casiers...');
-        console.log('Format:', selectedLockersImportFormat);
-        console.log('Mode:', selectedLockersImportMode);
-        console.log('Séparateur:', selectedLockersImportSeparator);
 
-        const text = await file.text();
-        let data;
-        let metadata = null;
-        
-        //--- Parser selon le format
-        if (selectedLockersImportFormat === 'json') {
-            const jsonData = JSON.parse(text);
-            
-            // Supporter les deux formats
-            data = jsonData.lockers || jsonData;
-            metadata = jsonData.metadata;
-            
-            if (!Array.isArray(data)) {
-                throw new Error('Format JSON invalide : doit contenir un tableau de casiers');
-            }
-        } else {
-            // CSV - ENVOYER rawContent et separator au serveur
-            data = null;  // On n'envoie plus le data parsé côté client
-        }
-        
-/*        if (data.length === 0) {
-            alert('❌ Aucune donnée valide trouvée dans le fichier');
-            return;
-        }
-*/        
-        //--- Confirmation
-        let confirmMsg = `⬆️ IMPORT CASIERS\n\n`;
-        confirmMsg += `Fichier : ${file.name}\n`;
-        confirmMsg += `Format : ${selectedLockersImportFormat.toUpperCase()}\n`;
-        if (selectedLockersImportFormat === 'csv') {
-            confirmMsg += `Séparateur : ${selectedLockersImportSeparator === 'auto' ? 'Auto-détection' : selectedLockersImportSeparator}\n`;
-        }
-        confirmMsg += `Casiers : ${data ? data.length : 'à déterminer'}\n`;
-        if (metadata) {
-            const exportDate = new Date(metadata.exportDate).toLocaleString('fr-FR');
-            confirmMsg += `Exporté le : ${exportDate}\n`;
-            confirmMsg += `Par : ${metadata.exportBy || 'Inconnu'}\n`;
-        }
-        confirmMsg += `\nMode : ${selectedLockersImportMode === 'replace' ? 'REMPLACEMENT COMPLET' : 'Mise à jour'}\n`;
-        
-        if (selectedLockersImportMode === 'replace') {
-            confirmMsg += `\n⚠️ ATTENTION :\n`;
-            confirmMsg += `TOUS les casiers seront libérés avant l'import !\n`;
-        }
-        confirmMsg += `\nVoulez-vous continuer ?`;
-        
-        if (!confirm(confirmMsg)) return;
-        
-        //--- Import
-        const res = await fetch(`${API_URL}/import`, {
+        const routeImport = `${API_URL}/import`; // Claude
+        //const routeImport = `${API_URL}/lockers/import`; // version GEMINI
+
+        const res = await fetch(routeImport, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
@@ -3142,21 +3588,26 @@ async function handleLockersFileSelected(e) {
             },
             credentials: 'include',
             body: JSON.stringify({ 
-                data: data,
-                mode: selectedLockersImportMode
+                rawContent: content,
+                mode: selectedLockersImportMode,
+                separator: selectedLockersImportSeparator
             })
         });
-        
-        if (res.ok) {
+
+        if (!res.ok) {
+            handleCsrfError(res);
+            const error = await res.json();
+            throw new Error(error.error || 'Erreur serveur XXX');
+        } else {
             const result = await res.json();
             
-            let message = `✅ Import casiers terminé !\n\n`;
+            let message = `✅ Import terminé !\n\n`;
             message += `✓ Importés : ${result.imported}\n`;
             if (result.skipped > 0) {
-                message += `⏭️ Ignorés : ${result.skipped}\n`;
+                message += `⭐ Ignorés : ${result.skipped}\n`;
             }
             if (result.invalidIPP > 0) {
-                message += `⚠️ IPP invalides : ${result.invalidIPP} (marqués récupérables)\n`;
+                message += `⚠️ IPP inconnus : ${result.invalidIPP} (marqués récupérables)\n`;
             }
             if (result.errors > 0) {
                 message += `✗ Erreurs : ${result.errors}\n`;
@@ -3164,28 +3615,33 @@ async function handleLockersFileSelected(e) {
             if (result.validationErrors > 0) {
                 message += `⚠️ Validation échouée : ${result.validationErrors}\n`;
             }
-            message += `\nTotal : ${result.total}`;
+
+            // GEMINI: Affichage des erreurs détaillées
+            if (result.detailedErrors && result.detailedErrors.length > 0) {
+                message += `\n--- Détail des erreurs de validation (${result.validationErrors} lignes) ---\n`;
+                // Limiter l'affichage pour éviter un trop long message d'alerte
+                const errorsToShow = result.detailedErrors.slice(0, 10);
+                errorsToShow.forEach(err => {
+                    message += `Ligne ${err.line} (Casier ${err.casier}) : ${err.error}\n`;
+                });
+                if (result.detailedErrors.length > 10) {
+                     message += `\n... et ${result.detailedErrors.length - 10} autres erreurs non affichées.`;
+                }
+                message += `\n---------------------------------------------\n`;
+                message += `\nVeuillez corriger le fichier source et réessayer.`;
+            }
+
+            message += `\nTotal des lignes traitées : ${result.total}`;
             
             alert(message);
             loadData();
-            
-        } else if (res.status === 401) {
-            alert('Session expirée. Veuillez vous reconnecter.');
-            logout();
-        } else {
-            const error = await res.json();
-            throw new Error(error.error || 'Erreur serveur');
+            closeLockersImportOptions();
         }
         
     } catch (err) {
-        if (err instanceof SyntaxError) {
-            alert('❌ Erreur : Le fichier n\'est pas valide.\n\n' + err.message);
-        } else {
-            alert('❌ Erreur lors de l\'import : ' + err.message);
-        }
+        alert('❌ Erreur import : ' + err.message);
         console.error('Erreur import casiers:', err);
     } finally {
-        // RESET STATE
         if (importBtn) {
             importBtn.disabled = false;
             importBtn.innerHTML = originalText;
@@ -3241,8 +3697,6 @@ async function clearLockersDatabase() {
         alert('❌ Erreur : ' + err.message);
     }
 }
-
-// ============ EFFACER TOUTES LES MARQUES ============
 
 // ============ MARQUAGE/DÉMARQUAGE GROUPÉ DES RÉSULTATS ============
 
@@ -3442,12 +3896,13 @@ function checkIfResultsMarked() {
     }
 }
 
-// ============ IMPORT CLIENTS ============
+// ============ MODAL IMPORT CLIENTS ============
 
 // Variables globales pour l'import
 let selectedImportFormat = null;
 let selectedImportMode = 'replace';
 
+// --- Modal d'import
 async function importClients() {
     if (!isEditAllowed()) return;
     
@@ -3522,6 +3977,7 @@ async function importClients() {
     }
 }
 
+// --- Fermer le modal
 function closeImportOptions() {
     document.getElementById('importOptionsModal').classList.remove('active');
 }
@@ -3623,8 +4079,7 @@ async function handleClientFileSelected(e) {
     }
 }
 
-// ============ VIDER LA BASE PATIENTS ============
-
+// --- Vider la base patients
 async function clearClientsDatabase() {
     const confirmFirst = confirm(
         '⚠️ ATTENTION - SUPPRESSION DÉFINITIVE\n\n' +
@@ -3674,7 +4129,7 @@ async function clearClientsDatabase() {
     }
 }
 
-// ============ RECHERCHE CLIENT ============
+// --- Bouton recherche patients si le champ IPP est renseigné
 async function searchClient() {
     const ipp = document.getElementById('code').value.trim();
     
@@ -3730,11 +4185,12 @@ const debouncedSearch = debounce((query) => {
     }
 }, 400); // Attendre 400ms après la dernière frappe (range 250-500ms conseillé)
 
-// Imprimer le tableau affiché
+// Imprimer le tableau affiché dans l'onglet. TODO: CSS à revoir
 function printTable() {
     window.print();
 }
 
+// TODO plus appelée? remplacée par event listener ci dessous?
 function toggleDropdown(e) {
     e.stopPropagation();
     const menu = e.target.nextElementSibling;
@@ -3744,95 +4200,14 @@ function toggleDropdown(e) {
     menu.classList.toggle('active');
 }
 
+// --- Gestion du menu dropdown Actions
 document.addEventListener('click', function() {
     document.querySelectorAll('.dropdown-menu.active').forEach(m => m.classList.remove('active'));
 });
 
-function showDuplicatesPanel() {
-    const duplicateInfo = detectDuplicates();
-    
-    if (duplicateInfo.duplicates.size === 0) {
-        alert('✓ Aucun doublon détecté');
-        return;
-    }
-    
-    let message = `⚠️ ${duplicateInfo.duplicates.size} doublons détectés\n\n`;
-    
-    // Doublons par IPP
-    const ippDupes = Object.entries(duplicateInfo.byIPP).filter(([k,v]) => v.length > 1);
-    if (ippDupes.length > 0) {
-        message += `Par IPP identique (${ippDupes.length}):\n`;
-        ippDupes.forEach(([ipp, numbers]) => {
-            message += `  • IPP ${ipp}: casiers ${numbers.join(', ')}\n`;
-        });
-    }
-    
-    // Doublons par identité
-    const identityDupes = Object.entries(duplicateInfo.byIdentity).filter(([k,v]) => v.length > 1);
-    if (identityDupes.length > 0) {
-        message += `\nPar identité (${identityDupes.length}):\n`;
-        identityDupes.forEach(([identity, numbers]) => {
-            const [name, firstName, birthDate] = identity.split('|');
-            message += `  • ${name} ${firstName} (${birthDate}): casiers ${numbers.join(', ')}\n`;
-        });
-    }
-    
-    alert(message);
-}
+// ================== MODAL STATS PATIENTS =========================
 
-function showHomonymsPanel() {
-    const homonymInfo = detectHomonyms();
-    
-    if (homonymInfo.homonyms.size === 0) {
-        alert('✓ Aucun homonyme détecté');
-        return;
-    }
-    
-    let message = `👥 ${homonymInfo.homonyms.size} homonymes détectés\n\n`;
-    
-    // Homonymes par nom+prénom
-    const fullNameHomonyms = Object.entries(homonymInfo.byFullName).filter(([k,v]) => {
-        if (v.length <= 1) return false;
-        const uniquePersons = new Set(v.map(l => `${l.ipp}|${l.birthDate}`));
-        return uniquePersons.size > 1;
-    });
-    
-    if (fullNameHomonyms.length > 0) {
-        message += `Même nom + prénom (${fullNameHomonyms.length}):\n`;
-        fullNameHomonyms.forEach(([fullName, lockers]) => {
-            const [name, firstName] = fullName.split('|');
-            message += `  • ${name} ${firstName}:\n`;
-            lockers.forEach(l => {
-                message += `    - Casier ${l.number} (IPP: ${l.ipp}, DDN: ${l.birthDate || 'N/A'})\n`;
-            });
-        });
-    }
-    
-    // Homonymes par nom seul
-    const lastNameHomonyms = Object.entries(homonymInfo.byLastName).filter(([k,v]) => {
-        if (v.length <= 1) return false;
-        const uniqueFirstNames = new Set(v.map(l => l.firstName?.toUpperCase()));
-        return uniqueFirstNames.size > 1;
-    });
-    
-    if (lastNameHomonyms.length > 0) {
-        message += `\nMême nom (${lastNameHomonyms.length}):\n`;
-        lastNameHomonyms.slice(0, 5).forEach(([lastName, lockers]) => {
-            message += `  • ${lastName}: ${lockers.length} casiers\n`;
-            lockers.forEach(l => {
-                message += `    - ${l.firstName || 'N/A'} (${l.number})\n`;
-            });
-        });
-        if (lastNameHomonyms.length > 5) {
-            message += `  ... et ${lastNameHomonyms.length - 5} autres noms\n`;
-        }
-    }
-    
-    alert(message);
-}
-
-// ============ STATS PATIENTS ============
-
+// Modal affichant quelques stats sur la base patients
 async function showClientsStats() {
     const panel = document.getElementById('clientsStatsPanel');
     const content = document.getElementById('clientsStatsContent');
@@ -3864,343 +4239,7 @@ async function showClientsStats() {
     }
 }
 
-// --------- MODAL Listes de patients  --------------
-
-// Ouvrir le modal de consultation
-function openConsultationCasiers(filterType = 'idel') {
-    const modal = document.getElementById('consultationCasiersModal');
-    
-    // Remplir le sélecteur de zones dynamiquement
-    const zoneSelect = document.getElementById('consultationZone');
-    zoneSelect.innerHTML = '<option value="all">Toutes les zones</option>';
-    ZONES_CONFIG.forEach(zone => {
-        const option = document.createElement('option');
-        option.value = zone.name;
-        option.textContent = zone.name;
-        zoneSelect.appendChild(option);
-    });
-    
-    // Définir le filtre par défaut
-    document.getElementById('consultationFilter').value = filterType;
-    document.getElementById('consultationZone').value = 'all';
-    
-    // Réinitialiser le tri
-    consultationSortColumn = 'name';
-    consultationSortDirection = 'asc';
-    
-    // Charger les données
-    updateConsultationTable();
-    
-    // Afficher le modal
-    modal.classList.add('active');
-}
-
-// Fermer le modal
-function closeConsultationCasiers() {
-    document.getElementById('consultationCasiersModal').classList.remove('active');
-    consultationData = [];
-}
-
-// Mettre à jour la table selon les filtres
-function updateConsultationTable() {
-    const filterType = document.getElementById('consultationFilter').value;
-    const zone = document.getElementById('consultationZone').value;
-    
-    // Filtrer les données
-    let filtered = DATA.filter(l => l.occupied);
-    
-    // Appliquer le filtre de type
-    switch(filterType) {
-        case 'idel':
-            filtered = filtered.filter(l => l.idel);
-            break;
-        case 'had':
-            filtered = filtered.filter(l => !l.idel);
-            break;
-        case 'hosp':
-            filtered = filtered.filter(l => l.hosp);
-            break;
-        case 'stup':
-            filtered = filtered.filter(l => l.stup);
-            break;
-        case 'marked':
-            filtered = filtered.filter(l => l.marque);
-            break;
-        case 'duplicates':
-            const duplicateInfo = detectDuplicates();
-            filtered = filtered.filter(l => duplicateInfo.duplicates.has(l.number));
-            break;
-        case 'homonyms':
-            const homonymInfo = detectHomonyms();
-            filtered = filtered.filter(l => homonymInfo.homonyms.has(l.number));
-            break;
-    }
-    
-    // Appliquer le filtre de zone
-    if (zone !== 'all') {
-        filtered = filtered.filter(l => l.zone === zone);
-    }
-    consultationData = filtered;
-
-    sortConsultationData(); // Appliquer le tri actuel
-    renderConsultationTable(); // Mettre à jour l'affichage
-}
-
-// Trier les données
-function sortConsultationTable(column) {
-    if (consultationSortColumn === column) {
-        // Inverser la direction si même colonne
-        consultationSortDirection = consultationSortDirection === 'asc' ? 'desc' : 'asc';
-    } else {
-        // Nouvelle colonne, tri ascendant par défaut
-        consultationSortColumn = column;
-        consultationSortDirection = 'asc';
-    }
-    
-    sortConsultationData();
-    renderConsultationTable();
-}
-
-// Fonction de tri des données
-function sortConsultationData() {
-    consultationData.sort((a, b) => {
-        let valA = a[consultationSortColumn] || '';
-        let valB = b[consultationSortColumn] || '';
-        
-        // Pour les dates, convertir en timestamp
-        if (consultationSortColumn === 'birthDate') {
-            valA = valA ? new Date(valA).getTime() : 0;
-            valB = valB ? new Date(valB).getTime() : 0;
-        } else if (typeof valA === 'string') {
-            valA = valA.toLowerCase();
-            valB = valB.toLowerCase();
-        }
-        
-        if (consultationSortDirection === 'asc') {
-            return valA > valB ? 1 : valA < valB ? -1 : 0;
-        } else {
-            return valA < valB ? 1 : valA > valB ? -1 : 0;
-        }
-    });
-}
-
-// Afficher la table
-function renderConsultationTable() {
-    const tbody = document.getElementById('consultationTableBody');
-    const countEl = document.getElementById('consultationCount');
-    
-    // Mettre à jour le compteur
-    countEl.textContent = `${consultationData.length} patient${consultationData.length > 1 ? 's' : ''}`;
-    
-    if (consultationData.length === 0) {
-        tbody.innerHTML = `
-            <tr>
-                <td colspan="6" style="text-align: center; padding: 40px; color: var(--text-secondary);">
-                    Aucun patient trouvé avec ces critères
-                </td>
-            </tr>
-        `;
-        return;
-    }
-    
-    // Générer les lignes
-    tbody.innerHTML = consultationData.map(locker => {
-        const name = anonymizeName(locker.name);
-        const firstName = anonymizeFirstName(locker.firstName);
-        const birthDate = locker.birthDate ? formatDate(locker.birthDate) : '—';
-        const comment = locker.comment || '—';
-        
-        return `
-            <tr>
-                <td><strong>${name}</strong></td>
-                <td>${firstName}</td>
-                <td>${birthDate}</td>
-                <td>${locker.code}</td>
-                <td><strong>${locker.number}</strong> <span style="font-size: 11px; color: var(--text-secondary);">(${locker.zone})</span></td>
-                <td style="font-size: 12px; color: var(--text-secondary);">${comment}</td>
-            </tr>
-        `;
-    }).join('');
-}
-
-// Exporter consultation en CSV
-function exportConsultationCSV() {
-    if (consultationData.length === 0) {
-        alert('Aucune donnée à exporter');
-        return;
-    }
-    
-    const filterType = document.getElementById('consultationFilter').value;
-    const filterLabels = {
-        'idel': 'IDEL-AS',
-        'had': 'nonIDEL',
-        'hosp': 'Hospi',
-        'stup': 'Stupefiants',
-        'marked': 'Marques',
-        'duplicates': 'Doublons',
-        'homonyms': 'Homonymes'
-    };
-    
-    const headers = ['Nom', 'Prenom', 'Date de naissance', 'N°IPP', 'N° Casier', 'Zone', 'Commentaire'];
-    const rows = consultationData.map(l => [
-        l.name,
-        l.firstName,
-        l.birthDate || '',
-        l.code,
-        l.number,
-        l.zone,
-        l.comment || ''
-    ]);
-    
-    const csv = [
-        headers.join(';'),
-        ...rows.map(row => row.map(cell => `"${cell}"`).join(';'))
-    ].join('\n');
-    
-    const now = new Date();
-    const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const filename = `consultation_${filterLabels[filterType]}_${timestamp}.csv`;
-    
-    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    URL.revokeObjectURL(url);
-    document.body.removeChild(a);
-    
-    showStatus(`✓ ${consultationData.length} patients exportés`, 'success');
-}
-
-// Imprimer la table de consultation
-function printConsultationTable() {
-    // Récupérer les données actuelles du modal
-    const filterType = document.getElementById('consultationFilter').value;
-    const zone = document.getElementById('consultationZone').value;
-    
-    const filterLabels = {
-        'idel': 'IDEL-AS',
-        'had': '100% HAD',
-        'hosp': 'Hospitalisations',
-        'stup': 'Stupéfiants',
-        'marked': 'Marqués',
-        'duplicates': 'Doublons',
-        'homonyms': 'Homonymes'
-    };
-    
-    const title = `Consultation : ${filterLabels[filterType]}${zone !== 'all' ? ` - Zone ${zone}` : ''}`;
-    
-    // Créer une fenêtre d'impression
-    const printWindow = window.open('', '_blank', 'width=800,height=600');
-    
-    const html = `
-<!DOCTYPE html>
-<html lang="fr">
-<head>
-    <meta charset="UTF-8">
-    <title>${title}</title>
-    <style>
-        @page {
-            size: A4 landscape;
-            margin: 15mm;
-        }
-        
-        body {
-            font-family: Arial, sans-serif;
-            font-size: 11pt;
-        }
-        
-        h1 {
-            font-size: 16pt;
-            margin-bottom: 10px;
-        }
-        
-        .info {
-            font-size: 10pt;
-            color: #666;
-            margin-bottom: 15px;
-        }
-        
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 10pt;
-        }
-        
-        th, td {
-            border: 1px solid #000;
-            padding: 6px 8px;
-            text-align: left;
-        }
-        
-        th {
-            background: #f0f0f0;
-            font-weight: bold;
-        }
-        
-        @media print {
-            body {
-                -webkit-print-color-adjust: exact;
-                print-color-adjust: exact;
-            }
-        }
-    </style>
-</head>
-<body>
-    <h1>${title}</h1>
-    <div class="info">
-        ${consultationData.length} patient${consultationData.length > 1 ? 's' : ''} - 
-        Édité le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}
-    </div>
-    <table>
-        <thead>
-            <tr>
-                <th>Nom</th>
-                <th>Prénom</th>
-                <th>Date de naissance</th>
-                <th>N°IPP</th>
-                <th>N° Casier</th>
-                <th>Commentaire</th>
-            </tr>
-        </thead>
-        <tbody>
-            ${consultationData.map(locker => {
-                const name = anonymizeName(locker.name);
-                const firstName = anonymizeFirstName(locker.firstName);
-                const birthDate = locker.birthDate ? formatDate(locker.birthDate) : '—';
-                const comment = locker.comment || '—';
-                
-                return `
-                    <tr>
-                        <td><strong>${name}</strong></td>
-                        <td>${firstName}</td>
-                        <td>${birthDate}</td>
-                        <td>${locker.code}</td>
-                        <td><strong>${locker.number}</strong> <span style="font-size: 9pt; color: #666;">(${locker.zone})</span></td>
-                        <td style="font-size: 9pt;">${comment}</td>
-                    </tr>
-                `;
-            }).join('')}
-        </tbody>
-    </table>
-</body>
-</html>
-    `;
-    
-    printWindow.document.write(html);
-    printWindow.document.close();
-    
-    // Attendre le chargement puis imprimer
-    printWindow.onload = function() {
-        setTimeout(() => {
-            printWindow.print();
-        }, 250);
-    };
-}
-// ------------------- Stats Patients ------------------------------
-
+// Générer le modal
 function renderClientsStats(data) {
     const content = document.getElementById('clientsStatsContent');
     
@@ -4350,8 +4389,351 @@ function renderClientsStats(data) {
     content.innerHTML = html;
 }
 
+// Fermer le modal (bouton croix)
 function closeClientsStats() {
     document.getElementById('clientsStatsPanel').classList.remove('active');
+}
+
+// ============ MODAL CONSULTATION MULTIZONES DES CASIERS  ============
+
+// Ouvrir le modal de consultation
+function openConsultationCasiers(filterType = 'idel') {
+    const modal = document.getElementById('consultationCasiersModal');
+    
+    // Remplir le sélecteur de zones dynamiquement
+    const zoneSelect = document.getElementById('consultationZone');
+    zoneSelect.innerHTML = '<option value="all">Toutes les zones</option>';
+    ZONES_CONFIG.forEach(zone => {
+        const option = document.createElement('option');
+        option.value = zone.name;
+        option.textContent = zone.name;
+        zoneSelect.appendChild(option);
+    });
+    
+    // Définir le filtre par défaut
+    document.getElementById('consultationFilter').value = filterType;
+    document.getElementById('consultationZone').value = 'all';
+    
+    // Réinitialiser le tri
+    consultationSortColumn = 'name';
+    consultationSortDirection = 'asc';
+    
+    // Charger les données
+    updateConsultationTable();
+    
+    // Afficher le modal
+    modal.classList.add('active');
+}
+
+// Fermer le modal
+function closeConsultationCasiers() {
+    document.getElementById('consultationCasiersModal').classList.remove('active');
+    consultationData = [];
+}
+
+// Mettre à jour la table selon les filtres
+function updateConsultationTable() {
+    const filterType = document.getElementById('consultationFilter').value;
+    const zone = document.getElementById('consultationZone').value;
+    
+    // Filtrer les données
+    let filtered = DATA.filter(l => l.occupied);
+    
+    // Appliquer le filtre de type
+    switch(filterType) {
+        case 'idel':
+            filtered = filtered.filter(l => l.idel);
+            break;
+        case 'had':
+            filtered = filtered.filter(l => !l.idel);
+            break;
+        case 'hosp':
+            filtered = filtered.filter(l => l.hosp);
+            break;
+        case 'stup':
+            filtered = filtered.filter(l => l.stup);
+            break;
+        case 'frigo':
+            filtered = filtered.filter(l => l.frigo);
+            break;
+        case 'meopa':
+            filtered = filtered.filter(l => l.meopa);
+            break;
+        case 'marked':
+            filtered = filtered.filter(l => l.marque);
+            break;
+        case 'duplicates':
+            const duplicateInfo = detectDuplicates();
+            filtered = filtered.filter(l => duplicateInfo.duplicates.has(l.number));
+            break;
+        case 'homonyms':
+            const homonymInfo = detectHomonyms();
+            filtered = filtered.filter(l => homonymInfo.homonyms.has(l.number));
+            break;
+    }
+    
+    // Appliquer le filtre de zone
+    if (zone !== 'all') {
+        filtered = filtered.filter(l => l.zone === zone);
+    }
+    consultationData = filtered;
+
+    sortConsultationData(); // Appliquer le tri actuel
+    renderConsultationTable(); // Mettre à jour l'affichage
+}
+
+// Trier les données
+function sortConsultationTable(column) {
+    if (consultationSortColumn === column) {
+        // Inverser la direction si même colonne
+        consultationSortDirection = consultationSortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+        // Nouvelle colonne, tri ascendant par défaut
+        consultationSortColumn = column;
+        consultationSortDirection = 'asc';
+    }
+    
+    sortConsultationData();
+    renderConsultationTable();
+}
+
+// Fonction de tri des données
+function sortConsultationData() {
+    consultationData.sort((a, b) => {
+        let valA = a[consultationSortColumn] || '';
+        let valB = b[consultationSortColumn] || '';
+        
+        // Pour les dates, convertir en timestamp
+        if (consultationSortColumn === 'birthDate') {
+            valA = valA ? new Date(valA).getTime() : 0;
+            valB = valB ? new Date(valB).getTime() : 0;
+        } else if (typeof valA === 'string') {
+            valA = valA.toLowerCase();
+            valB = valB.toLowerCase();
+        }
+        
+        if (consultationSortDirection === 'asc') {
+            return valA > valB ? 1 : valA < valB ? -1 : 0;
+        } else {
+            return valA < valB ? 1 : valA > valB ? -1 : 0;
+        }
+    });
+}
+
+// Afficher la table
+function renderConsultationTable() {
+    const tbody = document.getElementById('consultationTableBody');
+    const countEl = document.getElementById('consultationCount');
+    
+    // Mettre à jour le compteur
+    countEl.textContent = `${consultationData.length} patient${consultationData.length > 1 ? 's' : ''}`;
+    
+    if (consultationData.length === 0) {
+        tbody.innerHTML = `
+            <tr>
+                <td colspan="6" style="text-align: center; padding: 40px; color: var(--text-secondary);">
+                    Aucun patient trouvé avec ces critères
+                </td>
+            </tr>
+        `;
+        return;
+    }
+    
+    // Générer les lignes
+    tbody.innerHTML = consultationData.map(locker => {
+        const name = anonymizeName(locker.name);
+        const firstName = anonymizeFirstName(locker.firstName);
+        const birthDate = locker.birthDate ? formatDate(locker.birthDate) : '—';
+        const comment = locker.comment || '—';
+        
+        return `
+            <tr>
+                <td><strong>${name}</strong></td>
+                <td>${firstName}</td>
+                <td>${birthDate}</td>
+                <td>${locker.code}</td>
+                <td><strong>${locker.number}</strong> <span style="font-size: 11px; color: var(--text-secondary);">(${locker.zone})</span></td>
+                <td style="font-size: 12px; color: var(--text-secondary);">${comment}</td>
+            </tr>
+        `;
+    }).join('');
+}
+
+// Exporter consultation en CSV.   TODO: à voir si on garde ou pas. Liste déroulante à adapter
+function exportConsultationCSV() {
+    if (consultationData.length === 0) {
+        alert('Aucune donnée à exporter');
+        return;
+    }
+    
+    const filterType = document.getElementById('consultationFilter').value;
+    const filterLabels = {
+        'idel': 'IDEL-AS',
+        'had': 'nonIDEL',
+        'hosp': 'Hospi',
+        'stup': 'Stupefiants',
+        'marked': 'Marques',
+        'duplicates': 'Doublons',
+        'homonyms': 'Homonymes'
+    };
+    
+    const headers = ['Nom', 'Prenom', 'Date de naissance', 'N°IPP', 'N° Casier', 'Zone', 'Commentaire'];
+    const rows = consultationData.map(l => [
+        l.name,
+        l.firstName,
+        l.birthDate || '',
+        l.code,
+        l.number,
+        l.zone,
+        l.comment || ''
+    ]);
+    
+    const csv = [
+        headers.join(';'),
+        ...rows.map(row => row.map(cell => `"${cell}"`).join(';'))
+    ].join('\n');
+    
+    const now = new Date();
+    const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
+    const filename = `consultation_${filterLabels[filterType]}_${timestamp}.csv`;
+    
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    URL.revokeObjectURL(url);
+    document.body.removeChild(a);
+    
+    showStatus(`✓ ${consultationData.length} patients exportés`, 'success');
+}
+
+// Imprimer la table de consultation  TODO: à voir si on garde ou pas. Liste déroulante à adapter
+function printConsultationTable() {
+    // Récupérer les données actuelles du modal
+    const filterType = document.getElementById('consultationFilter').value;
+    const zone = document.getElementById('consultationZone').value;
+    
+    const filterLabels = {
+        'idel': 'IDEL-AS',
+        'had': '100% HAD',
+        'hosp': 'Hospitalisations',
+        'stup': 'Stupéfiants',
+        'marked': 'Marqués',
+        'duplicates': 'Doublons',
+        'homonyms': 'Homonymes'
+    };
+    
+    const title = `Consultation : ${filterLabels[filterType]}${zone !== 'all' ? ` - Zone ${zone}` : ''}`;
+    
+    // Créer une fenêtre d'impression
+    const printWindow = window.open('', '_blank', 'width=800,height=600');
+    
+    const html = `
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>${title}</title>
+    <style>
+        @page {
+            size: A4 landscape;
+            margin: 15mm;
+        }
+        
+        body {
+            font-family: Arial, sans-serif;
+            font-size: 11pt;
+        }
+        
+        h1 {
+            font-size: 16pt;
+            margin-bottom: 10px;
+        }
+        
+        .info {
+            font-size: 10pt;
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 10pt;
+        }
+        
+        th, td {
+            border: 1px solid #000;
+            padding: 6px 8px;
+            text-align: left;
+        }
+        
+        th {
+            background: #f0f0f0;
+            font-weight: bold;
+        }
+        
+        @media print {
+            body {
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }
+        }
+    </style>
+</head>
+<body>
+    <h1>${title}</h1>
+    <div class="info">
+        ${consultationData.length} patient${consultationData.length > 1 ? 's' : ''} - 
+        Édité le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}
+    </div>
+    <table>
+        <thead>
+            <tr>
+                <th>Nom</th>
+                <th>Prénom</th>
+                <th>Date de naissance</th>
+                <th>N°IPP</th>
+                <th>N° Casier</th>
+                <th>Commentaire</th>
+            </tr>
+        </thead>
+        <tbody>
+            ${consultationData.map(locker => {
+                const name = anonymizeName(locker.name);
+                const firstName = anonymizeFirstName(locker.firstName);
+                const birthDate = locker.birthDate ? formatDate(locker.birthDate) : '—';
+                const comment = locker.comment || '—';
+                
+                return `
+                    <tr>
+                        <td><strong>${name}</strong></td>
+                        <td>${firstName}</td>
+                        <td>${birthDate}</td>
+                        <td>${locker.code}</td>
+                        <td><strong>${locker.number}</strong> <span style="font-size: 9pt; color: #666;">(${locker.zone})</span></td>
+                        <td style="font-size: 9pt;">${comment}</td>
+                    </tr>
+                `;
+            }).join('')}
+        </tbody>
+    </table>
+</body>
+</html>
+    `;
+    
+    printWindow.document.write(html);
+    printWindow.document.close();
+    
+    // Attendre le chargement puis imprimer
+    printWindow.onload = function() {
+        setTimeout(() => {
+            printWindow.print();
+        }, 250);
+    };
 }
 
 // ============ RESTORE BACKUP ============
@@ -4672,7 +5054,36 @@ function closeRestorePanel() {
     uploadedBackupData = null;
 }
 
-// ============ STATS CONNEXIONS ============
+// Fonction qui affiche les stats backup :
+async function showBackupInfo() {
+    try {
+        const res = await fetch(`${API_URL}/config/backup`, {
+            credentials: 'include'
+        });
+        
+        if (res.ok) {
+            const config = await res.json();
+            
+            let message = '⏰ Configuration backup automatique\n\n';
+            if (config.mode === 'fixed') {
+                message += `Mode : Quotidien à heure fixe\n`;
+                message += `Heure : ${config.backupTime}\n`;
+            } else if (config.mode === 'periodic') {
+                message += `Mode : Périodique\n`;
+                message += `Fréquence : Toutes les ${config.backupFrequencyHours}h\n`;
+            } else {
+                message += `Mode : Désactivé\n`;
+            }
+            message += `\nNombre de backups conservés : ${config.backupRetentionCount}`;
+            
+            alert(message);
+        }
+    } catch (err) {
+        console.error('Erreur récupération config backup:', err);
+    }
+}
+
+// ============ MODAL STATS DES CONNEXIONS =====================
 
 async function showConnectionStats() {
     const panel = document.getElementById('connectionStatsPanel');
@@ -4982,7 +5393,7 @@ async function checkSessionExpiration() {
   }
 }
 
-// ============ STATS MODIFICATIONS ============
+// ============ MODAL STATS MODIFICATIONS DES CASIERS ============
 
 async function showModificationStats() {
     const panel = document.getElementById('modificationStatsPanel');
@@ -5225,7 +5636,7 @@ function closeModificationStats() {
     document.getElementById('modificationStatsPanel').classList.remove('active');
 }
 
-// ============ CONFIG ANONYMISATION ============
+// ================ MODAL CONFIG ANONYMISATION ================
 
 async function showAnonymizationConfig() {
     const modal = document.getElementById('anonymizationConfigModal');
@@ -5334,7 +5745,7 @@ document.addEventListener('DOMContentLoaded', function() {
 
 // ============ MARQUES CASIER ============
 
-// AVANT : 3 fonctions séparées // APRÈS : 1 fonction générique
+// Fonction générique pour activer un marqueur (IDEL, Stup, Marque etc.) : remplace les fonctions spécifiques
 async function toggleMarker(lockerNumber, marker, currentValue) {
     const locker = DATA.find(l => l.number === lockerNumber);
     if (!locker) {
@@ -5348,17 +5759,11 @@ async function toggleMarker(lockerNumber, marker, currentValue) {
 
     // Configuration des labels par type de marqueur
     const markerConfig = {
-        'marque': { 
-            icon: '🔖', 
-            label: 'marque',
-            actionAdd: 'Marquer',
-            actionRemove: 'Retirer marque'
-        },
-        'stup': { 
-            icon: '💊', 
-            label: 'stup',
-            actionAdd: 'Avec stupéfiants',
-            actionRemove: 'Sans stupéfiants'
+        'hosp': {
+            icon: '🚑',
+            label: 'hospi',
+            actionAdd: 'Hospitalisation',
+            actionRemove: 'Retour d\'hospi'
         },
         'idel': { 
             icon: 'ℹ️', 
@@ -5366,11 +5771,35 @@ async function toggleMarker(lockerNumber, marker, currentValue) {
             actionAdd: 'Associer IDEL',
             actionRemove: 'Dissocier IDEL'
         },
-        'hosp': {
-            icon: '🚑',
-            label: 'hospi',
-            actionAdd: 'Hospitalisation',
-            actionRemove: 'Retour d\'hospi'
+        'stup': { 
+            icon: '💊', 
+            label: 'stup',
+            actionAdd: 'Avec stupéfiants',
+            actionRemove: 'Sans stupéfiants'
+        },
+        'frigo': { 
+            icon: '❄', 
+            label: 'frigo',
+            actionAdd: 'Avec frigo',
+            actionRemove: 'Sans frigo'
+        },
+        'pca': { 
+            icon: '💉', 
+            label: 'pca',
+            actionAdd: 'Avec PCA',
+            actionRemove: 'Sans PCA'
+        },
+        'meopa': { 
+            icon: '⛽️', 
+            label: 'meopa',
+            actionAdd: 'Avec MEOPA',
+            actionRemove: 'Sans MEOPA'
+        },
+        'marque': { 
+            icon: '🔖', 
+            label: 'marque',
+            actionAdd: 'Marquer',
+            actionRemove: 'Retirer marque'
         }
     };
 
@@ -5426,7 +5855,7 @@ async function toggleMarker(lockerNumber, marker, currentValue) {
 }
 
 // ============ STATISTIQUES STUPÉFIANTS ============
-//Fonction utilitaire : Compter les stupéfiants
+// Fonction utilitaire : Compter les stupéfiants. TODO : à intégrer au modal de consultation
 function getStupStats() {
     const stupLockers = DATA.filter(l => l.stup);
     const occupied = stupLockers.filter(l => l.occupied);
@@ -5444,7 +5873,7 @@ function getStupStats() {
     };
 }
 
-// Afficher les stats Stup
+// DEPRECATED Afficher les stats de getStupStats. Stup. TODO: à intégrer au modal de consultation
 function showStupStats() {
     const stats = getStupStats();
     
@@ -5463,7 +5892,7 @@ function showStupStats() {
 }
 
 
-// ============ HOSPITALISATION ============
+// ============ MODAL HOSPITALISATION ==================
 
 function openHospitalisationModal(lockerNumber) {
     const locker = DATA.find(l => l.number === lockerNumber);
@@ -5602,6 +6031,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+// DEPRECATED Fonction utilitaire
 function showHospitalisationList() {
     // Filtrer les casiers occupés avec hosp = 1
     const hospLockers = DATA.filter(l => l.occupied && l.hosp);
@@ -5653,7 +6083,7 @@ function showHospitalisationList() {
     alert(message);
 }
 
-// ============ IMPRESSION ÉTIQUETTES ============
+// ============ MODAL GLOBAL IMPRESSION ÉTIQUETTES ================
 
 function updateLabelPreview() {
     const selection = document.getElementById('labelSelection').value;
@@ -5744,6 +6174,7 @@ function getSelectedLockersForLabels() {
     return lockers;
 }
 
+// Ouvrir la page d'impression d'étiquettes (Bouton Imprimer du modal)
 function openLabelPrintWindow() {
     const format = document.getElementById('labelFormat').value;
     const anonymize = document.getElementById('labelAnonymize').checked;
@@ -5821,6 +6252,7 @@ function openLabelPrintWindow() {
     };
 }
 
+// Générer la page d'étiquettes au format HTML
 function generateLabelHTML(lockers, format, anonymize) {
 
     if (VERBCONSOLE==1) {
@@ -5976,6 +6408,9 @@ function generateLabelHTML(lockers, format, anonymize) {
     ZONES_CONFIG.forEach(zone => {
         zoneColors[zone.name] = zone.color || '#667eea';
     });
+    //Détection homonymes
+    const homonymInfo = detectHomonyms();
+    const homonymNumbers = homonymInfo.homonyms;
 
     // Générer les pages
     for (let i = 0; i < lockers.length; i += perPage) {
@@ -5993,11 +6428,16 @@ function generateLabelHTML(lockers, format, anonymize) {
                 const firstName = anonymizeFirstNameLocal(locker.firstName);               console.log(`  Casier ${locker.number}: "${locker.name}" → "${name}"`);
                 //console.log(`  Prénom: "${locker.firstName}" → "${firstName}"`);
                 const zoneColor = zoneColors[locker.zone] || '#667eea';
-                
+
+                const isHomonym = homonymNumbers.has(locker.number);
+                const homonymStyle = isHomonym ? 'text-decoration: underline wavy #9333ea;' : '';
+
                 html += `
                     <div class="label">
                         <div class="label-info">IPP: ${locker.code}</div>
-                        <div class="label-name">${name} ${firstName}</div>
+                        <div class="label-name" style="${homonymStyle}">
+                            ${name} ${firstName}
+                        </div>
                         <div class="label-info">
                             DDN: ${locker.birthDate ? formatDate(locker.birthDate) : ''}
                         </div>
@@ -6025,11 +6465,17 @@ function generateLabelHTML(lockers, format, anonymize) {
     return html;
 }
 
+// Fermer le modal "Etiquettes 1 casier" (bouton Annuler du modal)
 function closeLabelPrintDialog() {
     document.getElementById('labelPrintModal').classList.remove('active');
 }
 
 
+// ============ MODAL IMPRESSION ÉTIQUETTES POUR CASIER ============
+
+let CURRENT_LOCKER_FOR_PRINT = null;
+
+// Configurer le modal "Etiquettes 1 casier"
 function printSingleLockerLabels(lockerNumber) {
     const locker = DATA.find(l => l.number === lockerNumber);
     
@@ -6063,11 +6509,13 @@ function printSingleLockerLabels(lockerNumber) {
     document.getElementById('singleLabelModal').classList.add('active');
 }
 
+// Fermer le modal "Etiquettes 1 casier" (bouton Annuler du modal)
 function closeSingleLabelModal() {
     document.getElementById('singleLabelModal').classList.remove('active');
     CURRENT_LOCKER_FOR_PRINT = null;
 }
 
+// Fenêtre de confirmation avant impression
 function confirmPrintSingleLabel() {
     if (!CURRENT_LOCKER_FOR_PRINT) return;
     

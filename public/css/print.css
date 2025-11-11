@@ -143,4 +143,11 @@
         print-color-adjust: exact !important;
     }
 
+    /* Styles pour les homonymes */
+    .label-name[style*="underline"] {
+        text-decoration: underline wavy #9333ea !important;
+        text-decoration-thickness: 1px;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
 }

@@ -2750,6 +2750,7 @@ function downloadFile(content, filename, mimeType) {
     document.body.removeChild(a);
 }
 
+// Modal Export Casiers
 function showLockersExportOptions() {
     if (!isEditAllowed()) return;
     
@@ -2786,10 +2787,12 @@ function showLockersExportOptions() {
     document.getElementById('exportOptionsModal').classList.add('active');
 }
 
+// Close modal Export Casiers
 function closeExportOptions() {
     document.getElementById('exportOptionsModal').classList.remove('active');
 }
 
+// Afficher (CSV) ou masquer (JSON) le champ séparateur
 function updateExportSeparatorVisibility() {
     const separatorGroup = document.getElementById('exportSeparatorGroup');
     if (separatorGroup) {
@@ -2857,306 +2860,13 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// ============ EXPORT LEGACY (DEPRACATED) ============
-
-// Log d'export utilisé par convertToCSV (DEPRECATED)
-async function logExport(format, count, userName, role) {
-    try {
-        await fetch(`${API_URL}/exports/log`, {
-            method: 'POST',
-            credentials: 'include',
-            headers: { 
-                'Content-Type': 'application/json',
-                'X-CSRF-Token': CSRF_TOKEN
-            },
-            body: JSON.stringify({
-                format: format,
-                recordCount: count,
-                userName: userName,
-                userRole: role
-            })
-        });
-    } catch (err) {
-        console.error('Erreur enregistrement export:', err);
-    }
-}
-
-// DEPRECATED Export des données legacy : anciennes fonctions pour export CSV ou JSON
-function convertToCSV(data, separator = ',') {
-    const headers = ['N° Casier', 'Zone', 'Nom', 'Prénom', 'N°IPP', 'DDN', 'Récupérable', 'Marque', 'Hospitalisation', 'Date Hosp', 'Stupéfiants', 'IDEL'];
-    const rows = data.map(locker => [
-        locker.number, 
-        locker.zone, 
-        locker.name, 
-        locker.firstName, 
-        locker.code, 
-        locker.birthDate,
-        locker.recoverable ? '1' : '0',
-        locker.marque ? '1' : '0',
-        locker.hosp ? '1' : '0',
-        locker.hospDate || '',
-        locker.stup ? '1' : '0',
-        locker.idel ? '1' : '0'
-    ]);
-    
-    return [
-        headers.join(separator),
-        ...rows.map(row => row.map(cell => `"${cell}"`).join(separator))
-    ].join('\n');
-}
-
-// DEPRECATED : Export JSON
-function exportData(format) {
-    const occupied = DATA.filter(l => l.occupied);
-    
-    const now = new Date();
-    const timestamp = now.toISOString().replace(/[:.]/g, '-').slice(0, -5);
-    const readableDate = now.toLocaleString('fr-FR', { 
-        year: 'numeric', 
-        month: '2-digit', 
-        day: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit'
-    }).replace(/[/:]/g, '-').replace(', ', '_');
-    
-    const userName = USER_NAME || 'utilisateur';
-    const role = IS_AUTHENTICATED ? 'admin' : 'guest';
-    
-    if (format === 'json') {
-        const exportData = {
-            metadata: {
-                exportDate: now.toISOString(),
-                exportBy: userName,
-                userRole: role,
-                totalLockers: occupied.length,
-                application: 'HADO - Casiers zone départ',
-                version: '1.0'
-            },
-            lockers: occupied
-        };
-        const json = JSON.stringify(exportData, null, 2);
-        downloadFile(json, `casiers_${readableDate}_${userName}.json`, 'application/json');
-    } else if (format === 'csv') {
-        // Demander le séparateur (; ou ,)
-        const useSemicolon = confirm(
-            '📊 CHOIX DU SÉPARATEUR CSV\n\n' +
-            'Quel séparateur voulez-vous utiliser ?\n\n' +
-            '• OK = Point-virgule (;)\n' +
-            '• Annuler = Virgule (,)\n\n' +
-            'Recommandé pour Excel français : Point-virgule'
-        );
-        const separator = useSemicolon ? ';' : ',';
-        const csv = convertToCSV(occupied, separator);
-        const separatorName = useSemicolon ? 'semicolon' : 'comma';
-        downloadFile(csv, `casiers_${readableDate}_${userName}_${separatorName}.csv`, 'text/csv');
-    }
-    
-    logExport(format, occupied.length, userName, role);
-}
-
-// ============ IMPORT LEGACY ============
-
-// DEPRECATED?
-function importCSV() {
-    if (!isEditAllowed()) return;
-    
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.csv';
-    
-    input.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        // Trouver le bouton d'import casiers
-        const importBtn = Array.from(document.querySelectorAll('.admin-tools-content button'))
-            .find(btn => btn.textContent.includes('Import casiers'));
-        const originalText = importBtn ? importBtn.innerHTML : '';
-        
-        // LOADING STATE
-        if (importBtn) {
-            importBtn.disabled = true;
-            importBtn.innerHTML = '⏳ Import CSV legacy...';
-            importBtn.classList.add('btn-loading');
-        }
-      
-        try {
-            const text = await file.text();
-            // ENVOYER LE CONTENU BRUT, laisser le serveur parser
-            const res = await fetch(`${API_URL}/import`, {
-                method: 'POST',
-                credentials: 'include',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': CSRF_TOKEN
-                },
-                body: JSON.stringify({ 
-                    rawContent: text,  // Pas de parsing côté client
-                    mode: 'update',    // ou 'replace'
-                    separator: 'auto'  // Détection auto côté serveur
-                })
-            });
-            
-            if (res.ok) {
-                const result = await res.json();
-                let message = `Import terminé !\n\n✓ Importés : ${result.imported}\n✗ Erreurs : ${result.errors}`;
-                if (result.invalidIPP > 0) {
-                    message += `\n⚠️ IPP inconnus : ${result.invalidIPP} (marqués récupérables)`;
-                }
-                message += `\nTotal : ${result.total}`;
-                alert(message);
-                loadData();
-            } else if (res.status === 401) {
-                alert('Session expirée. Veuillez vous reconnecter.');
-                logout();
-            } else {
-                throw new Error('Erreur serveur');
-            }
-        } catch (err) {
-            alert('Erreur lors de l\'import : ' + err.message);
-            console.error('Erreur import:', err);
-        } finally {
-            // RESET STATE
-            if (importBtn) {
-                importBtn.disabled = false;
-                importBtn.innerHTML = originalText;
-                importBtn.classList.remove('btn-loading');
-            }
-        }
-    };
-    
-    input.click();
-}
-
-// DEPRECATED?
-function importJSON() {
-    if (!isEditAllowed()) return;
-    
-    const input = document.createElement('input');
-    input.type = 'file';
-    input.accept = '.json';
-    
-    input.onchange = async (e) => {
-        const file = e.target.files[0];
-        if (!file) return;
-        
-        // Trouver le bouton d'import JSON
-        const importBtn = Array.from(document.querySelectorAll('.admin-tools-content button'))
-            .find(btn => btn.textContent.includes('Import JSON'));
-        const originalText = importBtn ? importBtn.innerHTML : '';
-        
-        // LOADING STATE
-        if (importBtn) {
-            importBtn.disabled = true;
-            importBtn.innerHTML = '⏳ Import...';
-            importBtn.classList.add('btn-loading');
-        }
-      
-        try {
-            if (VERBCONSOLE>0) { console.log('📂 Lecture du fichier JSON...'); }
-            const text = await file.text();
-            const jsonData = JSON.parse(text);
-            
-            // Vérifier la structure
-            if (!jsonData.lockers && !Array.isArray(jsonData)) {
-                alert('❌ Format JSON invalide.\n\nLe fichier doit contenir un champ "lockers" (export moderne) ou être un tableau (export ancien).');
-                return;
-            }
-            
-            // Supporter les deux formats
-            const data = jsonData.lockers || jsonData;
-            const metadata = jsonData.metadata;
-            
-            if (VERBCONSOLE>0) { console.log(`📦 ${data.length} casiers trouvés dans le fichier`); }
-            
-            if (metadata) {
-                const exportDate = new Date(metadata.exportDate).toLocaleString('fr-FR');
-                const confirmMsg = `📥 IMPORT JSON\n\n` +
-                    `Fichier : ${file.name}\n` +
-                    `Casiers : ${data.length}\n` +
-                    `Exporté le : ${exportDate}\n` +
-                    `Par : ${metadata.exportBy || 'Inconnu'}\n\n` +
-                    `⚠️ ATTENTION :\n` +
-                    `- Les casiers déjà occupés seront IGNORÉS\n` +
-                    `- Les casiers vides seront remplis\n\n` +
-                    `Voulez-vous continuer ?`;
-                
-                if (!confirm(confirmMsg)) return;
-            } else {
-                if (!confirm(`Importer ${data.length} casiers ?\n\n⚠️ Les casiers déjà occupés seront ignorés.`)) {
-                    return;
-                }
-            }
-            
-            const res = await fetch(`${API_URL}/import-json`, {
-                method: 'POST',
-                headers: { 
-                    'Content-Type': 'application/json',
-                    'X-CSRF-Token': CSRF_TOKEN
-                },
-                credentials: 'include',
-                body: JSON.stringify({ 
-                    data: data,
-                    metadata: metadata
-                })
-            });
-            
-            if (res.ok) {
-                const result = await res.json();
-                
-                let message = `✅ Import JSON terminé !\n\n`;
-                message += `✓ Importés : ${result.imported}\n`;
-                if (result.skipped > 0) {
-                    message += `⏭️ Ignorés (déjà occupés) : ${result.skipped}\n`;
-                }
-                if (result.invalidIPP > 0) {
-                    message += `⚠️ IPP inconnus : ${result.invalidIPP} (marqués récupérables)\n`;
-                }
-                if (result.errors > 0) {
-                    message += `✗ Erreurs : ${result.errors}\n`;
-                }
-                if (result.validationErrors > 0) {
-                    message += `⚠️ Validation échouée : ${result.validationErrors}\n`;
-                }
-                message += `\nTotal traité : ${result.total}`;
-                
-                alert(message);
-                loadData();
-                
-            } else if (res.status === 401) {
-                alert('Session expirée. Veuillez vous reconnecter.');
-                logout();
-            } else {
-                const error = await res.json();
-                throw new Error(error.error || 'Erreur serveur');
-            }
-            
-        } catch (err) {
-            if (err instanceof SyntaxError) {
-                alert('❌ Erreur : Le fichier n\'est pas un JSON valide.\n\n' + err.message);
-            } else {
-                alert('❌ Erreur lors de l\'import : ' + err.message);
-            }
-            console.error('Erreur import JSON:', err);
-        } finally {
-            // RESET STATE
-            if (importBtn) {
-                importBtn.disabled = false;
-                importBtn.innerHTML = originalText;
-                importBtn.classList.remove('btn-loading');
-            }
-        }
-    };
-    
-    input.click();
-}
-
 // ============ MODAL IMPORT CASIERS UNIFIÉ ============
 
 let selectedLockersImportFormat = 'csv';
 let selectedLockersImportMode = 'update';
 let selectedLockersImportSeparator = 'auto';
 
+// Modal de sélection de fichiers casiers à importer
 async function showLockersImportOptions() {
     if (!isEditAllowed()) return;
     
@@ -3204,6 +2914,7 @@ async function showLockersImportOptions() {
     document.getElementById('lockersImportOptionsModal').classList.add('active');
 }
 
+// Afficher (CSV) ou masquer (JSON) le champ séparateur
 function updateSeparatorVisibility() {
     const separatorGroup = document.getElementById('lockersImportSeparatorGroup');
     if (separatorGroup) {
@@ -3211,6 +2922,7 @@ function updateSeparatorVisibility() {
     }
 }
 
+// Close modal Import Casiers
 function closeLockersImportOptions() {
     document.getElementById('lockersImportOptionsModal').classList.remove('active');
 }
@@ -3225,7 +2937,7 @@ function selectFileForLockersImport() {
     fileInput.click();
 }
 
-// Fonction d'analyse des fichiers casier à importer 
+// Fonction d'analyse des fichiers casiers à importer 
 function analyzeLockersFile(content, format, separator) {
     try {
         if (format === 'json') {
@@ -3323,6 +3035,7 @@ function analyzeLockersFile(content, format, separator) {
     }
 }
 
+// Modal d'analyse de fichier à importer
 async function handleLockersFileSelected(e) {
     const file = e.target.files[0];
     if (!file) return;
@@ -3564,6 +3277,7 @@ async function showImportConfirmation(filename, analysis) {
     });
 }
 
+// Réaliser l'import en base
 async function performLockersImport(content, filename) {
     const importBtn = Array.from(document.querySelectorAll('.admin-tools-content button'))
         .find(btn => btn.textContent.includes('Import casiers'));
@@ -3650,6 +3364,7 @@ async function performLockersImport(content, filename) {
     }
 }
 
+// Vider la table lockers dans la base de données
 async function clearLockersDatabase() {
     const confirmFirst = confirm(
         '⚠️ ATTENTION - LIBÉRATION DE TOUS LES CASIERS\n\n' +

@@ -689,7 +689,8 @@ input.pulse, select.pulse, button.pulse {
 /* ===  CSS pour les homonymes === */
 
 .homonym-name {
-    text-decoration: underline wavy #9333ea;
+    color: #9333ea;
+    text-decoration: underline #9333ea;
     text-decoration-thickness: 1px;
 }
 /* ===  CSS pour colorer les doublons === */

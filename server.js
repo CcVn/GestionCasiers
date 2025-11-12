@@ -17,7 +17,8 @@ const rateLimit = require('express-rate-limit');
 const bcrypt = require('bcrypt');
 const cookieParser = require('cookie-parser');
 const csrf = require('csurf');
-const { parse, stringify } = require('csv-parse');
+const { parse } = require('csv-parse/sync');  // npm install csv-parse csv-stringify
+const { stringify } = require('csv-stringify/sync');
 
 // ============ SCHÉMAS DE VALIDATION ZOD ============
 

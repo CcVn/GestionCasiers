@@ -25,18 +25,167 @@ let consultationData = [];
 let consultationSortColumn = 'name';
 let consultationSortDirection = 'asc';
 
-// Wrapper générique avec retry  (A IMPLEMENTER)
-async function fetchWithRetry(url, options, retries = 3) {
-    for (let i = 0; i < retries; i++) {
+// ============ WRAPPER FETCH AVEC RETRY ET LOGS ============
+/**
+ * Wrapper fetch avec retry automatique et logs cohérents
+ * @param {string} url - URL de l'API
+ * @param {Object} options - Options fetch (method, headers, body, etc.)
+ * @param {Object} retryConfig - Configuration du retry
+ * @returns {Promise<Response>}
+ */
+async function fetchWithRetry(url, options = {}, retryConfig = {}) {
+    const {
+        retries = 3,           // Nombre de tentatives
+        retryDelay = 1000,     // Délai initial (ms)
+        retryOn = [500, 502, 503, 504, 408, 429],  // Codes HTTP à retry
+        timeout = 30000,       // Timeout par requête (30s)
+        logRequests = VERBCONSOLE > 0,  // Logger les requêtes
+        logErrors = true       // Logger les erreurs
+    } = retryConfig;
+    
+    const startTime = Date.now();
+    const method = options.method || 'GET';
+    
+    // Log début requête
+    if (logRequests) {
+        console.log(`🌐 ${method} ${url.replace(API_URL, '')}`);
+    }
+    
+    for (let attempt = 0; attempt < retries; attempt++) {
         try {
-            const res = await fetch(url, options);
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            // Créer un AbortController pour le timeout
+            const controller = new AbortController();
+            const timeoutId = setTimeout(() => controller.abort(), timeout);
+            
+            // Ajouter le signal d'abort aux options
+            const fetchOptions = {
+                ...options,
+                signal: controller.signal
+            };
+            
+            // Faire la requête
+            const res = await fetch(url, fetchOptions);
+            clearTimeout(timeoutId);
+            
+            // Vérifier le statut
+            if (!res.ok) {
+                // Vérifier si on doit retry ce code
+                if (retryOn.includes(res.status) && attempt < retries - 1) {
+                    const delay = retryDelay * Math.pow(2, attempt); // Exponential backoff
+                    
+                    if (logErrors) {
+                        console.warn(`⚠️ ${method} ${url.replace(API_URL, '')} - HTTP ${res.status} (tentative ${attempt + 1}/${retries})`);
+                        console.warn(`   ⏳ Nouvelle tentative dans ${delay}ms...`);
+                    }
+                    
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue; // Retry
+                }
+                
+                // Erreur finale (pas de retry)
+                const error = new Error(`HTTP ${res.status}`);
+                error.response = res;
+                error.status = res.status;
+                throw error;
+            }
+            
+            // Succès
+            const duration = Date.now() - startTime;
+            if (logRequests && attempt > 0) {
+                console.log(`✓ ${method} ${url.replace(API_URL, '')} - ${res.status} (${duration}ms, ${attempt + 1} tentative${attempt > 0 ? 's' : ''})`);
+            } else if (logRequests) {
+                console.log(`✓ ${method} ${url.replace(API_URL, '')} - ${res.status} (${duration}ms)`);
+            }
+            
             return res;
+            
         } catch (err) {
-            if (i === retries - 1) throw err;
-            await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+            const isLastAttempt = attempt === retries - 1;
+            const duration = Date.now() - startTime;
+            
+            // Gérer les différents types d'erreurs
+            if (err.name === 'AbortError') {
+                if (logErrors) {
+                    console.error(`⏱️ ${method} ${url.replace(API_URL, '')} - Timeout après ${timeout}ms (tentative ${attempt + 1}/${retries})`);
+                }
+                
+                if (!isLastAttempt) {
+                    const delay = retryDelay * Math.pow(2, attempt);
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue; // Retry
+                }
+                
+                const timeoutError = new Error(`Timeout après ${timeout}ms`);
+                timeoutError.isTimeout = true;
+                throw timeoutError;
+                
+            } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
+                // Erreur réseau
+                if (logErrors) {
+                    console.error(`🔌 ${method} ${url.replace(API_URL, '')} - Erreur réseau (tentative ${attempt + 1}/${retries})`);
+                }
+                
+                if (!isLastAttempt) {
+                    const delay = retryDelay * Math.pow(2, attempt);
+                    if (logErrors) {
+                        console.warn(`   ⏳ Nouvelle tentative dans ${delay}ms...`);
+                    }
+                    await new Promise(resolve => setTimeout(resolve, delay));
+                    continue; // Retry
+                }
+                
+                const networkError = new Error('Erreur réseau : serveur inaccessible');
+                networkError.isNetworkError = true;
+                throw networkError;
+                
+            } else {
+                // Autre erreur (ne pas retry)
+                if (logErrors) {
+                    console.error(`❌ ${method} ${url.replace(API_URL, '')} - ${err.message} (${duration}ms)`);
+                }
+                throw err;
+            }
         }
     }
+    
+    // Ne devrait jamais arriver ici
+    throw new Error('Nombre maximum de tentatives atteint');
+}
+
+// ------- Helper pour les requêtes JSON (parse automatique) ---------
+async function fetchJSON(url, options = {}, retryConfig = {}) {
+    const res = await fetchWithRetry(url, options, retryConfig);
+    
+    // Gérer les erreurs CSRF
+    if (res.status === 403) {
+        handleCsrfError(res);
+    }
+    
+    return res.json();
+}
+
+// Fonction générique pour Focus trap dans les modals
+function trapFocus(modal) {
+    const focusableElements = modal.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    
+    modal.addEventListener('keydown', function(e) {
+        if (e.key === 'Tab') {
+            if (e.shiftKey && document.activeElement === firstElement) {
+                lastElement.focus();
+                e.preventDefault();
+            } else if (!e.shiftKey && document.activeElement === lastElement) {
+                firstElement.focus();
+                e.preventDefault();
+            }
+        }
+    });
+    
+    // Focus auto sur premier élément
+    setTimeout(() => firstElement?.focus(), 100);
 }
 
 // =============== CONFIG DES ZONES ======================
@@ -59,10 +208,9 @@ function sanitizeName(name) {
 // Fonction pour charger la configuration des zones
 async function loadZonesConfig() {
     try {
-        const response = await fetch(`${API_URL}/config/zones`, {
-            credentials: 'include' 
+        const data = await fetchJSON(`${API_URL}/config/zones`, {
+            credentials: 'include'
         });
-        const data = await response.json();
         ZONES_CONFIG = data.zones;
 
         if (VERBCONSOLE>0) {
@@ -93,16 +241,10 @@ async function loadZonesConfig() {
 // Fonction pour charger le token CSRF
 async function loadCsrfToken() {
     try {
-        const response = await fetch(`${API_URL}/csrf-token`, {
+        const data = await fetchJSON(`${API_URL}/csrf-token`, {
             credentials: 'include'
         });
         
-        if (!response.ok) {
-            console.warn('⚠️ Impossible de charger le token CSRF');
-            return;
-        }
-        
-        const data = await response.json();
         CSRF_TOKEN = data.csrfToken;
         if (VERBCONSOLE>0) { console.log('✓ Token CSRF chargé'); }
     } catch (err) {
@@ -115,26 +257,39 @@ async function loadCsrfToken() {
 
 // Charger les données casiers (appel route [public_url]/api/lockers)
 // ---> SELECT * FROM lockers ORDER BY number ASC
-function loadData() {
-    fetch(`${API_URL}/lockers`, {
-        credentials: 'include'
-    }) 
-        .then(res => {
-            if (!res.ok) throw new Error('Erreur ' + res.status);
-            return res.json();
-        })
-        .then(data => {
-            DATA = data;
-            if (VERBCONSOLE>0) { console.log('📦 Données chargées:', DATA.length); }
-            if (VERBCONSOLE>0) { console.log('📋 ZONES_CONFIG:', ZONES_CONFIG); }
-            
-            renderAllTables();
-            updateCounters();
-        })
-        .catch(err => {
-            console.error('Erreur chargement:', err);
-            alert('Erreur: Impossible de charger les données.\n\nAssurez-vous que:\n1. Le serveur Node.js est lancé (npm run dev)\n2. L\'URL est: ' + API_URL);
+async function loadData() {
+    try {
+        const data = await fetchJSON(`${API_URL}/lockers`, {
+            credentials: 'include'
+        }, {
+            retries: 3,
+            retryDelay: 1000,
+            logRequests: VERBCONSOLE > 0
         });
+        
+        DATA = data;
+        if (VERBCONSOLE > 0) {
+            console.log('📦 Données chargées:', DATA.length);
+        }
+        
+        renderAllTables();
+        updateCounters();
+        
+    } catch (err) {
+        console.error('Erreur chargement:', err);
+        
+        // Messages d'erreur adaptés selon le type
+        if (err.isTimeout) {
+            alert('⏱️ La requête a pris trop de temps.\n\nLe serveur est peut-être surchargé. Réessayez dans quelques instants.');
+        } else if (err.isNetworkError) {
+            alert('🔌 Impossible de contacter le serveur.\n\nAssurez-vous que:\n1. Le serveur Node.js est lancé (npm run dev)\n2. L\'URL est correcte: ' + API_URL);
+        } else if (err.status === 401) {
+            alert('🔒 Session expirée. Veuillez vous reconnecter.');
+            logout();
+        } else {
+            alert('❌ Erreur lors du chargement des données.\n\n' + err.message);
+        }
+    }
 }
 
 // Fonction pour générer les onglets dynamiquement
@@ -178,6 +333,29 @@ function generateTabs() {
             if (clickedZone !== 'SEARCH' && !hasActiveSearch) {
                 loadData();
             }
+        });
+        btn.addEventListener('keydown', function(e) {
+            let targetIndex;
+            
+            switch(e.key) {
+                case 'ArrowLeft':
+                    targetIndex = index > 0 ? index - 1 : buttons.length - 1;
+                    break;
+                case 'ArrowRight':
+                    targetIndex = index < buttons.length - 1 ? index + 1 : 0;
+                    break;
+                case 'Home':
+                    targetIndex = 0;
+                    break;
+                case 'End':
+                    targetIndex = buttons.length - 1;
+                    break;
+                default:
+                    return;
+            }
+            buttons[targetIndex].click();
+            buttons[targetIndex].focus();
+            e.preventDefault();
         });
     });
 }
@@ -316,21 +494,8 @@ function generateContentSections() {
             <!-- PARTIE 1 : CONSULTATION (visible par tous) -->
             <div class="help-section">
                 <h3>🔍 Rechercher un casier</h3>
-                
-                <div class="help-item">
-                    <div class="help-title">Par navigation dans les zones</div>
-                    <div class="help-content">
-                        <ol>
-                            <li>Cliquez sur un onglet de zone : <strong>Zone NORD</strong>, <strong>Zone SUD</strong>, etc.</li>
-                            <li>Parcourez la liste des casiers occupés de cette zone (triés par ordre alphabétique sur le nom du patient) dans le tableau qui s'affiche sous l'onglet. Les casiers non attribués sont automatiquement masqués.</li>
-                        </ol>
-                        <div class="post-it">
-                            <strong>💡 Avec un écran tactile :</strong> un balayage latéral permet de passer à l'onglet situé à gauche ou à droite.
-                        </div>
-                    </div>
-                </div>
 
-                <div class="help-item">
+                <div class="help-item" id="help-recherche">
                     <div class="help-title">Par recherche globale</div>
                     <div class="help-content">
                         <ol>
@@ -342,7 +507,52 @@ function generateContentSections() {
                         </ol>
                     </div>
                 </div>
-
+                <div class="help-item" id="help-navig">
+                    <div class="help-title">Par navigation dans les zones</div>
+                    <div class="help-content">
+                        <ol>
+                            <li>Cliquez sur un onglet de zone : <strong>Zone NORD</strong>, <strong>Zone SUD</strong>, etc.</li>
+                            <li>Parcourez la liste des casiers occupés de cette zone (triés par ordre alphabétique sur le nom du patient) dans le tableau qui s'affiche sous l'onglet. Les casiers non attribués sont automatiquement masqués.</li>
+                        </ol>
+                        <div class="post-it">
+                            <strong>💡 Avec un écran tactile :</strong> un balayage latéral permet de passer à l'onglet situé à gauche ou à droite.
+                        </div>
+                    </div>
+                </div>
+                <div class="help-item" id="help-navig-clavier">
+                    <div class="help-title">Navigation au clavier</div>
+                    <div class="help-content" style="font-size: 11px; margin: 1px; padding: 1px;">
+                        <span><strong>Fenêtre modales</strong></span>
+                        <ol>
+                            <li><strong>ESC</strong>: Fermer</li>
+                            <li><strong>Tab</strong> / <strong>Shift+Tab</strong> : Navigation entre champs (avec 'focus trap')</li>
+                            <li><strong>Espace</strong> ou <strong>Entrée</strong> : Valider boutons</li>
+                        </ol>
+                        <span><strong> Dropdowns (menu ⋮)</strong></span>
+                        <ol>
+                            <li><strong>ESC</strong> : Fermer</li>
+                            <li><strong>↓</strong> : Item suivant</li>
+                            <li><strong>↑</strong> : Item précédent</li>
+                            <li><strong>Entrée</strong> ou <strong>Espace</strong> : Activer l'action</li>
+                        </ol>
+                        <span><strong>Onglets (tabs)</strong></span>
+                        <ol>
+                            <li><strong>←</strong> : Onglet précédent</li>
+                            <li><strong>→</strong> : Onglet suivant</li>
+                            <li><strong>Home</strong> : Premier onglet</li>
+                            <li><strong>End</strong> : Dernier onglet</li>
+                        </ol>
+                        <span><strong>Champs de formulaire</strong></span>
+                        <ol>
+                            <li><strong>Entrée</strong> : Soumettre formulaire</li>
+                            <li><strong>Tab</strong> : Champ suivant</li>
+                            <li><strong>Shift+Tab</strong> : Champ précédent</li>
+                        </ol>
+                        <div class="post-it">
+                            <strong>💡 Note : </strong> Les dropdowns doivent être ouverts d'abord (clic ou Entrée sur le bouton ⋮) avant d'utiliser les flèches.
+                        </div>
+                    </div>
+                </div>
                 <div class="help-item">
                     <div class="help-title">Explications sur les lignes colorées</div>
                     <div class="help-content">
@@ -357,7 +567,6 @@ function generateContentSections() {
                         </div>
                     </div>
                 </div>
-
             </div>
             
             <!-- PARTIE 2 : MODIFICATION (visible seulement en admin) -->
@@ -880,6 +1089,22 @@ document.addEventListener('DOMContentLoaded', async function() {
             renderAllTables();
         }
     });
+
+    // Fermeture des modals avec ESC
+    document.addEventListener('keydown', function(e) {
+        if (e.key === 'Escape') {
+            // Fermer tous les modals actifs
+            document.querySelectorAll('.modal.active').forEach(modal => {
+                modal.classList.remove('active');
+            });
+            
+            // Réinitialiser les variables globales
+            EDITING_LOCKER_NUMBER = null;
+            EDITING_LOCKER_VERSION = null;
+            CURRENT_LOCKER_FOR_HOSP = null;
+            CURRENT_LOCKER_FOR_PRINT = null;
+        }
+    });
 });
 
 // ============  AUTHENTIFICATION / LOGIN  =================
@@ -918,6 +1143,7 @@ async function setupLoginPage() {
     }
 }
 
+// Ne pas implémenter fetchJSON : utilise la gestion d'erreur personnalisée pour le CSRF
 function handleLogin(e) {
     e.preventDefault();
     // Vérifier que le token CSRF est chargé
@@ -1001,6 +1227,7 @@ function handleLogin(e) {
     });        
 }
 
+// Ne pas implémenter fetchJSON : Gestion spécifique des erreurs de connexion
 function loginAsGuest() {
     // Vérifier que le token CSRF est chargé
     if (!CSRF_TOKEN) {
@@ -1666,6 +1893,7 @@ function createBackup() {
 }
 
 // ============ SERVEUR ============
+//Peut rester en fetch() - Vérifie juste la connectivité, pas besoin de retry
 async function checkServerStatus() {
     const statusEl = document.getElementById('serverStatus');
     if (!statusEl) return;
@@ -2476,6 +2704,7 @@ function openModal(zone) {
     };
     
     document.getElementById('modal').classList.add('active');
+    trapFocus(document.getElementById('modal'));
 }
 
 // --- Editer casier existant
@@ -2515,6 +2744,7 @@ function openModalEdit(lockerNumber) {
     };
     
     document.getElementById('modal').classList.add('active');
+    trapFocus(document.getElementById('modal'));
 }
 
 // --- Fermeture du modal (utilisé par handleFormSubmit)
@@ -2679,12 +2909,6 @@ function releaseLocker(lockerNumber) {
 
 // --- Enregistrer un casier
 async function saveLocker(lockerNumber, zone, recoverable, comment, stup, idel, frigo, pca, meopa) {
-
-    // Log pour debug
-    console.log('saveLocker appelé avec:', {
-        lockerNumber, zone, recoverable, comment, stup, idel, frigo, pca, meopa
-    });
-
     const bodyData = {
         number: lockerNumber,
         zone: zone,
@@ -2701,29 +2925,33 @@ async function saveLocker(lockerNumber, zone, recoverable, comment, stup, idel, 
         meopa: meopa
     };
 
-    console.log('bodyData:', bodyData);
-
-    // Ajouter expectedVersion seulement si défini (pas null)
     if (EDITING_LOCKER_VERSION !== null) {
         bodyData.expectedVersion = EDITING_LOCKER_VERSION;
     }
 
-    const response = await fetch(`${API_URL}/lockers`, {
-        method: 'POST',
-        headers: { 
-            'Content-Type': 'application/json',
-            'X-CSRF-Token': CSRF_TOKEN
-        },
-        credentials: 'include',
-        body: JSON.stringify(bodyData)
-    });  
-
-    if (!response.ok) {
-        const error = await response.json();
-        //console.error('Erreur serveur:', error);
-        throw new Error(error.error || 'Erreur ' + response.status);
+    try {
+        return await fetchJSON(`${API_URL}/lockers`, {
+            method: 'POST',
+            headers: { 
+                'Content-Type': 'application/json',
+                'X-CSRF-Token': CSRF_TOKEN
+            },
+            credentials: 'include',
+            body: JSON.stringify(bodyData)
+        }, {
+            retries: 2,  // Moins de retries pour les modifications (risque de double-save)
+            retryOn: [500, 502, 503, 504],  // Pas de retry sur 408/429 pour éviter duplications
+            timeout: 10000  // 10s suffisent pour un save
+        });
+        
+    } catch (err) {
+        // Enrichir l'erreur avec le contexte
+        if (err.response) {
+            const errorData = await err.response.json().catch(() => ({}));
+            throw new Error(errorData.error || `Erreur HTTP ${err.status}`);
+        }
+        throw err;
     }
-    return response.json();
 }
 
 // --- Libérer un casier sans message (utilisé lors d'un transfert)
@@ -3740,11 +3968,9 @@ async function handleClientFileSelected(e) {
     const file = e.target.files[0];
     if (!file) return;
     
-    // Trouver le bouton d'import
     const importBtn = document.querySelector('button[onclick="importClients()"]');
     const originalText = importBtn ? importBtn.innerHTML : '';
     
-    // LOADING STATE
     if (importBtn) {
         importBtn.disabled = true;
         importBtn.innerHTML = '⏳ Import...';
@@ -3752,7 +3978,7 @@ async function handleClientFileSelected(e) {
     }
     
     try {
-        if (VERBCONSOLE>0) { 
+        if (VERBCONSOLE > 0) {
             console.log('📂 Lecture du fichier patients...');
             console.log('Format sélectionné:', selectedImportFormat);
             console.log('Mode sélectionné:', selectedImportMode);
@@ -3761,7 +3987,7 @@ async function handleClientFileSelected(e) {
         
         const text = await file.text();
         
-        const res = await fetch(`${API_URL}/clients/import`, {
+        const result = await fetchJSON(`${API_URL}/clients/import`, {
             method: 'POST',
             credentials: 'include',
             headers: { 
@@ -3774,46 +4000,49 @@ async function handleClientFileSelected(e) {
                 mode: selectedImportMode,
                 separator: selectedImportSeparator
             })
+        }, {
+            retries: 2,
+            timeout: 60000,  // 60s pour les gros imports
+            retryOn: [500, 502, 503, 504]
         });
         
-        if (res.ok) {
-            const result = await res.json();
-            let message = `Import patients terminé !\n\n`;
-            message += `✓ Importés : ${result.imported}\n`;
-            if (result.skipped > 0) {
-                message += `⏭️ Ignorés (doublons) : ${result.skipped}\n`;
-            }
-            if (result.filtered > 0) {
-                message += `🔍 Filtrés : ${result.filtered}\n`;
-            }
-            if (result.errors > 0) {
-                message += `✗ Erreurs : ${result.errors}\n`;
-            }
-            if (result.validationErrors > 0) {
-                message += `⚠️ Validation échouée : ${result.validationErrors}\n`;
-            }
-            message += `Total : ${result.total}`;
-            
-            if (selectedImportMode === 'merge') {
-                message += `\n\nMode fusionnement : ${result.totalInDb} patients en base`;
-            }
-            
-            alert(message);
-            
-            // Rafraîchir le statut d'import
-            updateImportStatus();
+        let message = `Import patients terminé !\n\n`;
+        message += `✓ Importés : ${result.imported}\n`;
+        if (result.skipped > 0) {
+            message += `⏭️ Ignorés (doublons) : ${result.skipped}\n`;
+        }
+        if (result.filtered > 0) {
+            message += `🔍 Filtrés : ${result.filtered}\n`;
+        }
+        if (result.errors > 0) {
+            message += `✗ Erreurs : ${result.errors}\n`;
+        }
+        if (result.validationErrors > 0) {
+            message += `⚠️ Validation échouée : ${result.validationErrors}\n`;
+        }
+        message += `Total : ${result.total}`;
+        
+        if (selectedImportMode === 'merge') {
+            message += `\n\nMode fusionnement : ${result.totalInDb} patients en base`;
+        }
+        
+        alert(message);
+        updateImportStatus();
+        
+    } catch (err) {
+        console.error('Erreur import patients:', err);
+        
+        if (err.isTimeout) {
+            alert('⏱️ L\'import a pris trop de temps.\n\nEssayez de réduire la taille du fichier ou contactez l\'administrateur.');
+        } else if (err.status === 413) {
+            alert('📦 Fichier trop volumineux.\n\nRéduisez la taille du fichier ou divisez-le en plusieurs parties.');
         } else if (res.status === 401) {
             alert('Session expirée. Veuillez vous reconnecter.');
             logout();
         } else {
-            const errorData = await res.json();
-            throw new Error(errorData.error || 'Erreur serveur');
+            alert('❌ Erreur lors de l\'import patients :\n\n' + err.message);
         }
-    } catch (err) {
-        alert('Erreur lors de l\'import patients : ' + err.message);
-        console.error('Erreur import patients:', err);
     } finally {
-        // RESET STATE
         if (importBtn) {
             importBtn.disabled = false;
             importBtn.innerHTML = originalText;
@@ -3943,10 +4172,62 @@ function toggleDropdown(e) {
     menu.classList.toggle('active');
 }
 
-// --- Gestion du menu dropdown Actions
-document.addEventListener('click', function() {
-    document.querySelectorAll('.dropdown-menu.active').forEach(m => m.classList.remove('active'));
+// --- Gestion du menu dropdown Actions, avec support raccourcis clavier
+document.addEventListener('click', function(e) {
+    // Fermer tous les dropdowns sauf celui cliqué
+    if (!e.target.closest('.menu-dot')) {
+        document.querySelectorAll('.dropdown-menu.active').forEach(m => m.classList.remove('active'));
+    }
 });
+
+document.addEventListener('keydown', function(e) {
+    const activeDropdown = document.querySelector('.dropdown-menu.active');
+    
+    if (activeDropdown) {
+        const items = Array.from(activeDropdown.querySelectorAll('button:not([disabled])'));
+        const currentIndex = items.findIndex(item => item === document.activeElement);
+        
+        switch(e.key) {
+            case 'Escape':
+                activeDropdown.classList.remove('active');
+                e.preventDefault();
+                break;
+                
+            case 'ArrowDown':
+                if (currentIndex < items.length - 1) {
+                    items[currentIndex + 1].focus();
+                }
+                e.preventDefault();
+                break;
+                
+            case 'ArrowUp':
+                if (currentIndex > 0) {
+                    items[currentIndex - 1].focus();
+                }
+                e.preventDefault();
+                break;
+        }
+    }
+});
+
+// Toggle dropdown avec Enter/Space
+function toggleDropdown(e) {
+    e.stopPropagation();
+    const menu = e.target.nextElementSibling;
+    const wasActive = menu.classList.contains('active');
+    
+    document.querySelectorAll('.dropdown-menu.active').forEach(m => {
+        if (m !== menu) m.classList.remove('active');
+    });
+    
+    menu.classList.toggle('active');
+    
+    // Focus premier élément si ouvert
+    if (!wasActive && menu.classList.contains('active')) {
+        const firstItem = menu.querySelector('button:not([disabled])');
+        if (firstItem) firstItem.focus();
+    }
+}
 
 // ================== MODAL STATS PATIENTS =========================
 
@@ -5110,30 +5391,26 @@ function handleCsrfError(response) {
 
 // Fonction pour vérifier le temps restant dans la session
 async function checkSessionExpiration() {
-  try {
-    const res = await fetch(`${API_URL}/session/time-remaining`, {
+    try {
+    const data = await fetchJSON(`${API_URL}/session/time-remaining`, {
       credentials: 'include'
     });
-    
-    if (res.ok) {
-      const data = await res.json();
-      
-      // Avertir si moins de 10 minutes restantes
-      if (data.expiresInMinutes < 10 && data.expiresInMinutes > 0) {
+
+    // Avertir si moins de 10 minutes restantes
+    if (data.expiresInMinutes < 10 && data.expiresInMinutes > 0) {
         console.warn(`⏰ Session expire dans ${data.expiresInMinutes} minutes`);
-        
+
         // Afficher une notification (optionnel)
         if (data.expiresInMinutes === 5) {
-          if (confirm('⏰ Votre session expire dans 5 minutes.\n\nVoulez-vous prolonger votre session ?')) {
-            // Faire une requête pour renouveler
-            loadData(); // N'importe quelle requête authentifiée
-          }
+            if (confirm('⏰ Votre session expire dans 5 minutes.\n\nVoulez-vous prolonger votre session ?')) {
+                // Faire une requête pour renouveler
+                loadData(); // N'importe quelle requête authentifiée
+            }
         }
-      }
     }
-  } catch (err) {
+    } catch (err) {
     console.error('Erreur vérification expiration:', err);
-  }
+    }
 }
 
 // ============ MODAL STATS MODIFICATIONS DES CASIERS ============

@@ -12,6 +12,7 @@
     <link rel="stylesheet" href="css/admintools.css">
 </head>
 <body>
+    <!-- =========================== Page Login =================================== -->
     <div id="loginPage" class="login-container active">
         <div class="login-box">
             <h1>HADO - Casiers PUI zone départ</h1>
@@ -35,6 +36,7 @@
     </div>
 
     <div class="container" id="appContainer" style="display: none;">
+        <!-- =========================== En-tête de page =================================== -->
         <header>
             <div class="header-info">
                 <div>
@@ -61,7 +63,7 @@
             </div>
         </header>
 
-        <!-- CONTAINER OUTILS ADMIN (masqué par défaut) -->
+        <!-- =========================== CONTAINER OUTILS ADMIN ======================================= -->
         <div class="admin-tools-container admin-only" id="adminTools">
             <div class="admin-tools-header">
                 <h3>🛠️ Outils d'administration</h3>
@@ -190,67 +192,101 @@
         </footer>        
     </div>
 
-    <!-- ==============================  Modal Attribuer casier  ============================== -->
+    <!-- ======================  MODAL ATTRIBUER/MODIFIER CASIER ========================== -->
     <div id="modal" class="modal">
         <div class="modal-content">
             <div class="modal-header" id="modalTitle">Attribuer un casier</div>
             <div id="statusMessage"></div>
             <form id="lockerForm">
-                <div class="form-group">
-                    <label for="zone">Zone</label>
-                    <select id="zone" required>
-                        <option value="Zone1">Zone1</option>
-                        <!-- Sera rempli dynamiquement? -->
-                    </select>
-                </div>
-                <div class="form-group">
-                    <label for="lockerNumber">N° Casier</label>
-                    <select id="lockerNumber" required></select>
-                </div>
-                <div class="form-group">
-                    <label for="lastName">Nom</label>
-                    <input type="text" id="lastName" required>
-                </div>
-                <div class="form-group">
-                    <label for="firstName">Prénom</label>
-                    <input type="text" id="firstName" required>
-                </div>
-                <div class="form-group">
-                    <label for="code">N°IPP</label>
-                    <div style="display: flex; gap: 5px; align-items: center;">
-                        <input type="text" id="code" required style="flex: 1; margin: 0;">
-                        <button type="button" class="btn-secondary" onclick="searchClient()" style="white-space: nowrap; flex-shrink: 0; padding: 10px 12px;">🔍 Rechercher</button>
+                <!-- Zone et Numéro sur la même ligne -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="zone">Zone</label>
+                        <select id="zone" required>
+                            <option value="Zone1">Zone1</option>
+                            <!-- Sera rempli dynamiquement -->
+                        </select>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="lockerNumber">N° Casier</label>
+                        <select id="lockerNumber" required></select>
                     </div>
                 </div>
-                <div class="form-group">
-                    <label for="birthDate">DDN</label>
-                    <input type="date" id="birthDate" required>
+                
+                <!-- Nom et Prénom sur la même ligne -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="lastName">Nom</label>
+                        <input type="text" id="lastName" required>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="firstName">Prénom</label>
+                        <input type="text" id="firstName" required>
+                    </div>
                 </div>
+                
+                <!-- IPP, DDN et Bouton Rechercher sur la même ligne -->
+                <div style="display: grid; grid-template-columns: 2fr 2fr auto; gap: 10px; align-items: end;">
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label for="birthDate">DDN</label>
+                        <input type="date" id="birthDate" required>
+                    </div>
+                                        <div class="form-group" style="margin-bottom: 0;">
+                        <label for="code">N°IPP</label>
+                        <input type="text" id="code" required>
+                    </div>
+                    <button type="button" class="btn-secondary" onclick="searchClient()" style="white-space: nowrap; padding: 10px 12px; margin-bottom: 0;">🔍 Rech.</button>
+                </div>
+                <!-- Commentaire -->
                 <div class="form-group">
                     <label for="comment">Commentaire (optionnel)</label>
                     <textarea id="comment" rows="2" placeholder="Notes, remarques..."></textarea>
                 </div>
-                <!-- Checkbox Récupérable -->
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="checkbox" id="recoverable" style="margin-right: 8px; width: auto;">
-                        <span>Récupérable?</span>
-                    </label>
+                <!-- Checkboxes sur 2 colonnes -->
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px 20px;">
+                    <!-- Colonne 1 -->
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="recoverable" style="margin-right: 8px; width: auto;">
+                            <span>Récupérable?</span>
+                        </label>
+                    </div>
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="stup" style="margin-right: 8px; width: auto;">
+                            <span>💊 Stupéfiants</span>
+                        </label>
+                    </div>
+                    <!-- Colonne 2 -->
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="idel" style="margin-right: 8px; width: auto;">
+                            <span>ℹ️ IDEL/AS</span>
+                        </label>
+                    </div>
+                    
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="frigo" style="margin-right: 8px; width: auto;">
+                            <span>❄️ Frigo</span>
+                        </label>
+                    </div>
+                    
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="pca" style="margin-right: 8px; width: auto;">
+                            <span>💉 PCA</span>
+                        </label>
+                    </div>
+                    
+                    <div class="form-group" style="margin-bottom: 0;">
+                        <label style="display: flex; align-items: center; cursor: pointer;">
+                            <input type="checkbox" id="meopa" style="margin-right: 8px; width: auto;">
+                            <span>⛽️ MEOPA</span>
+                        </label>
+                    </div>
                 </div>
-                <!-- Checkbox Stupéfiants -->
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="checkbox" id="stup" style="margin-right: 8px; width: auto;">
-                        <span>💊 Contient des stupéfiants</span>
-                    </label>
-                </div>
-                <!-- Checkbox IDEL -->
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="checkbox" id="idel" style="margin-right: 8px; width: auto;">
-                        <span>ℹ️ Commandes IDEL et livraison AS</span>
-                    </label>
-                </div>
+                
                 <div class="modal-footer">
                     <button type="button" class="btn-secondary" onclick="closeModal()">Annuler</button>
                     <button type="submit" class="btn-primary">Enregistrer</button>
@@ -259,7 +295,7 @@
         </div>
     </div>
 
-    <!--   ==============================  Modal d'import clients  ============================== -->
+    <!--   ==============================  MODAL D'IMPORT PATIENTS  ============================== -->
     <div id="importOptionsModal" class="modal">
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">📥 Options d'import clients</div>
@@ -294,8 +330,8 @@
                     </small>
                 </div>
 
-                <!-- Separateur -->
-                <div class="form-group">
+                <!-- Separateur de champs import patients -->
+                <div class="form-group" id="importSeparatorGroup">
                     <label for="importSeparator">Séparateur de champs</label>
                     <select id="importSeparator" required>
                         <option value="auto">🔍 Détection automatique (recommandé)</option>
@@ -329,7 +365,7 @@
     
     <input type="file" id="clientFileInput" accept=".csv" style="display: none;">
 
-    <!-- ==============================  Modal d'import casiers  ============================== -->
+    <!-- ==============================  MODAL IMPORT CASIERS  ============================== -->
     <div id="lockersImportOptionsModal" class="modal">
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">⬆️ Options d'import casiers</div>
@@ -374,7 +410,7 @@
                     </div>
 
                     <!-- Separateur -->
-                    <div class="form-group">
+                    <div class="form-group" id="importLockersSeparatorGroup">
                         <label for="lockersImportSeparator">Séparateur de champs pour format CSV</label>
                         <select id="lockersImportSeparator" required>
                             <option value="auto">🔍 Détection automatique (recommandé)</option>
@@ -409,21 +445,55 @@
 
     <input type="file" id="lockersFileInput" accept=".csv,.json" style="display: none;">
 
-    <!-- Panel stats patients -->
-    <div id="clientsStatsPanel" class="clients-stats-panel">
-        <div class="clients-stats-content">
-            <div class="clients-stats-header">
-                <h2>📊 Base de données patients</h2>
-                <button class="btn-secondary" onclick="closeClientsStats()">✕</button>
-            </div>
+    <!-- ===========================  MODAL OPTIONS D'EXPORT CASIERS  ============================== -->
+    <div id="exportOptionsModal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">⬇ Options d'export</div>
             
-            <div id="clientsStatsContent">
-                <p style="text-align: center; color: var(--text-secondary);">Chargement...</p>
-            </div>
+            <form id="exportOptionsForm">
+                <div class="form-group">
+                    <label for="exportFormat">Format</label>
+                    <select id="exportFormat" required>
+                        <option value="csv">CSV (tableur)</option>
+                        <option value="json">JSON (backup complet)</option>
+                    </select>
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                        JSON inclut les métadonnées d'export
+                    </small>
+                </div>
+                
+                <div class="form-group" id="exportLockersSeparatorGroup">
+                    <label for="exportSeparator">Séparateur CSV</label>
+                    <select id="exportSeparator" required>
+                        <option value=";">Point-virgule (;) - Excel FR</option>
+                        <option value=",">Virgule (,) - Standard</option>
+                        <option value="|">Pipe (|)</option>
+                        <option value=" ">Tabulation</option>
+                    </select>
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                        Recommandé : point-virgule pour Excel français
+                    </small>
+                </div>
+                
+                <div class="form-group">
+                    <label style="display: flex; align-items: center; cursor: pointer;">
+                        <input type="checkbox" id="exportIncludeEmpty" style="margin-right: 8px; width: auto; cursor: pointer;">
+                        <span>Inclure les casiers vides</span>
+                    </label>
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                        Par défaut : uniquement les casiers occupés
+                    </small>
+                </div>
+                
+                <div class="modal-footer">
+                    <button type="button" class="btn-secondary" onclick="closeExportOptions()">Annuler</button>
+                    <button type="submit" class="btn-primary">⬇ Télécharger</button>
+                </div>
+            </form>
         </div>
     </div>
 
-    <!-- Panel restore -->
+    <!-- ===========================  MODAL RESTORE BACKUP  ================================= -->
     <div id="restorePanel" class="restore-panel">
         <div class="restore-content">
             <div class="restore-header">
@@ -446,7 +516,21 @@
         </div>
     </div>
 
-    <!-- Panel stats connexions -->
+    <!-- ===========================  MODAUX STATISTIQUES  ================================= -->
+    <!-- -----------------------  Panel stats patients  ----------------------------- -->
+    <div id="clientsStatsPanel" class="clients-stats-panel">
+        <div class="clients-stats-content">
+            <div class="clients-stats-header">
+                <h2>📊 Base de données patients</h2>
+                <button class="btn-secondary" onclick="closeClientsStats()">✕</button>
+            </div>
+            
+            <div id="clientsStatsContent">
+                <p style="text-align: center; color: var(--text-secondary);">Chargement...</p>
+            </div>
+        </div>
+    </div>
+    <!-- -----------------------  Panel stats connexions  ----------------------------- -->
     <div id="connectionStatsPanel" class="connection-stats-panel">
         <div class="connection-stats-content">
             <div class="connection-stats-header">
@@ -459,8 +543,7 @@
             </div>
         </div>
     </div>
-
-    <!-- Panel stats modifications -->
+    <!-- ------------------------  Panel stats modifications  --------------------------- -->
     <div id="modificationStatsPanel" class="modification-stats-panel">
         <div class="modification-stats-content">
             <div class="modification-stats-header">
@@ -474,7 +557,7 @@
         </div>
     </div>
 
-    <!-- Modal configuration anonymisation -->
+    <!-- ===========================  MODAL CONFIGURATION ANONYMISATION  ============================== -->
     <div id="anonymizationConfigModal" class="modal">
         <div class="modal-content" style="max-width: 500px;">
             <div class="modal-header">🎭 Configuration de l'anonymisation</div>
@@ -532,54 +615,7 @@
         </div>
     </div>
 
-    <!-- Modal options d'export casiers -->
-    <div id="exportOptionsModal" class="modal">
-        <div class="modal-content" style="max-width: 500px;">
-            <div class="modal-header">⬇ Options d'export</div>
-            
-            <form id="exportOptionsForm">
-                <div class="form-group">
-                    <label for="exportFormat">Format</label>
-                    <select id="exportFormat" required>
-                        <option value="csv">CSV (tableur)</option>
-                        <option value="json">JSON (backup complet)</option>
-                    </select>
-                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
-                        JSON inclut les métadonnées d'export
-                    </small>
-                </div>
-                
-                <div class="form-group" id="exportSeparatorGroup">
-                    <label for="exportSeparator">Séparateur CSV</label>
-                    <select id="exportSeparator" required>
-                        <option value=";">Point-virgule (;) - Excel FR</option>
-                        <option value=",">Virgule (,) - Standard</option>
-                        <option value="|">Pipe (|)</option>
-                        <option value=" ">Tabulation</option>
-                    </select>
-                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
-                        Recommandé : point-virgule pour Excel français
-                    </small>
-                </div>
-                
-                <div class="form-group">
-                    <label style="display: flex; align-items: center; cursor: pointer;">
-                        <input type="checkbox" id="exportIncludeEmpty" style="margin-right: 8px; width: auto; cursor: pointer;">
-                        <span>Inclure les casiers vides</span>
-                    </label>
-                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
-                        Par défaut : uniquement les casiers occupés
-                    </small>
-                </div>
-                
-                <div class="modal-footer">
-                    <button type="button" class="btn-secondary" onclick="closeExportOptions()">Annuler</button>
-                    <button type="submit" class="btn-primary">⬇ Télécharger</button>
-                </div>
-            </form>
-        </div>
-    </div>
-
+    <!-- ===========================  MODAL IMPRESSION ETIQUETTES  ============================== -->
     <!-- Modal impression étiquettes -->
     <div id="labelPrintModal" class="modal">
         <div class="modal-content" style="max-width: 600px;">
@@ -600,9 +636,6 @@
                         <option value="all">Tous les casiers occupés</option>
                         <option value="zone">Tous les casiers occupés de la zone ...</option>
                         <option value="range">Tous les casiers occupés dans la plage de numéros...</option>
-                        <option value="marked">🔖 Casiers marqués uniquement</option>
-                        <option value="stup">💊 Casiers avec stupéfiants</option>
-                        <option value="stup">ℹ️ Casiers avec IDEL</option>
                     </select>
                 </div>
                 
@@ -623,6 +656,24 @@
                         <label>Au casier</label>
                         <input type="text" id="labelRangeEnd" placeholder="Ex: N75" oninput="updateLabelPreview()">
                     </div>
+                </div>
+                
+                <!-- NOUVEAU : Filtre par marqueurs -->
+                <div class="form-group">
+                    <label>Filtrer par marqueur (optionnel)</label>
+                    <select id="labelMarkerFilter" onchange="updateLabelPreview()">
+                        <option value="none">Aucun filtre</option>
+                        <option value="marked">🔖 Casiers marqués uniquement</option>
+                        <option value="hosp">🏥 Hospitalisations uniquement</option>
+                        <option value="stup">💊 Stupéfiants uniquement</option>
+                        <option value="idel">ℹ️ IDEL/AS uniquement</option>
+                        <option value="frigo">❄️ Frigo uniquement</option>
+                        <option value="pca">💉 PCA uniquement</option>
+                        <option value="meopa">⛽️ MEOPA uniquement</option>
+                    </select>
+                    <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
+                        Ce filtre s'applique en plus de la sélection ci-dessus
+                    </small>
                 </div>
                 
                 <div>
@@ -670,7 +721,8 @@
             </div>
         </div>
     </div>
-    <!-- Modal impression étiquette unique -->
+
+    <!-- ===========================  MODAL IMPRESSION ETIQUETTE UNIQUE ============================== -->
     <div id="singleLabelModal" class="modal">
         <div class="modal-content" style="max-width: 400px;">
             <div class="modal-header">🏷️ Imprimer étiquettes</div>
@@ -702,7 +754,8 @@
             </div>
         </div>
     </div>
-    <!-- Modal Hospitalisation -->
+
+    <!-- ===========================  MODAL HOSPITALISATION ============================== -->
     <div id="hospitalisationModal" class="modal">
         <div class="modal-content" style="max-width: 400px;">
             <div class="modal-header">🏥 Hospitalisation</div>
@@ -739,7 +792,7 @@
         </div>
     </div>
 
-    <!-- Modal Consultation Casiers -->
+    <!-- ===========================  MODAL CONSULTATION CASIERS ============================== -->
     <div id="consultationCasiersModal" class="modal">
         <div class="modal-content" style="max-width: 1200px; width: 95%;">
             <div class="modal-header" style="display: flex; justify-content: space-between; align-items: center;">

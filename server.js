@@ -473,9 +473,9 @@ function initializeDatabase() {
       if (err) console.error('Erreur création table casiers:', err);
       else {
         // temporaire, à retirer une fois l'appli stabilisée
-        db.run(`ALTER TABLE lockers ADD COLUMN frigo BOOLEAN DEFAULT ''`, () => {});
-        db.run(`ALTER TABLE lockers ADD COLUMN pca BOOLEAN DEFAULT ''`, () => {});
-        db.run(`ALTER TABLE lockers ADD COLUMN meopa BOOLEAN DEFAULT ''`, () => {});
+        db.run(`ALTER TABLE lockers ADD COLUMN frigo BOOLEAN DEFAULT 0`, () => {});
+        db.run(`ALTER TABLE lockers ADD COLUMN pca BOOLEAN DEFAULT 0`, () => {});
+        db.run(`ALTER TABLE lockers ADD COLUMN meopa BOOLEAN DEFAULT 0`, () => {});
         if (!isProduction && VERBOSE) console.log('✓ Table casiers créée/vérifiée');
       }
     });
@@ -1275,7 +1275,7 @@ app.post('/api/lockers', requireAuth, csrfProtection, async (req, res) => {
       });
     }
     
-    const { number, zone, name, firstName, code, birthDate, recoverable, comment, stup, idel, expectedVersion } = req.body;
+    const { number, zone, name, firstName, code, birthDate, recoverable, comment, stup, idel, frigo, pca, meopa, expectedVersion } = req.body;
 
     // Vérifier que la zone existe dans la config
     const zoneExists = ZONES_CONFIG.some(z => z.name === zone);
@@ -1325,10 +1325,10 @@ app.post('/api/lockers', requireAuth, csrfProtection, async (req, res) => {
 
     await dbRun(
       `UPDATE lockers 
-       SET zone = ?, occupied = 1, recoverable = ?, name = ?, firstName = ?, code = ?, birthDate = ?, comment = ?, stup = ?, idel = ?,
+       SET zone = ?, occupied = 1, recoverable = ?, name = ?, firstName = ?, code = ?, birthDate = ?, comment = ?, stup = ?, idel = ?, frigo = ?, pca = ?, meopa = ?,
            updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
        WHERE number = ? AND version = ?`,
-      [zone, isRecoverable, name, firstName, code, birthDate, comment || '', stup ? 1 : 0, idel ? 1 : 0, userName, number, expectedVersion || existingLocker.version]
+      [zone, isRecoverable, name, firstName, code, birthDate, comment || '', stup ? 1 : 0, idel ? 1 : 0, frigo ? 1 : 0, pca ? 1 : 0, meopa ? 1 : 0, userName, number, expectedVersion || existingLocker.version]
     );
 
     // Vérifier que la mise à jour a bien eu lieu
@@ -2272,6 +2272,18 @@ app.post('/api/lockers/import', requireAuth, importLimiter, csrfProtection, asyn
         let lineIndex = 0;
         
         const db = getDB();
+        
+        // Définition de la requête SQL d'insertion/remplacement (UPSERT)
+        // Utilise INSERT OR REPLACE INTO pour mettre à jour si la clé unique (number, zone) existe, ou insérer sinon.
+        // Assurez-vous que les colonnes correspondent à votre table `lockers`.
+        const sql = `
+            INSERT OR REPLACE INTO lockers (
+                number, zone, name, firstName, code, birthDate, recoverable,
+                hosp, hospDate, comment, marque, idel, stup, frigo, PCA, MEOPA,
+                updatedAt
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'))
+        `;
+        
         db.serialize(() => { 
             db.run('BEGIN TRANSACTION;');
             
@@ -2280,7 +2292,7 @@ app.post('/api/lockers/import', requireAuth, importLimiter, csrfProtection, asyn
                 
                 // Si le mode est 'update' (par exemple), et les clés de mapping sont absentes, on skippe
                 if (mode === 'update' && (!row.number || !row.zone)) {
-                    skipped++; // Ou une autre catégorie de skip
+                    skipped++;
                     continue;
                 }
 
@@ -2306,27 +2318,48 @@ app.post('/api/lockers/import', requireAuth, importLimiter, csrfProtection, asyn
                     
                     // DONNÉES VALIDÉES PRÊTES À L'INSERTION/MISE À JOUR
                     const validatedLocker = validationResult.data;
-
-                    // ----------------------------------------------------
-                    // !!! Votre logique SQL d'INSERT ou UPDATE doit être ici !!!
-                    // ----------------------------------------------------
                     
-                    // Exemple minimal de ce que pourrait être votre logique:
-                    // db.run('INSERT OR REPLACE INTO lockers (number, zone, ...) VALUES (?, ?, ...)', 
-                    //     [validatedLocker.number, validatedLocker.zone, ...], 
-                    //     function(err) {
-                    //         if (err) {
-                    //             throw new Error(err.message); // Capturé par le catch
-                    //         }
-                    //         imported++;
-                    //     }
-                    // );
+                    // Transformation pour la base de données (SQLite ne supporte pas le booléen natif)
+                    const isRecoverable = validatedLocker.recoverable ? 1 : 0;
+                    const isHosp = validatedLocker.hosp ? 1 : 0;
+                    const isIdel = validatedLocker.idel ? 1 : 0;
+                    const isStup = validatedLocker.stup ? 1 : 0;
+                    const isFrigo = validatedLocker.frigo ? 1 : 0;
+                    const isPCA = validatedLocker.PCA ? 1 : 0;
+                    const isMEOPA = validatedLocker.MEOPA ? 1 : 0;
                     
-                    // Si vous ne mettez pas la logique d'insertion réelle, assurez-vous de simuler l'incrémentation:
-                    imported++;
-
+                    // Paramètres pour la requête SQL
+                    const params = [
+                        validatedLocker.number,
+                        validatedLocker.zone,
+                        validatedLocker.name,
+                        validatedLocker.firstName,
+                        validatedLocker.code,
+                        validatedLocker.birthDate,
+                        isRecoverable,
+                        isHosp,
+                        validatedLocker.hospDate,
+                        validatedLocker.comment,
+                        validatedLocker.marque,
+                        isIdel,
+                        isStup,
+                        isFrigo,
+                        isPCA,
+                        isMEOPA,
+                        // Note: updatedAt est mis à jour par 'datetime('now')' directement dans le SQL
+                    ];
+                    
+                    // Exécution de l'UPSERT (INSERT OR REPLACE)
+                    db.run(sql, params, function(err) {
+                        if (err) {
+                            // Erreur SQL
+                            throw new Error(`SQLITE Error: ${err.message}`); 
+                        }
+                        imported++;
+                    });
+                    
                 } catch (err) {
-                    // Erreur lors de l'exécution SQL ou d'une validation interne (hors Zod)
+                    // Erreur lors de l'exécution SQL ou d'une validation interne
                     errors++;
                     console.error('Erreur SQL ou autre dans l\'import de la ligne:', lineIndex, err.message);
                     detailedErrors.push({
@@ -2353,7 +2386,7 @@ app.post('/api/lockers/import', requireAuth, importLimiter, csrfProtection, asyn
                     imported, 
                     skipped,
                     errors, 
-                    invalidIPP, // Variable potentiellement non utilisée ou non gérée dans cet extrait
+                    invalidIPP, // Conservez-le si vous avez une autre logique de validation IPP ailleurs
                     validationErrors, 
                     total: parsedData.length,
                     detailedErrors // Le tableau détaillé est renvoyé au client
@@ -2366,158 +2399,255 @@ app.post('/api/lockers/import', requireAuth, importLimiter, csrfProtection, asyn
         console.error('Erreur critique dans /api/lockers/import (try/catch externe):', err);
         let msg = err.message || 'Erreur inconnue lors du traitement.';
         if (msg.includes('JSON')) { msg = "Le contenu JSON est mal formé."; }
-        if (msg.includes('csv')) { msg = "Le contenu CSV n'a pas pu être analysé correctement. Vérifiez le format ou le séparateur."; }
+        if (msg.includes('csv') && err.message.includes('csv-parse')) { 
+            msg = "Le contenu CSV n'a pas pu être analysé. Vérifiez le format ou le séparateur."; 
+        } else if (msg.includes('csv')) {
+            msg = "Erreur de parsing CSV critique.";
+        }
         
         res.status(400).json({ error: `Erreur dans le contenu fourni : ${msg}` });
     }
 });
 
-// POST import CSV casiers
+// POST import CSV casiers - VERSION REFACTORISÉE
+// POST import CSV casiers - VERSION REFACTORISÉE
 app.post('/api/import', requireAuth, importLimiter, csrfProtection, async (req, res) => {
   try {
-    const { data, mode, separator, rawContent } = req.body;  // AJOUTER separator et rawContent
+    const { rawContent, mode, separator } = req.body;
     
-    let parsedData = [];
+    if (!rawContent) {
+      return res.status(400).json({ error: 'Contenu CSV requis' });
+    }
     
-    // Si rawContent fourni, parser avec séparateur
-    if (rawContent) {
-      const usedSeparator = separator === 'auto' || !separator 
-        ? detectCSVSeparator(rawContent) 
-        : separator;
-      
-      if (!isProduction && VERBOSE) {
-        console.log(`📥 Import casiers CSV`);
-        console.log(`   Séparateur: "${usedSeparator === '\t' ? 'TAB' : usedSeparator}" ${separator === 'auto' ? '(auto-détecté)' : ''}`);
+    // Détecter le séparateur
+    const usedSeparator = separator === 'auto' || !separator 
+      ? detectCSVSeparator(rawContent) 
+      : separator;
+    
+    if (VERBOSE > 0) {
+      console.log(`📥 Import casiers CSV`);
+      console.log(`   Séparateur: "${usedSeparator === '\t' ? 'TAB' : usedSeparator}"`);
+      console.log(`   Mode: ${mode || 'update'}`);
+    }
+    
+    const lines = rawContent.split('\n').filter(line => line.trim());
+    
+    if (lines.length < 2) {
+      return res.status(400).json({ error: 'Fichier vide ou invalide (moins de 2 lignes)' });
+    }
+    
+    // Parser les headers
+    const headers = parseCsvLine(lines[0], usedSeparator);
+    const dataLines = lines.slice(1);
+    
+    if (VERBOSE > 0) {
+      console.log(`   Headers: ${headers.join(', ')}`);
+      console.log(`   Lignes de données: ${dataLines.length}`);
+    }
+    
+    // Valider les colonnes requises
+    const requiredColumns = ['number', 'zone'];
+    const headerLower = headers.map(h => h.toLowerCase().trim());
+    const missingColumns = requiredColumns.filter(col => 
+      !headerLower.some(h => h.includes(col))
+    );
+    
+    if (missingColumns.length > 0) {
+      return res.status(400).json({ 
+        error: `Colonnes manquantes: ${missingColumns.join(', ')}`,
+        headers: headers,
+        expected: ['number', 'zone', 'name', 'firstName', 'code', 'birthDate', 'recoverable', 'marque', 'hosp', 'hospDate', 'stup', 'idel', 'comment']
+      });
+    }
+    
+    // Mapper les colonnes (flexible sur les noms)
+    const columnMap = {};
+    const expectedColumns = {
+      'number': ['number', 'numéro', 'n°', 'casier'],
+      'zone': ['zone'],
+      'name': ['name', 'nom'],
+      'firstName': ['firstname', 'prénom', 'prenom'],
+      'code': ['code', 'ipp', 'n°ipp'],
+      'birthDate': ['birthdate', 'ddn', 'date de naissance', 'naissance'],
+      'recoverable': ['recoverable', 'récupérable', 'recuperable'],
+      'marque': ['marque', 'marqué', 'marked'],
+      'hosp': ['hosp', 'hospitalisation', 'hospi'],
+      'hospDate': ['hospdate', 'date hosp', 'date hospitalisation'],
+      'stup': ['stup', 'stupéfiants', 'stupefiants'],
+      'idel': ['idel'],
+      'frigo': ['frigo'],
+      'pca': ['pca'],
+      'meopa': ['meopa'],
+      'comment': ['comment', 'commentaire', 'remarque']
+    };
+    
+    // Trouver les index des colonnes
+    for (const [key, variants] of Object.entries(expectedColumns)) {
+      const index = headerLower.findIndex(h => 
+        variants.some(v => h.includes(v))
+      );
+      if (index !== -1) {
+        columnMap[key] = index;
       }
-      
-      const lines = rawContent.split('\n').filter(line => line.trim());
-      
-      if (lines.length < 2) {
-        return res.status(400).json({ error: 'Fichier vide ou invalide' });
-      }
-      
-      const headers = parseCsvLine(lines[0], usedSeparator);
-      const dataLines = lines.slice(1);
-      
-      parsedData = dataLines.map(line => {
-        const values = parseCsvLine(line, usedSeparator);
-        if (!values || values.length < 6) return null;
-
-/* ## Format CSV attendu (à documenter)
-Colonne A : N° Casier (ex: N01, S42)
-Colonne B : Zone (ex: NORD, SUD)
-Colonne C : Nom
-Colonne D : Prénom
-Colonne E : N°IPP
-Colonne F : Date Naissance (format YYYY-MM-DD ou DD/MM/YYYY)
-Colonne G : Récupérable (0 ou 1)
-Colonne H : Marque (0 ou 1)
-Colonne I : Hospitalisation (0 ou 1)
-Colonne J : Date Hospi (YYYY-MM-DD ou vide)
-Colonne K : Stupéfiants (0 ou 1)
-Colonne L : IDEL (0 ou 1)
-Colonne M : Commentaire */        
-
-        return {
-          number: values[0]?.trim() || '',
-          zone: values[1]?.trim() || '',
-          name: values[2]?.trim() || '',
-          firstName: values[3]?.trim() || '',
-          code: values[4]?.trim() || '',
-          birthDate: values[5]?.trim() || '',
-          recoverable: values[6] ? (values[6].trim() === '1') : false,
-          marque: values[7] ? (values[7].trim() === '1') : false,
-          hosp: values[8] ? (values[8].trim() === '1') : false,
-          hospDate: values[9]?.trim() || '',
-          stup: values[10] ? (values[10].trim() === '1') : false,
-          idel: values[11] ? (values[11].trim() === '1') : false,
-          comment: values[12]?.trim() || ''
+    }
+    
+    if (VERBOSE > 0) {
+      console.log('   Mapping colonnes:', columnMap);
+    }
+    
+    // Parser les données
+    const parsedData = [];
+    let parseErrors = 0;
+    
+    for (let i = 0; i < dataLines.length; i++) {
+      try {
+        const values = parseCsvLine(dataLines[i], usedSeparator);
+        
+        if (values.length < 2) {
+          parseErrors++;
+          console.warn(`   Ligne ${i + 2} ignorée: trop peu de colonnes (${values.length})`);
+          continue;
+        }
+        
+        const row = {
+          number: columnMap.number !== undefined ? values[columnMap.number]?.trim() : '',
+          zone: columnMap.zone !== undefined ? values[columnMap.zone]?.trim() : '',
+          name: columnMap.name !== undefined ? values[columnMap.name]?.trim() : '',
+          firstName: columnMap.firstName !== undefined ? values[columnMap.firstName]?.trim() : '',
+          code: columnMap.code !== undefined ? values[columnMap.code]?.trim() : '',
+          birthDate: columnMap.birthDate !== undefined ? values[columnMap.birthDate]?.trim() : '',
+          recoverable: columnMap.recoverable !== undefined ? (values[columnMap.recoverable]?.trim() === '1') : false,
+          marque: columnMap.marque !== undefined ? (values[columnMap.marque]?.trim() === '1') : false,
+          hosp: columnMap.hosp !== undefined ? (values[columnMap.hosp]?.trim() === '1') : false,
+          hospDate: columnMap.hospDate !== undefined ? values[columnMap.hospDate]?.trim() : '',
+          stup: columnMap.stup !== undefined ? (values[columnMap.stup]?.trim() === '1') : false,
+          idel: columnMap.idel !== undefined ? (values[columnMap.idel]?.trim() === '1') : false,
+          frigo: columnMap.frigo !== undefined ? (values[columnMap.frigo]?.trim() === '1') : false,
+          pca: columnMap.pca !== undefined ? (values[columnMap.pca]?.trim() === '1') : false,
+          meopa: columnMap.meopa !== undefined ? (values[columnMap.meopa]?.trim() === '1') : false,
+          comment: columnMap.comment !== undefined ? values[columnMap.comment]?.trim() : ''
         };
-      }).filter(item => item !== null);
-      
-    } else {
-      return res.status(400).json({ error: 'Données invalides' });
+        
+        // Valider avec Zod
+        const validationResult = importCasierSchema.safeParse(row);
+        if (!validationResult.success) {
+          parseErrors++;
+          console.warn(`   Ligne ${i + 2} invalide:`, validationResult.error.errors[0].message);
+          continue;
+        }
+        
+        parsedData.push(validationResult.data);
+        
+      } catch (err) {
+        parseErrors++;
+        console.error(`   Erreur ligne ${i + 2}:`, err.message);
+      }
     }
     
     if (parsedData.length === 0) {
-      return res.status(400).json({ error: 'Aucune donnée valide' });
+      return res.status(400).json({ 
+        error: 'Aucune donnée valide après parsing',
+        parseErrors: parseErrors,
+        totalLines: dataLines.length
+      });
     }
-
+    
+    if (VERBOSE > 0) {
+      console.log(`   ✓ Données valides: ${parsedData.length}`);
+      console.log(`   ✗ Erreurs parsing: ${parseErrors}`);
+    }
+    
+    // Obtenir le nom d'utilisateur
     const token = req.cookies.auth_token;
     const session = sessions.get(token);
     const userName = session?.userName || 'Inconnu';
-
+    
     // MODE REPLACE : Libérer tous les casiers d'abord
     if (mode === 'replace') {
-      console.log('🗑️ Mode remplacement : libération de tous les casiers...');
+      if (VERBOSE > 0) console.log('🗑️ Mode remplacement : libération de tous les casiers...');
+      
       await dbRun(
         `UPDATE lockers 
          SET occupied = 0, recoverable = 0, name = '', firstName = '', code = '', birthDate = '', comment = '',
-             marque = 0, hosp = 0, hospDate = '', stup = 0,
+             marque = 0, hosp = 0, hospDate = '', stup = 0, idel = 0, frigo = 0, pca = 0, meopa = 0,
              updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
          WHERE occupied = 1`,
         [userName]
       );
+      
       await recordHistory('ALL', 'CLEAR_BEFORE_IMPORT', userName, 'admin', 'Tous les casiers libérés avant import');
     }
-
+    
+    // Insérer les données
     let imported = 0;
     let errors = 0;
     let invalidIPP = 0;
-    let validationErrors = 0;
-
+    let notFound = 0;
+    
     for (const row of parsedData) {
       try {
-        // VALIDATION ZOD
-        const validationResult = importCasierSchema.safeParse(row);
-        if (!validationResult.success) {
-          console.warn('Ligne invalide ignorée:', validationResult.error.errors[0].message);
-          validationErrors++;
+        const { number, zone, name, firstName, code, birthDate, recoverable, comment, marque, hosp, hospDate, stup, idel, frigo, pca, meopa } = row;
+        
+        // Vérifier que le casier existe
+        const locker = await dbGet('SELECT * FROM lockers WHERE number = ?', [number]);
+        
+        if (!locker) {
+          notFound++;
+          console.warn(`   Casier ${number} non trouvé, ignoré`);
           continue;
         }
         
-        const { number, zone, name, firstName, code, birthDate, recoverable, comment, marque, hosp, hospDate, stup } = validationResult.data;
-        
-        const locker = await dbGet('SELECT * FROM lockers WHERE number = ?', [number]);
-        
-        if (locker) {
-          let isRecoverable = recoverable ? 1 : 0;
-          if (code) {
-            const client = await dbGet('SELECT * FROM clients WHERE ipp = ?', [code]);
-            if (!client) {
-              isRecoverable = 1;
-              invalidIPP++;
-            }
+        // Vérifier l'IPP dans la base clients
+        let isRecoverable = recoverable ? 1 : 0;
+        if (code) {
+          const client = await dbGet('SELECT * FROM clients WHERE ipp = ?', [code]);
+          if (!client) {
+            isRecoverable = 1;
+            invalidIPP++;
           }
-          
-          await dbRun(
-            `UPDATE lockers 
-             SET zone = ?, occupied = 1, recoverable = ?, name = ?, firstName = ?, code = ?, birthDate = ?, comment = ?,
-                 marque = ?, hosp = ?, hospDate = ?, stup = ?,
-                 updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
-             WHERE number = ?`,
-            [zone, isRecoverable, name, firstName, code, birthDate, comment || '', 
-             marque ? 1 : 0, hosp ? 1 : 0, hospDate || '', stup ? 1 : 0, userName, number]
-          );
-          imported++;
-        } else {
-          errors++;
         }
+        
+        // Mettre à jour le casier
+        await dbRun(
+          `UPDATE lockers 
+           SET zone = ?, occupied = 1, recoverable = ?, name = ?, firstName = ?, code = ?, birthDate = ?, comment = ?,
+               marque = ?, hosp = ?, hospDate = ?, stup = ?, idel = ?, frigo = ?, pca = ?, meopa = ?,
+               updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
+           WHERE number = ?`,
+          [zone, isRecoverable, name, firstName, code, birthDate, comment || '', 
+           marque ? 1 : 0, hosp ? 1 : 0, hospDate || '', stup ? 1 : 0, idel ? 1 : 0, 
+           frigo ? 1 : 0, pca ? 1 : 0, meopa ? 1 : 0, userName, number]
+        );
+        
+        imported++;
+        
       } catch (err) {
-        console.error('Erreur import ligne:', err);
         errors++;
+        console.error('   Erreur insertion casier:', err.message);
       }
     }
-
+    
+    if (VERBOSE > 0) {
+      console.log(`✓ Import terminé:`);
+      console.log(`  - Importés: ${imported}`);
+      console.log(`  - Non trouvés: ${notFound}`);
+      console.log(`  - IPP invalides: ${invalidIPP}`);
+      console.log(`  - Erreurs: ${errors}`);
+      console.log(`  - Erreurs parsing: ${parseErrors}`);
+    }
+    
     res.json({
       success: true,
       imported: imported,
+      notFound: notFound,
       errors: errors,
       invalidIPP: invalidIPP,
-      validationErrors: validationErrors,
-      total: parsedData.length
+      validationErrors: parseErrors,
+      total: dataLines.length
     });
+    
   } catch (err) {
+    console.error('Erreur import casiers:', err);
     res.status(500).json({ error: err.message });
   }
 });

@@ -21,9 +21,6 @@ let NB_MAX_ANON_NOM = 3;   // nombre de caractères gardés pour le prénom à l
 let NB_MAX_CAR_NOM = 20;   // nombre de caractères max affichés pour le nom à l'écran
 let NB_MAX_CAR_PRENOM = 15;    // nombre de caractères max affichés pour le nom à l'écran
 
-let selectedExportFormat = 'csv';
-let selectedExportSeparator = ';';
-let selectedExportIncludeEmpty = false;
 let consultationData = [];
 let consultationSortColumn = 'name';
 let consultationSortDirection = 'asc';
@@ -598,22 +595,29 @@ function generateContentSections() {
 
 // ============ UTILITAIRES D'ANONYMISATION ===============
 
-// non utilisée pour le moment
-function anonMaxName(name) {
-    const hash = crypto.createHash('md5').update(name).digest('hex');
-    return `${name.charAt(0)}***${hash.substring(0, ANONYMIZE_ENABLED ? 3 : 20)}`; // "D***a4f"
+// PascalCase (UpperCamelCase) 1er caractère en majuscule, le reste en minuscules
+function PascalCase(str) {
+  if (!str) return '';
+  return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 }
 
-function anonymizeName(name) {
+// Anonymisation du nom de famille
+function anonymizeName(name, force = false, crypto = false) {
     if (!name) return name;
-    const maxLength = ANONYMIZE_ENABLED ? (NB_MAX_ANON_NOM || 3) : (NB_MAX_CAR_NOM || 20);
-    return name.substring(0, maxLength).toUpperCase();
+    if (crypto) {
+        const hash = crypto.createHash('md5').update(name).digest('hex');
+        return `${name.charAt(0)}***${hash.substring(0, (ANONYMIZE_ENABLED || force) ? 3 : 20)}`; // "D***a4f"
+    } else {
+        const maxLength = (ANONYMIZE_ENABLED || force) ? (NB_MAX_ANON_NOM || 3) : (NB_MAX_CAR_NOM || 20);
+        return name.substring(0, maxLength).toUpperCase();
+    }
 }
 
-function anonymizeFirstName(firstName) {
+// Anonymisation du prénom
+function anonymizeFirstName(firstName, force = false) {
     if (!firstName) return firstName;
-    const maxLength = ANONYMIZE_ENABLED ? (NB_MAX_ANON_PRENOM || 2) : (NB_MAX_CAR_PRENOM || 15);
-    return firstName.substring(0, maxLength);
+    const maxLength = (ANONYMIZE_ENABLED || force) ? (NB_MAX_ANON_PRENOM || 2) : (NB_MAX_CAR_PRENOM || 15);
+    return PascalCase(firstName.substring(0, maxLength));
 }
 
 
@@ -2498,6 +2502,9 @@ function openModalEdit(lockerNumber) {
     document.getElementById('recoverable').checked = locker.recoverable || false;
     document.getElementById('stup').checked = locker.stup || false;
     document.getElementById('idel').checked = locker.stup || false;
+    document.getElementById('frigo').checked = locker.frigo || false;
+    document.getElementById('pca').checked = locker.pca || false;
+    document.getElementById('meopa').checked = locker.meopa || false;
     document.getElementById('statusMessage').innerHTML = '';
     
     populateLockerSelect(locker.zone, lockerNumber);
@@ -2534,6 +2541,9 @@ async function handleFormSubmit(e) {
         const comment = document.getElementById('comment').value;
         const stup = document.getElementById('stup').checked;
         const idel = document.getElementById('idel').checked;
+        const frigo = document.getElementById('frigo')?.checked || false;
+        const pca = document.getElementById('pca')?.checked || false;
+        const meopa = document.getElementById('meopa')?.checked || false;
 
         // Détecter si le numéro de casier a changé
         const isLockerChanged = EDITING_LOCKER_NUMBER && EDITING_LOCKER_NUMBER !== newLockerNumber;
@@ -2558,7 +2568,7 @@ async function handleFormSubmit(e) {
                     const oldVersion = EDITING_LOCKER_VERSION;
                     EDITING_LOCKER_VERSION = null;  // Désactiver la vérification
                     
-                    await saveLocker(newLockerNumber, zone, recoverable, comment, stup, idel);
+                    await saveLocker(newLockerNumber, zone, recoverable, comment, stup, idel, frigo, pca, meopa);
                     
                     // Restaurer la version pour la libération
                     EDITING_LOCKER_VERSION = oldVersion;
@@ -2583,7 +2593,7 @@ async function handleFormSubmit(e) {
                     try {
                         // Sauvegarder SANS vérification de version
                         EDITING_LOCKER_VERSION = null;
-                        await saveLocker(newLockerNumber, zone, recoverable, comment, stup, idel);
+                        await saveLocker(newLockerNumber, zone, recoverable, comment, stup, idel, frigo, pca, meopa);
                         closeModal();
                         loadData();
                         showStatus(`✓ Nouveau casier ${newLockerNumber} créé (${oldNumber} toujours occupé)`, 'success');
@@ -2596,7 +2606,7 @@ async function handleFormSubmit(e) {
         } else {
             // Pas de changement de numéro, comportement normal avec vérification de version
             try {
-                await saveLocker(newLockerNumber, zone, recoverable, comment, stup, idel);
+                await saveLocker(newLockerNumber, zone, recoverable, comment, stup, idel, frigo, pca, meopa);
                 closeModal();
                 loadData();
                 
@@ -2668,7 +2678,12 @@ function releaseLocker(lockerNumber) {
 }
 
 // --- Enregistrer un casier
-async function saveLocker(lockerNumber, zone, recoverable, comment, stup, idel) {
+async function saveLocker(lockerNumber, zone, recoverable, comment, stup, idel, frigo, pca, meopa) {
+
+    // Log pour debug
+    console.log('saveLocker appelé avec:', {
+        lockerNumber, zone, recoverable, comment, stup, idel, frigo, pca, meopa
+    });
 
     const bodyData = {
         number: lockerNumber,
@@ -2680,8 +2695,13 @@ async function saveLocker(lockerNumber, zone, recoverable, comment, stup, idel) 
         comment: comment,
         recoverable: recoverable,
         stup: stup,
-        idel: idel
+        idel: idel,
+        frigo: frigo,
+        pca: pca,
+        meopa: meopa
     };
+
+    console.log('bodyData:', bodyData);
 
     // Ajouter expectedVersion seulement si défini (pas null)
     if (EDITING_LOCKER_VERSION !== null) {
@@ -2696,10 +2716,11 @@ async function saveLocker(lockerNumber, zone, recoverable, comment, stup, idel) 
         },
         credentials: 'include',
         body: JSON.stringify(bodyData)
-    });    
+    });  
 
     if (!response.ok) {
         const error = await response.json();
+        //console.error('Erreur serveur:', error);
         throw new Error(error.error || 'Erreur ' + response.status);
     }
     return response.json();
@@ -2736,6 +2757,10 @@ function showStatus(msg, type) {
 // ======================== EXPORT ==================================
 
 // ============ MODAL EXPORT UNIFIÉ ============
+
+let selectedExportFormat = 'csv';
+let selectedExportSeparator = ';';
+let selectedExportIncludeEmpty = false;
 
 // Fonction utilitaire
 function downloadFile(content, filename, mimeType) {
@@ -2794,7 +2819,7 @@ function closeExportOptions() {
 
 // Afficher (CSV) ou masquer (JSON) le champ séparateur
 function updateExportSeparatorVisibility() {
-    const separatorGroup = document.getElementById('exportSeparatorGroup');
+    const separatorGroup = document.getElementById('exportLockersSeparatorGroup');
     if (separatorGroup) {
         separatorGroup.style.display = selectedExportFormat === 'csv' ? 'block' : 'none';
     }
@@ -2916,7 +2941,7 @@ async function showLockersImportOptions() {
 
 // Afficher (CSV) ou masquer (JSON) le champ séparateur
 function updateSeparatorVisibility() {
-    const separatorGroup = document.getElementById('lockersImportSeparatorGroup');
+    const separatorGroup = document.getElementById('importLockersSeparatorGroup');
     if (separatorGroup) {
         separatorGroup.style.display = selectedLockersImportFormat === 'csv' ? 'block' : 'none';
     }
@@ -3069,6 +3094,7 @@ async function handleLockersFileSelected(e) {
 }
 
 // Parser une ligne CSV avec séparateur personnalisé et échappement des guillemets (copie de server.js)
+// TODO: éviter le doublon server.js, utiliser la librairie csv
 function parseCsvLine(line, separator = ',') {
     const result = [];
     let current = '';
@@ -3411,9 +3437,10 @@ async function clearLockersDatabase() {
         console.error('Erreur libération casiers:', err);
         alert('❌ Erreur : ' + err.message);
     }
+
 }
 
-// ============ MARQUAGE/DÉMARQUAGE GROUPÉ DES RÉSULTATS ============
+// ============ (DÉ)MARQUAGE GROUPÉ DES RÉSULTATS ============
 
 async function toggleMarkSearchResults() {
     if (!isEditAllowed()) return;
@@ -3611,7 +3638,7 @@ function checkIfResultsMarked() {
     }
 }
 
-// ============ MODAL IMPORT CLIENTS ============
+// =============== MODAL IMPORT CLIENTS =====================
 
 // Variables globales pour l'import
 let selectedImportFormat = null;
@@ -3697,6 +3724,7 @@ function closeImportOptions() {
     document.getElementById('importOptionsModal').classList.remove('active');
 }
 
+// Sélecteur de fichiers
 function selectFileForImport() {
     // Fermer le modal d'options
     closeImportOptions();
@@ -4112,7 +4140,7 @@ function closeClientsStats() {
 // ============ MODAL CONSULTATION MULTIZONES DES CASIERS  ============
 
 // Ouvrir le modal de consultation
-function openConsultationCasiers(filterType = 'idel') {
+function openConsultationCasiers(filterType = 'all') {
     const modal = document.getElementById('consultationCasiersModal');
     
     // Remplir le sélecteur de zones dynamiquement
@@ -5834,6 +5862,7 @@ function updateLabelPreview() {
     }
 }
 
+// Réglages du modal
 function showLabelPrintDialog() {
     const modal = document.getElementById('labelPrintModal');
     
@@ -5846,22 +5875,23 @@ function showLabelPrintDialog() {
     // Réinitialiser
     document.getElementById('labelFormat').value = '3x9';
     document.getElementById('labelSelection').value = 'all';
+    document.getElementById('labelMarkerFilter').value = 'none'; // NOUVEAU
     document.getElementById('labelRepetition').value = '1';
     document.getElementById('zoneSelector').style.display = 'none';
     document.getElementById('rangeSelector').style.display = 'none';
-    // Pré-cocher selon ANONYMIZE_ENABLED
-    document.getElementById('labelAnonymize').checked = ANONYMIZE_ENABLED;    
-    //document.getElementById('labelHomonymes').checked = false;
-    
+    document.getElementById('labelAnonymize').checked = ANONYMIZE_ENABLED;
 
     updateLabelPreview();
     modal.classList.add('active');
 }
 
+// Sélectionner les casiers
 function getSelectedLockersForLabels() {
     const selection = document.getElementById('labelSelection').value;
+    const markerFilter = document.getElementById('labelMarkerFilter').value;
     let lockers = DATA.filter(l => l.occupied);
     
+    // Filtre de sélection (tous/zone/plage)
     if (selection === 'zone') {
         const zone = document.getElementById('labelZone').value;
         lockers = lockers.filter(l => l.zone === zone);
@@ -5875,12 +5905,33 @@ function getSelectedLockersForLabels() {
                 return num >= start && num <= end;
             });
         }
-    } else if (selection === 'marked') {
-        lockers = lockers.filter(l => l.marque);
-    } else if (selection === 'stup') { 
-        lockers = lockers.filter(l => l.stup);
-    } else if (selection === 'idel') { 
-        lockers = lockers.filter(l => l.idel);
+    }
+    
+    // NOUVEAU : Filtre par marqueur (s'applique après)
+    if (markerFilter !== 'none') {
+        switch(markerFilter) {
+            case 'marked':
+                lockers = lockers.filter(l => l.marque);
+                break;
+            case 'hosp':
+                lockers = lockers.filter(l => l.hosp);
+                break;
+            case 'stup':
+                lockers = lockers.filter(l => l.stup);
+                break;
+            case 'idel':
+                lockers = lockers.filter(l => l.idel);
+                break;
+            case 'frigo':
+                lockers = lockers.filter(l => l.frigo);
+                break;
+            case 'pca':
+                lockers = lockers.filter(l => l.pca);
+                break;
+            case 'meopa':
+                lockers = lockers.filter(l => l.meopa);
+                break;
+        }
     }
     
     // Trier par numéro
@@ -6140,12 +6191,16 @@ function generateLabelHTML(lockers, format, anonymize) {
             if (j < pageLockers.length) {
                 const locker = pageLockers[j];
                 const name = anonymizeNameLocal(locker.name);
-                const firstName = anonymizeFirstNameLocal(locker.firstName);               console.log(`  Casier ${locker.number}: "${locker.name}" → "${name}"`);
-                //console.log(`  Prénom: "${locker.firstName}" → "${firstName}"`);
+                const firstName = anonymizeFirstNameLocal(locker.firstName);
                 const zoneColor = zoneColors[locker.zone] || '#667eea';
 
                 const isHomonym = homonymNumbers.has(locker.number);
                 const homonymStyle = isHomonym ? 'text-decoration: underline wavy #9333ea;' : '';
+
+                // NOUVEAU : Icônes pour IDEL et Frigo
+                const idelIcon = locker.idel ? '<span style="font-size: 10pt; margin-left: 2mm;">ℹ️</span>' : '';
+                const frigoIcon = locker.frigo ? '<span style="font-size: 10pt; margin-left: 2mm;">❄️</span>' : '';
+                const markers = idelIcon + frigoIcon;
 
                 html += `
                     <div class="label">
@@ -6156,7 +6211,10 @@ function generateLabelHTML(lockers, format, anonymize) {
                         <div class="label-info">
                             DDN: ${locker.birthDate ? formatDate(locker.birthDate) : ''}
                         </div>
-                        <div class="label-locker" style="color: ${zoneColor};">${locker.number}</div>
+                        <div style="display: flex; align-items: center; justify-content: center; gap: 2mm; width: 100%;">
+                            <div class="label-locker" style="color: ${zoneColor};">${locker.number}</div>
+                            ${markers ? `<div style="display: flex; align-items: center;">${markers}</div>` : ''}
+                        </div>
                     </div>
                 `;
             } else {

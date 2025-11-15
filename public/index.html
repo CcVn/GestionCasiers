@@ -78,6 +78,39 @@
                         </button>
                     </div>
                 </fieldset>
+                <fieldset id="blocAnalyseCasiers" class="group-box">
+                    <legend>Casiers</legend>
+                    <div class="buttons-container" title="Contrôle des casiers">
+                        <button class="btn-secondary" onclick="openConsultationCasiers('had')">👁️ Vues</button>
+                        <button class="btn-secondary" onclick="showModificationStats()" title="Afficher les statistiques de modifications">
+                            📝 Modif.
+                        </button>
+                        <button class="btn-secondary" onclick="clearAllMarks()" title="Retirer toutes les marques des casiers">
+                            🔖→🗑️ 
+                        </button>
+                        <button class="btn-secondary" onclick="clearLockersDatabase()" title="Vider tous les casiers">Casiers→🗑️</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('idel')">ℹ️ IDEL</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('hosp')">🏥 Hospitalisations</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('stup')">💊 Stupéfiants</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('marked')">🔖 Marqués</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('duplicates')">⚠️ Doublons</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('homonyms')">👥 Homonymes</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('frigo')">❄ Frigo</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('pca')">💉 PCA</button>
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('meopa')">⛽️ MEOPA</button>
+                    </div>
+                </fieldset>
+                <fieldset id="blocImportExport" class="group-box">
+                    <legend>Import/Export des casiers</legend>
+                    <div class="buttons-container" title="Export des casiers">
+                        <button class="btn-secondary" onclick="showLockersExportOptions()" title="Exporter les casiers avec options">
+                            ⬇ Export
+                        </button>
+                        <button class="btn-secondary" onclick="showLockersImportOptions()" title="Importer des casiers">
+                                ⬆️ Import
+                        </button>
+                    </div>
+                </fieldset>
                 <fieldset id="blocPatients" class="group-box">
                     <legend>Patients</legend>
                     <div class="buttons-container" title="Patients">
@@ -93,55 +126,11 @@
                         <!--<button class="btn-secondary" onclick="clearClientsDatabase()" title="Vider la base patients">🧹 Vider la base</button> -->
                     </div>
                 </fieldset>
-                <fieldset id="blocAnalyseCasiers" class="group-box">
-                    <legend>Casiers</legend>
-                    <div class="buttons-container" title="Contrôle des casiers">
-                        <button class="btn-secondary" onclick="openConsultationCasiers('had')">👁️ Consulter</button>
-                        <button class="btn-secondary" onclick="showModificationStats()" title="Afficher les statistiques de modifications">
-                            📝 Stats
-                        </button>
-                        <button class="btn-secondary" onclick="clearAllMarks()" title="Retirer toutes les marques des casiers">
-                            🔖→🗑️ 
-                        </button>
-                        <button class="btn-small" onclick="showDuplicatesPanel()" title="Afficher la liste des doublons détectés">
-                            ⚠️ Doubl.
-                        </button>
-                        <button class="btn-small" onclick="showHomonymsPanel()" title="Afficher la liste des homonymes détectés">
-                            👥 Hom.
-                        </button>
-                        <button class="btn-small" onclick="showHospitalisationList()" title="Afficher la liste des casiers avec patients hospitalisés">
-                            🏥 Hosp.
-                        </button>
-                        <button class="btn-small" onclick="showStupStats()" title="Afficher les statistiques de la base patients (dans la console)">
-                            💊 Stup.
-                        </button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('idel')">ℹ️ IDEL</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('hosp')">🏥 Hospitalisations</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('stup')">💊 Stupéfiants</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('marked')">🔖 Marqués</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('duplicates')">⚠️ Doublons</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('homonyms')">👥 Homonymes</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('frigo')">❄ Frigo</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('pca')">💉 PCA</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('meopa')">⛽️ MEOPA</button>
-                    </div>
-                </fieldset>
-                <fieldset id="blocStats" class="group-box">
-                    <legend>Utilisateurs</legend>
+                <fieldset id="blocConnexions" class="group-box">
+                    <legend>Connexions</legend>
                     <div class="buttons-container" title="Statistiques">
                         <button class="btn-secondary" onclick="showConnectionStats()" title="Afficher les statistiques de connexion">
-                            📈 Connexions
-                        </button>
-                    </div>
-                </fieldset>
-                <fieldset id="blocImportExport" class="group-box">
-                    <legend>Import/Export des casiers</legend>
-                    <div class="buttons-container" title="Export des casiers">
-                        <button class="btn-secondary" onclick="showLockersExportOptions()" title="Exporter les casiers avec options">
-                            ⬇ Export
-                        </button>
-                        <button class="btn-secondary" onclick="showLockersImportOptions()" title="Importer des casiers">
-                                ⬆️ Import
+                            📈 Stats
                         </button>
                     </div>
                 </fieldset>
@@ -335,8 +324,8 @@
                     <label for="importSeparator">Séparateur de champs</label>
                     <select id="importSeparator" required>
                         <option value="auto">🔍 Détection automatique (recommandé)</option>
-                        <option value=",">Virgule (,) - Standard</option>
                         <option value=";">Point-virgule (;) - Excel FR</option>
+                        <option value=",">Virgule (,) - Standard</option>
                         <option value="|">Pipe (|)</option>
                         <option value=" ">Tabulation</option>
                     </select>
@@ -465,10 +454,10 @@
                 <div class="form-group" id="exportLockersSeparatorGroup">
                     <label for="exportSeparator">Séparateur CSV</label>
                     <select id="exportSeparator" required>
-                        <option value=";">Point-virgule (;) - Excel FR</option>
-                        <option value=",">Virgule (,) - Standard</option>
-                        <option value="|">Pipe (|)</option>
-                        <option value=" ">Tabulation</option>
+                        <option value=";">Point-virgule (;) + BOM - Excel FR</option>
+                        <option value=",">Virgule (,) sans BOM - Standard</option>
+                        <option value="|">Pipe (|) sans BOM</option>
+                        <option value=" ">Tabulation sans BOM</option>
                     </select>
                     <small style="color: var(--text-secondary); font-size: 12px; margin-top: 4px; display: block;">
                         Recommandé : point-virgule pour Excel français
@@ -817,7 +806,6 @@
                         <option value="homonyms">👥 Homonymes</option>
                     </select>
                 </div>
-                
                 <div style="flex: 1; min-width: 150px;">
                     <label for="consultationZone" style="font-size: 12px; color: var(--text-secondary); display: block; margin-bottom: 4px;">Zone</label>
                     <select id="consultationZone" onchange="updateConsultationTable()" style="width: 100%;">
@@ -825,8 +813,16 @@
                         <!-- Sera rempli dynamiquement -->
                     </select>
                 </div>
-                
                 <div style="display: flex; align-items: flex-end; gap: 10px;">
+                    <button id="btnDoub" style="display: block;" class="btn-secondary" onclick="showDuplicatesPanel()" title="Analyse des doublons">
+                        ⚠️
+                    </button>
+                    <button id="btnHom" style="display: block;" class="btn-secondary" onclick="showHomonymsPanel()" title="Analyse des homonymes">
+                        👥
+                    </button>
+                    <button id="btnHosp" style="display: block;" class="btn-secondary" onclick="showHospitalisationList()" title="Analyse des hospitalisations">
+                        🏥
+                    </button>
                     <button class="btn-secondary" onclick="exportConsultationCSV()" title="Exporter en CSV">
                         ⬇ CSV
                     </button>
@@ -836,9 +832,9 @@
                 </div>
             </div>
             
-            <!-- Compteur -->
+            <!-- Compteur / overview -->
             <div style="padding: 8px 12px; background: var(--bg-secondary); border-radius: 6px; margin-bottom: 16px; font-size: 14px;">
-                <strong id="consultationCount">0 patient(s)</strong>
+                <strong id="consultationCount">0 patient(s)</strong> 
             </div>
             
             <!-- Table -->

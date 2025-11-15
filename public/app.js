@@ -83,9 +83,10 @@ async function fetchWithRetry(url, options = {}, retryConfig = {}) {
                 }
                 
                 // Erreur finale (pas de retry)
-                const error = new Error(`HTTP ${res.status}`);
-                error.response = res;
+                const errorData = await res.json().catch(() => ({}));
+                const error = new Error(errorData.error || `HTTP ${res.status}`);
                 error.status = res.status;
+                error.data = errorData;
                 throw error;
             }
             
@@ -152,16 +153,50 @@ async function fetchWithRetry(url, options = {}, retryConfig = {}) {
     throw new Error('Nombre maximum de tentatives atteint');
 }
 
-// ------- Helper pour les requêtes JSON (parse automatique) ---------
+// --- Helper pour les requêtes JSON (parse automatique)
 async function fetchJSON(url, options = {}, retryConfig = {}) {
     const res = await fetchWithRetry(url, options, retryConfig);
     
     // Gérer les erreurs CSRF
     if (res.status === 403) {
         handleCsrfError(res);
+        throw new Error('Erreur CSRF');
+    }
+    
+    // Vérifier le statut avant de parser
+    if (!res.ok) {
+        handleCsrfError(res);
+        let errorData = {};
+        try {
+            errorData = await res.json();
+        } catch {
+            // Si le JSON est invalide, utiliser le status
+        }
+        throw new Error(errorData.error || `Erreur HTTP ${res.status}`);
     }
     
     return res.json();
+}
+
+// Gestionnaire global d'erreurs CSRF
+function handleCsrfError(response) {
+/* Exemple d'utilisation dans les fetch :
+fetch(url, options)
+    .then(res => {
+        if (!res.ok) {
+            handleCsrfError(res);
+            throw new Error('Erreur ' + res.status);
+        }
+        return res.json();
+    }) */
+    if (response.status === 403) {
+        response.json().then(data => {
+            if (data.error && data.error.includes('CSRF')) {
+                alert('⚠️ Erreur de sécurité : token CSRF invalide.\n\nLa page va se recharger.');
+                window.location.reload();
+            }
+        }).catch(() => {});
+    }
 }
 
 // Fonction générique pour Focus trap dans les modals
@@ -292,7 +327,7 @@ async function loadData() {
     }
 }
 
-// Fonction pour générer les onglets dynamiquement
+// Fonction pour générer dynamiquement les onglets
 function generateTabs() {
     const tabsContainer = document.querySelector('.tabs');
     if (!tabsContainer) return;
@@ -360,7 +395,7 @@ function generateTabs() {
     });
 }
 
-// Fonction pour générer les sections de contenu
+// Fonction pour générer dynamiquement le contenu des onglets
 function generateContentSections() {
     const container = document.getElementById('appContainer');
     if (!container) return;
@@ -521,14 +556,14 @@ function generateContentSections() {
                 </div>
                 <div class="help-item" id="help-navig-clavier">
                     <div class="help-title">Navigation au clavier</div>
-                    <div class="help-content" style="font-size: 11px; margin: 1px; padding: 1px;">
+                    <div class="help-content" style="margin: 1px; padding: 1px;">
                         <span><strong>Fenêtre modales</strong></span>
                         <ol>
                             <li><strong>ESC</strong>: Fermer</li>
                             <li><strong>Tab</strong> / <strong>Shift+Tab</strong> : Navigation entre champs (avec 'focus trap')</li>
                             <li><strong>Espace</strong> ou <strong>Entrée</strong> : Valider boutons</li>
                         </ol>
-                        <span><strong> Dropdowns (menu ⋮)</strong></span>
+                        <span><strong> Menu actions ⋮ (Dropdowns)</strong></span>
                         <ol>
                             <li><strong>ESC</strong> : Fermer</li>
                             <li><strong>↓</strong> : Item suivant</li>
@@ -558,9 +593,9 @@ function generateContentSections() {
                     <div class="help-content">
                         <span>Il peut arriver que certaines lignes aient <strong>un texte ou un fonds coloré</strong>.</span>
                         <ol>
-                            <li>Une ligne avec un fonds <strong>orangé</strong> et avec une icone ⚠️ signale qu'un double de casier été détecté, sur la base de numéros IPP identiques ou bien sur une combinaison nom+prénom+date de naissance identiques. Cela peut être parce qu'il y a vraiment deux casiers (un classique + un PCA par exemple) ou bien cela peut être lié à une erreur de la PUI (ancien casier non libéré).</li>
                             <li>Une ligne avec un fonds <strong>gris dégradé</strong> et avec une icone 🏥 signale que le casier a été attribué à un patient qui a été hospitalisé temporairement dans un autre établissement (hospitalisation programmée de courte durée, ou passage aux urgences par exemple). Ce type de casier est libéré en cas de pénurie de casiers, ou s'il est avéré que le patient ne retournera pas en HAD.</li>
                             <li>Un nom et un prénom qui apparaissent en <strong>violet</strong> signalent que des <strong>homonymes</strong> ont été détectés. NB: la détection d'homonymes est activée sur la base du nom de famille seul.</li>
+                            <li>Une ligne avec un fonds <strong>orangé</strong> et avec une icone ⚠️ signale qu'un double de casier été détecté, sur la base de numéros IPP identiques ou bien sur une combinaison nom+prénom+date de naissance identiques. Cela peut être une erreur (nouveau casier créé après un retour d'hospi alors que l'ancien avait été gardé), mais pas forcément : il peut y avoir deux casiers pour un patient (un casier NORD ou SUD + un casier PCA par exemple).</li>
                         </ol>
                         <div class="post-it">
                             <strong>💡 Informations contextuelles sur les doublons :</strong> Laisser la souris sur le numéro de casier ou l'icone ⚠️ pour avoir des informations sur le ou les autres casiers détectés comme doublons. Cette information n'est pour le moment  pas accesible sur mobile.
@@ -829,7 +864,6 @@ function anonymizeFirstName(firstName, force = false) {
     return PascalCase(firstName.substring(0, maxLength));
 }
 
-
 // Autre fonction utilitaire sur format de date
 function formatDate(inputDate) {
   //const [year, month, day] = inputDate.split('-');
@@ -908,6 +942,7 @@ function setDarkMode(mode) {
     
     showStatus(`✓ ${modeNames[mode]} activé`, 'success');
 }
+
 function toggleDarkModeQuick() {
     // Cycle: inactive → active → inactive
     let newMode;
@@ -946,13 +981,14 @@ function updateThemeIcon() {
 }
 
 // ============ UTILISATION SUR MOBILE =====================
+
 function detectMobile() {
     IS_MOBILE = window.innerWidth <= 768;
     if (VERBCONSOLE>0) { console.log('Mode mobile:', IS_MOBILE); }
     return IS_MOBILE;
 }
 
-//----- SUPPORT SWIPE TACTILE
+//--- Support Swipe Tactile
 function initSwipeSupport() {
     let touchStartX = 0;
     let touchEndX = 0;
@@ -1284,6 +1320,7 @@ function loginAsGuest() {
 }
 
 // Utilisation : URL à mettre dans le QR code : http://adresseIP:5000/?guest=true
+// Idem, ne pas utiliser fetchJSON
 function loginAsGuestAuto() {
     if (VERBCONSOLE>0) { console.log('Connexion automatique en mode guest...'); }
     // Vérifier que le token CSRF est chargé
@@ -1302,7 +1339,6 @@ function loginAsGuestAuto() {
         credentials: 'include',
         body: JSON.stringify({ password: '' })
     })
-//    .then(res => res.json())
     .then(res => {
         if (!res.ok) {
             handleCsrfError(res);
@@ -1332,6 +1368,7 @@ function loginAsGuestAuto() {
     });
 }
 
+// Quitter l'interface principale et réinitialiser les filtres
 function logout() {
 
     fetch(`${API_URL}/logout`, {
@@ -1362,8 +1399,7 @@ function logout() {
         });
     }
     
-    // Réafficher tous les éléments admin
-    showAdminElements();
+    showAdminElements(); // Réafficher tous les éléments admin
 
     IS_AUTHENTICATED = false;
     IS_GUEST = false;
@@ -1395,6 +1431,7 @@ function showLoginPage(show) {
     }
 }
 
+// Mise à jour de l'indicateur de mode
 function updateAuthStatus() {
     const status = document.getElementById('authStatus');
     if (status) {
@@ -1406,23 +1443,16 @@ function updateAuthStatus() {
             status.style.color = '#2e7d32';
         }
     }
-    
-    //updateImportExportButtons();
+    //updateImportExportButtons(); // désormais hidden plutôt que désactivés
 }
 
 // Info sur le dernier import patients
 async function updateImportStatus() {
     try {
-        const res = await fetch(`${API_URL}/clients/import-status`, {
+
+        const data = await fetchJSON(`${API_URL}/clients/import-status`, {
             credentials: 'include'
         });
-        
-        if (!res.ok) {
-            console.error('Erreur récupération statut import:', res.status);
-            return;
-        }
-        
-        const data = await res.json();
         
         const statusEl = document.getElementById('importStatus');
         if (!statusEl) return;
@@ -2841,10 +2871,9 @@ async function handleFormSubmit(e) {
                 loadData();
                 
                 // Vérifier si l'IPP était valide
-                const result = await fetch(`${API_URL}/lockers/${newLockerNumber}`, {
+                const data = await fetchJSON(`${API_URL}/lockers/${newLockerNumber}`, {
                     credentials: 'include'
                 });
-                const data = await result.json();
                 
                 if (data.ippValid === false) {
                     showStatus('⚠️ Casier enregistré mais N°IPP non trouvé dans la base patients (marqué récupérable)', 'error');
@@ -2930,7 +2959,8 @@ async function saveLocker(lockerNumber, zone, recoverable, comment, stup, idel, 
     }
 
     try {
-        return await fetchJSON(`${API_URL}/lockers`, {
+        // fetchJSON retourne directement les données
+        const data = await fetchJSON(`${API_URL}/lockers`, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
@@ -2939,16 +2969,18 @@ async function saveLocker(lockerNumber, zone, recoverable, comment, stup, idel, 
             credentials: 'include',
             body: JSON.stringify(bodyData)
         }, {
-            retries: 2,  // Moins de retries pour les modifications (risque de double-save)
-            retryOn: [500, 502, 503, 504],  // Pas de retry sur 408/429 pour éviter duplications
-            timeout: 10000  // 10s suffisent pour un save
+            retries: 2,
+            retryOn: [500, 502, 503, 504],
+            timeout: 10000
         });
+        
+        // data contient déjà les données parsées
+        return data;
         
     } catch (err) {
         // Enrichir l'erreur avec le contexte
         if (err.response) {
-            const errorData = await err.response.json().catch(() => ({}));
-            throw new Error(errorData.error || `Erreur HTTP ${err.status}`);
+            throw new Error(err.message);  // Erreur simple, pas besoin de parser
         }
         throw err;
     }
@@ -2956,20 +2988,14 @@ async function saveLocker(lockerNumber, zone, recoverable, comment, stup, idel, 
 
 // --- Libérer un casier sans message (utilisé lors d'un transfert)
 async function releaseLockerSilent(lockerNumber, reason = 'TRANSFERT') {
-    const response = await fetch(`${API_URL}/lockers/${lockerNumber}?reason=${reason}`, {  
+    const data = await fetchJSON(`${API_URL}/lockers/${lockerNumber}?reason=${reason}`, {  
         method: 'DELETE',
         credentials: 'include',
         headers: {
             'X-CSRF-Token': CSRF_TOKEN
         }
     });
-    
-    if (!response.ok) {
-        handleCsrfError(response);
-        throw new Error('Erreur libération casier ' + lockerNumber + ":\n" + response.status);
-    }
-    
-    return response.json();
+    return data;
 }
 
 // Message affiché en haut de modal pour réussite ou échec
@@ -3069,7 +3095,7 @@ document.addEventListener('DOMContentLoaded', function() {
             submitBtn.classList.add('btn-loading');
             
             try {
-                const res = await fetch(`${API_URL}/export`, {
+                const data = await fetchJSON(`${API_URL}/export`, {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
@@ -3083,20 +3109,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     })
                 });
                 
-                if (!res.ok) {
-                    handleCsrfError(res);
-                    const error = await res.json();
-                    throw new Error(error.error || 'Erreur serveur');
-                }
-                
-                const data = await res.json();
-                
                 // Télécharger le fichier
                 downloadFile(data.content, data.filename, data.mimeType);
-                
                 // Fermer le modal
                 closeExportOptions();
-                
                 // Message de succès
                 showStatus(`✓ ${data.recordCount} casier${data.recordCount > 1 ? 's' : ''} exporté${data.recordCount > 1 ? 's' : ''}`, 'success');
                 
@@ -3220,7 +3236,9 @@ function analyzeLockersFile(content, format, separator) {
                 occupiedRows: data.filter(l => l.name && l.firstName).length,
                 columns: Object.keys(sampleLocker),
                 metadata: jsonData.metadata || null,
-                sample: data.slice(0, 3)
+                sample: data.slice(0, 3),
+                rawConent: content,
+                backContent: jsonData
             };
             
         } else {
@@ -3240,7 +3258,7 @@ function analyzeLockersFile(content, format, separator) {
             const dataLines = lines.slice(1);
             
             // Vérifier nombre de colonnes
-            const expectedColumns = 13; // number, zone, name, firstName, code, birthDate, recoverable, marque, hosp, hospDate, stup, idel, comment
+            const expectedColumns = 16; // number, zone, name, firstName, code, birthDate, recoverable, marque, hosp, hospDate, stup, idel, frigo, pca, meopa, comment
             
             if (headers.length < 6) {
                 return { 
@@ -3257,7 +3275,11 @@ function analyzeLockersFile(content, format, separator) {
                     zone: values[1],
                     name: values[2],
                     firstName: values[3],
-                    columnCount: values.length
+                    code: values[4], 
+                    birthDate: values[5],
+                    columnCount: values.length,
+                    rawConent: content,
+                    backContent: content
                 };
             });
             
@@ -3430,7 +3452,7 @@ async function showImportConfirmation(filename, analysis) {
             </div>
         `;
     } else {
-        // CSV
+        //--- CSV
         const warningIcon = !analysis.columnsMatch ? '⚠️' : '✓';
         const warningColor = !analysis.columnsMatch ? '#f59e0b' : '#10b981';
         
@@ -3531,7 +3553,7 @@ async function showImportConfirmation(filename, analysis) {
     });
 }
 
-// Réaliser l'import en base
+// Réaliser l'import des casiers 
 async function performLockersImport(content, filename) {
     const importBtn = Array.from(document.querySelectorAll('.admin-tools-content button'))
         .find(btn => btn.textContent.includes('Import casiers'));
@@ -3545,10 +3567,24 @@ async function performLockersImport(content, filename) {
     
     try {
 
-        const routeImport = `${API_URL}/import`; // Claude
-        //const routeImport = `${API_URL}/lockers/import`; // version GEMINI
+        let routeImport = '';
+        let routeContent = '';
+        if (selectedLockersImportFormat === 'json') {
+            routeImport = `${API_URL}/import-json`; 
+/*            data = content.backContent;   // provient de JSON.parse(content);
+            routeData = data.lockers;
+            routeMetadata = data.metadata;*/
+            console.log("Route d'import JSON:", routeImport)
+        } else {
+            routeImport = `${API_URL}/import`; 
+/*            routeMetadata = filename; // TODO: analyser le nom du fichier pour récupérer la date
+            routeData = ''; // rien en CSV*/
+            console.log("Route d'import CSV:", routeImport)
+        }
 
-        const res = await fetch(routeImport, {
+        //TEST: route unifiée
+        routeImport = `${API_URL}/import-unified`
+        const result = await fetchJSON(routeImport, {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
@@ -3557,58 +3593,53 @@ async function performLockersImport(content, filename) {
             credentials: 'include',
             body: JSON.stringify({ 
                 rawContent: content,
+                format: selectedLockersImportFormat,
                 mode: selectedLockersImportMode,
                 separator: selectedLockersImportSeparator
             })
         });
 
-        if (!res.ok) {
-            handleCsrfError(res);
-            const error = await res.json();
-            throw new Error(error.error || 'Erreur serveur XXX');
-        } else {
-            const result = await res.json();
-            
-            let message = `✅ Import terminé !\n\n`;
-            message += `✓ Importés : ${result.imported}\n`;
-            if (result.skipped > 0) {
-                message += `⭐ Ignorés : ${result.skipped}\n`;
-            }
-            if (result.invalidIPP > 0) {
-                message += `⚠️ IPP inconnus : ${result.invalidIPP} (marqués récupérables)\n`;
-            }
-            if (result.errors > 0) {
-                message += `✗ Erreurs : ${result.errors}\n`;
-            }
-            if (result.validationErrors > 0) {
-                message += `⚠️ Validation échouée : ${result.validationErrors}\n`;
-            }
-
-            // GEMINI: Affichage des erreurs détaillées
-            if (result.detailedErrors && result.detailedErrors.length > 0) {
-                message += `\n--- Détail des erreurs de validation (${result.validationErrors} lignes) ---\n`;
-                // Limiter l'affichage pour éviter un trop long message d'alerte
-                const errorsToShow = result.detailedErrors.slice(0, 10);
-                errorsToShow.forEach(err => {
-                    message += `Ligne ${err.line} (Casier ${err.casier}) : ${err.error}\n`;
-                });
-                if (result.detailedErrors.length > 10) {
-                     message += `\n... et ${result.detailedErrors.length - 10} autres erreurs non affichées.`;
-                }
-                message += `\n---------------------------------------------\n`;
-                message += `\nVeuillez corriger le fichier source et réessayer.`;
-            }
-
-            message += `\nTotal des lignes traitées : ${result.total}`;
-            
-            alert(message);
-            loadData();
-            closeLockersImportOptions();
+        let message = `✅ Import terminé !\n\n`;
+        message += `✓ Importés : ${result.imported}\n`;
+        if (result.skipped > 0) {
+            message += `⭐ Ignorés (déjà occupés) : ${result.skipped}\n`;
         }
+        if (result.invalidIPP > 0) {
+            message += `⚠️ IPP inconnus : ${result.invalidIPP} (marqués récupérables)\n`;
+        }
+        if (result.errors > 0) {
+            message += `✗ Erreurs : ${result.errors}\n`;
+        }
+        if (result.validationErrors > 0) {
+            message += `⚠️ Validation échouée : ${result.validationErrors}\n`;
+        }
+        // Suggestion GEMINI: Affichage des erreurs détaillées
+        if (result.detailedErrors && result.detailedErrors.length > 0) {
+            message += `\n--- Détail des erreurs de validation (${result.validationErrors} lignes) ---\n`;
+            // Limiter l'affichage pour éviter un trop long message d'alerte
+            const errorsToShow = result.detailedErrors.slice(0, 10);
+            errorsToShow.forEach(err => {
+                message += `Ligne ${err.line} (Casier ${err.casier}) : ${err.error}\n`;
+            });
+            if (result.detailedErrors.length > 10) {
+                 message += `\n... et ${result.detailedErrors.length - 10} autres erreurs non affichées.`;
+            }
+            message += `\n---------------------------------------------\n`;
+            message += `\nVeuillez corriger le fichier source et réessayer.`;
+        }
+        message += `\nTotal des lignes traitées : ${result.total}`;
+        
+        alert(message);
+        loadData();
+        closeLockersImportOptions();
         
     } catch (err) {
-        alert('❌ Erreur import : ' + err.message);
-        console.error('Erreur import casiers:', err);
+        if (err instanceof SyntaxError) {
+            alert('❌ Erreur : Le fichier n\'est pas un JSON valide.\n\n' + err.message);
+        } else {
+            alert('❌ Erreur lors de l\'import casiers : ' + err.message);
+        }
+        console.error('Erreur lors de l\'import casiers:', err);
     } finally {
         if (importBtn) {
             importBtn.disabled = false;
@@ -3632,34 +3663,28 @@ async function clearLockersDatabase() {
     const confirmSecond = confirm(
         '⚠️ DERNIÈRE CONFIRMATION\n\n' +
         'Êtes-vous ABSOLUMENT CERTAIN de vouloir libérer tous les casiers ?\n\n' +
+        'Avez-vous fait un export pour sauvegarder la base actuelle?\n\n' +
         'Tapez OK pour confirmer.'
     );
     
     if (!confirmSecond) return;
     
     try {
-        const res = await fetch(`${API_URL}/lockers/clear`, {
+        const data = await fetchJSON(`${API_URL}/lockers/clear`, {
             method: 'DELETE',
-            headers: {
+            credentials: 'include',
+            headers: { 
                 'X-CSRF-Token': CSRF_TOKEN
-            },
-            credentials: 'include'
+            }
+        }, {
+            retries: 1,
+            timeout: 10000,  // 60s pour les gros imports
+            retryOn: [500, 502, 503, 504]
         });
-        
-        if (!res.ok) {
-            const error = await res.json();
-            throw new Error(error.error || 'Erreur serveur');
-        }
-        
-        const data = await res.json();
-        
+    
         alert(`✓ Tous les casiers ont été libérés\n\n${data.cleared} casier(s) libéré(s)`);
-        
-        // Recharger les données
-        loadData();
-        
-        // Fermer le modal
-        closeLockersImportOptions();
+        loadData();  // Recharger les données
+        closeLockersImportOptions();  // Fermer le modal
         
     } catch (err) {
         console.error('Erreur libération casiers:', err);
@@ -3701,7 +3726,7 @@ async function toggleMarkSearchResults() {
     }
     
     try {
-        const res = await fetch(`${API_URL}/lockers/bulk-mark`, {
+        const data = await fetchJSON(`${API_URL}/lockers/bulk-mark`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -3713,14 +3738,6 @@ async function toggleMarkSearchResults() {
                 mark: willMark
             })
         });
-        
-        if (!res.ok) {
-            handleCsrfError(res);
-            const error = await res.json();
-            throw new Error(error.error || 'Erreur serveur');
-        }
-        
-        const data = await res.json();
         
         const successIcon = willMark ? '🔖' : '✓';
         const actionText = willMark ? 'marqué' : 'démarqué';
@@ -3794,7 +3811,7 @@ async function clearAllMarks() {
     }
     
     try {
-        const res = await fetch(`${API_URL}/lockers/clear-marks`, {
+        const data = await fetchJSON(`${API_URL}/lockers/clear-marks`, {
             method: 'DELETE',
             headers: {
                 'X-CSRF-Token': CSRF_TOKEN
@@ -3802,16 +3819,7 @@ async function clearAllMarks() {
             credentials: 'include'
         });
         
-        if (!res.ok) {
-            handleCsrfError(res);
-            const error = await res.json();
-            throw new Error(error.error || 'Erreur serveur');
-        }
-        
-        const data = await res.json();
-        
         alert(`✓ Toutes les marques ont été retirées\n\n${data.cleared} casier${data.cleared > 1 ? 's' : ''} modifié${data.cleared > 1 ? 's' : ''}`);
-        
         // Recharger les données
         loadData();
         
@@ -3878,18 +3886,17 @@ async function importClients() {
     
     try {
         // Charger les formats disponibles
-        const configResponse = await fetch(`${API_URL}/config/import-format`, {
+        const config = await fetchJSON(`${API_URL}/config/import-format`, {
             credentials: 'include'
         });
-        const config = await configResponse.json();
         
         // Remplir le select des formats
         const formatSelect = document.getElementById('importFormat');
         formatSelect.innerHTML = '';
         
         // Format par défaut en premier
-        const defaultFormat = config.clientImportFormat || 'BASIQUE';
-        const formats = config.availableFormats || ['BASIQUE'];
+        const defaultFormat = config.clientImportFormat || 'INTERNE';
+        const formats = config.availableFormats || ['INTERNE'];
         
         // Ajouter le format par défaut en premier
         const defaultOption = document.createElement('option');
@@ -3964,9 +3971,33 @@ function selectFileForImport() {
     fileInput.click();
 }
 
+// util
+function isUTF8valid(csvFileName = 'data.csv') { 
+  const buffer = fs.readFileSync(csvFileName);
+
+  // Vérification BOM UTF-8
+  const hasBom = buffer[0] === 0xEF && buffer[1] === 0xBB && buffer[2] === 0xBF;
+
+  console.log("BOM UTF-8 détectée ?", hasBom);
+
+  // Si besoin : vérifier que le contenu est décodable en UTF-8
+  try {
+    new TextDecoder('utf-8', { fatal: true }).decode(buffer);
+    console.log("Décodage UTF-8 valide");
+    return 1;
+  } catch {
+    console.error("Le fichier contient des octets invalides pour l'UTF-8");
+    return 0;
+  }
+}
+
 async function handleClientFileSelected(e) {
     const file = e.target.files[0];
     if (!file) return;
+    if (!isUTF8valid) {
+        alert('Format UTF8 invalide!');
+        return;
+    }
     
     const importBtn = document.querySelector('button[onclick="importClients()"]');
     const originalText = importBtn ? importBtn.innerHTML : '';
@@ -3980,9 +4011,9 @@ async function handleClientFileSelected(e) {
     try {
         if (VERBCONSOLE > 0) {
             console.log('📂 Lecture du fichier patients...');
-            console.log('Format sélectionné:', selectedImportFormat);
-            console.log('Mode sélectionné:', selectedImportMode);
-            console.log('Séparateur sélectionné:', selectedImportSeparator);
+            //console.log('Format sélectionné:', selectedImportFormat);
+            //console.log('Mode sélectionné:', selectedImportMode);
+            //console.log('Séparateur sélectionné:', selectedImportSeparator);
         }
         
         const text = await file.text();
@@ -4005,14 +4036,15 @@ async function handleClientFileSelected(e) {
             timeout: 60000,  // 60s pour les gros imports
             retryOn: [500, 502, 503, 504]
         });
-        
-        let message = `Import patients terminé !\n\n`;
+
+        // result contient déjà les données parsées
+        let message = `✅ Import terminé !\n\n`;
         message += `✓ Importés : ${result.imported}\n`;
         if (result.skipped > 0) {
-            message += `⏭️ Ignorés (doublons) : ${result.skipped}\n`;
+            message += `⏭ Ignorés : ${result.skipped}\n`;
         }
-        if (result.filtered > 0) {
-            message += `🔍 Filtrés : ${result.filtered}\n`;
+        if (result.invalidIPP > 0) {
+            message += `⚠️ IPP inconnus : ${result.invalidIPP} (marqués récupérables)\n`;
         }
         if (result.errors > 0) {
             message += `✗ Erreurs : ${result.errors}\n`;
@@ -4020,28 +4052,27 @@ async function handleClientFileSelected(e) {
         if (result.validationErrors > 0) {
             message += `⚠️ Validation échouée : ${result.validationErrors}\n`;
         }
-        message += `Total : ${result.total}`;
-        
-        if (selectedImportMode === 'merge') {
-            message += `\n\nMode fusionnement : ${result.totalInDb} patients en base`;
-        }
+        message += `\nTotal des lignes traitées : ${result.total}`;
         
         alert(message);
-        updateImportStatus();
+        loadData();
+        closeLockersImportOptions();
         
     } catch (err) {
-        console.error('Erreur import patients:', err);
-        
         if (err.isTimeout) {
             alert('⏱️ L\'import a pris trop de temps.\n\nEssayez de réduire la taille du fichier ou contactez l\'administrateur.');
-        } else if (err.status === 413) {
+        } else if (err.isNetworkError) {
+            alert('🔌 Impossible de contacter le serveur.\n\nVérifiez votre connexion.');
+        } else if (err.message.includes('413')) {
             alert('📦 Fichier trop volumineux.\n\nRéduisez la taille du fichier ou divisez-le en plusieurs parties.');
-        } else if (res.status === 401) {
+        } else if (err.message.includes('401')) {
             alert('Session expirée. Veuillez vous reconnecter.');
             logout();
         } else {
             alert('❌ Erreur lors de l\'import patients :\n\n' + err.message);
         }
+       console.error('Erreur import patients:', err);
+ 
     } finally {
         if (importBtn) {
             importBtn.disabled = false;
@@ -4073,20 +4104,13 @@ async function clearClientsDatabase() {
     if (!confirmSecond) return;*/
     
     try {
-        const res = await fetch(`${API_URL}/clients/clear`, {
+        const data = await fetchJSON(`${API_URL}/clients/clear`, {
             method: 'DELETE',
             headers: {
                 'X-CSRF-Token': CSRF_TOKEN
             },
             credentials: 'include'
         });
-        
-        if (!res.ok) {
-            const error = await res.json();
-            throw new Error(error.error || 'Erreur serveur');
-        }
-        
-        const data = await res.json();
         
         alert(`✓ Base patients vidée avec succès\n\n${data.deleted} client(s) supprimé(s)`);
         
@@ -4097,6 +4121,7 @@ async function clearClientsDatabase() {
         
     } catch (err) {
         console.error('Erreur suppression clients:', err);
+        throw new Error(err.message);
         alert('❌ Erreur : ' + err.message);
     }
 }
@@ -4241,15 +4266,9 @@ async function showClientsStats() {
     content.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 40px;">⏳ Chargement des statistiques...</p>';
     
     try {
-        const res = await fetch(`${API_URL}/clients/stats`, {
+        const data = await fetchJSON(`${API_URL}/clients/stats`, {
             credentials: 'include'
         });
-        
-        if (!res.ok) {
-            throw new Error('Erreur ' + res.status);
-        }
-        
-        const data = await res.json();
         renderClientsStats(data);
         
     } catch (err) {
@@ -4550,7 +4569,17 @@ function renderConsultationTable() {
     const countEl = document.getElementById('consultationCount');
     
     // Mettre à jour le compteur
-    countEl.textContent = `${consultationData.length} patient${consultationData.length > 1 ? 's' : ''}`;
+    const byZone = {};
+    ZONES_CONFIG.forEach(zone => {
+        byZone[zone.name] = consultationData.filter(l => l.zone === zone.name).length;
+    });
+    let message = `📊 ${consultationData.length} patient${consultationData.length > 1 ? 's' : ''}`
+    message += `\t[ Par zone : `
+    Object.entries(byZone).forEach(([zone, count]) => {
+        message += ` • ${zone}: ${count}`;
+         });
+    message += ` ]`;
+    countEl.textContent = message;
     
     if (consultationData.length === 0) {
         tbody.innerHTML = `
@@ -4776,15 +4805,9 @@ async function showRestorePanel() {
     content.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 40px;">⏳ Chargement des backups...</p>';
     
     try {
-        const res = await fetch(`${API_URL}/backups`, {
+        const data = await fetchJSON(`${API_URL}/backups`, {
             credentials: 'include'
         });
-        
-        if (!res.ok) {
-            throw new Error('Erreur ' + res.status);
-        }
-        
-        const data = await res.json();
         renderRestorePanel(data.backups);
         
     } catch (err) {
@@ -5023,7 +5046,7 @@ async function confirmRestore() {
             bodyData.fileData = uploadedBackupData;
         }
         
-        const res = await fetch(`${API_URL}/restore`, {
+        const data = await fetchJSON(`${API_URL}/restore`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -5032,12 +5055,6 @@ async function confirmRestore() {
             credentials: 'include',
             body: JSON.stringify(bodyData)
         });
-        
-        const data = await res.json();
-        
-        if (!res.ok) {
-            throw new Error(data.error || 'Erreur lors de la restauration');
-        }
         
         // Succès
         content.innerHTML = `
@@ -5081,27 +5098,24 @@ function closeRestorePanel() {
 // Fonction qui affiche les stats backup :
 async function showBackupInfo() {
     try {
-        const res = await fetch(`${API_URL}/config/backup`, {
+        const config = await fetchJSON(`${API_URL}/config/backup`, {
             credentials: 'include'
         });
         
-        if (res.ok) {
-            const config = await res.json();
-            
-            let message = '⏰ Configuration backup automatique\n\n';
-            if (config.mode === 'fixed') {
-                message += `Mode : Quotidien à heure fixe\n`;
-                message += `Heure : ${config.backupTime}\n`;
-            } else if (config.mode === 'periodic') {
-                message += `Mode : Périodique\n`;
-                message += `Fréquence : Toutes les ${config.backupFrequencyHours}h\n`;
-            } else {
-                message += `Mode : Désactivé\n`;
-            }
-            message += `\nNombre de backups conservés : ${config.backupRetentionCount}`;
-            
-            alert(message);
+        let message = '⏰ Configuration backup automatique\n\n';
+        if (config.mode === 'fixed') {
+            message += `Mode : Quotidien à heure fixe\n`;
+            message += `Heure : ${config.backupTime}\n`;
+        } else if (config.mode === 'periodic') {
+            message += `Mode : Périodique\n`;
+            message += `Fréquence : Toutes les ${config.backupFrequencyHours}h\n`;
+        } else {
+            message += `Mode : Désactivé\n`;
         }
+        message += `\nNombre de backups conservés : ${config.backupRetentionCount}`;
+        
+        alert(message);
+
     } catch (err) {
         console.error('Erreur récupération config backup:', err);
     }
@@ -5118,15 +5132,9 @@ async function showConnectionStats() {
     content.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 40px;">⏳ Chargement des statistiques...</p>';
     
     try {
-        const res = await fetch(`${API_URL}/stats/connections/summary`, {
+        const data = await fetchJSON(`${API_URL}/stats/connections/summary`, {
             credentials: 'include'
         });
-        
-        if (!res.ok) {
-            throw new Error('Erreur ' + res.status);
-        }
-        
-        const data = await res.json();
         renderConnectionStats(data);
         
     } catch (err) {
@@ -5368,27 +5376,6 @@ function closeConnectionStats() {
     document.getElementById('connectionStatsPanel').classList.remove('active');
 }
 
-// Gestionnaire global d'erreurs CSRF
-/* Exemple d'utilisation dans les fetch :
-fetch(url, options)
-    .then(res => {
-        if (!res.ok) {
-            handleCsrfError(res);
-            throw new Error('Erreur ' + res.status);
-        }
-        return res.json();
-    }) */
-function handleCsrfError(response) {
-    if (response.status === 403) {
-        response.json().then(data => {
-            if (data.error && data.error.includes('CSRF')) {
-                alert('⚠️ Erreur de sécurité : token CSRF invalide.\n\nLa page va se recharger.');
-                window.location.reload();
-            }
-        }).catch(() => {});
-    }
-}
-
 // Fonction pour vérifier le temps restant dans la session
 async function checkSessionExpiration() {
     try {
@@ -5424,15 +5411,9 @@ async function showModificationStats() {
     content.innerHTML = '<p style="text-align: center; color: var(--text-secondary); padding: 40px;">⏳ Chargement des statistiques...</p>';
     
     try {
-        const res = await fetch(`${API_URL}/stats/modifications`, {
+        const data = await fetchJSON(`${API_URL}/stats/modifications`, {
             credentials: 'include'
         });
-        
-        if (!res.ok) {
-            throw new Error('Erreur ' + res.status);
-        }
-        
-        const data = await res.json();
         renderModificationStats(data);
         
     } catch (err) {
@@ -5663,15 +5644,9 @@ async function showAnonymizationConfig() {
     
     // Charger la configuration actuelle
     try {
-        const res = await fetch(`${API_URL}/config/anonymization`, {
+        const data = await fetchJSON(`${API_URL}/config/anonymization`, {
             credentials: 'include'
         });
-        
-        if (!res.ok) {
-            throw new Error('Erreur ' + res.status);
-        }
-        
-        const data = await res.json();
         
         // Remplir le formulaire
         document.getElementById('anonymizeGuest').checked = data.anonymizeGuest;
@@ -5716,7 +5691,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const anonymizeGuest = document.getElementById('anonymizeGuest').checked;
                 const anonymizeAdmin = document.getElementById('anonymizeAdmin').checked;
                 
-                const res = await fetch(`${API_URL}/config/anonymization`, {
+                const data = await fetchJSON(`${API_URL}/config/anonymization`, {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
@@ -5728,12 +5703,6 @@ document.addEventListener('DOMContentLoaded', function() {
                         anonymizeAdmin: anonymizeAdmin
                     })
                 });
-                
-                if (!res.ok) {
-                    throw new Error('Erreur ' + res.status);
-                }
-                
-                const data = await res.json();
                 
                 // Mettre à jour l'état local
                 ANONYMIZE_ENABLED = IS_GUEST ? anonymizeGuest : anonymizeAdmin;
@@ -5763,9 +5732,9 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// ============ MARQUES CASIER ============
+// ============ MARQUES CASIER ON/OFF ============
 
-// Fonction générique pour activer un marqueur (IDEL, Stup, Marque etc.) : remplace les fonctions spécifiques
+// Fonction générique pour activer un marqueur (IDEL, Stup, Marque etc.)
 async function toggleMarker(lockerNumber, marker, currentValue) {
     const locker = DATA.find(l => l.number === lockerNumber);
     if (!locker) {
@@ -5836,7 +5805,7 @@ async function toggleMarker(lockerNumber, marker, currentValue) {
     if (!confirm(confirmMsg)) return;
 
     try {
-        const response = await fetch(`${API_URL}/lockers/${lockerNumber}/toggle/${marker}`, {
+        const updatedLocker = await fetchJSON(`${API_URL}/lockers/${lockerNumber}/toggle/${marker}`, {
             method: 'POST',
             credentials: 'include',
             headers: {
@@ -5844,13 +5813,6 @@ async function toggleMarker(lockerNumber, marker, currentValue) {
                 'X-CSRF-Token': CSRF_TOKEN
             }
         });
-
-        if (!response.ok) {
-            handleCsrfError(response);
-            throw new Error('Erreur ' + response.status);
-        }
-
-        const updatedLocker = await response.json();
         
         // Mettre à jour DATA
         const index = DATA.findIndex(l => l.number === lockerNumber);
@@ -5873,44 +5835,6 @@ async function toggleMarker(lockerNumber, marker, currentValue) {
         showStatus('Erreur: ' + err.message, 'error');
     }
 }
-
-// ============ STATISTIQUES STUPÉFIANTS ============
-// Fonction utilitaire : Compter les stupéfiants. TODO : à intégrer au modal de consultation
-function getStupStats() {
-    const stupLockers = DATA.filter(l => l.stup);
-    const occupied = stupLockers.filter(l => l.occupied);
-    
-    const byZone = {};
-    ZONES_CONFIG.forEach(zone => {
-        byZone[zone.name] = stupLockers.filter(l => l.zone === zone.name).length;
-    });
-
-    return {
-        total: stupLockers.length,
-        occupied: occupied.length,
-        empty: stupLockers.length - occupied.length,
-        byZone: byZone
-    };
-}
-
-// DEPRECATED Afficher les stats de getStupStats. Stup. TODO: à intégrer au modal de consultation
-function showStupStats() {
-    const stats = getStupStats();
-    
-    let message = `📊 STATISTIQUES STUPÉFIANTS\n======================\n\n`;
-    message += `Total casiers avec Stupéfiants: ${stats.total}\n`
-    message += `\n  • Occupés: ${stats.occupied}`
-    message += `\n  • Vides: ${stats.empty}`
-    message += `\n\nPar zone:`
-    Object.entries(stats.byZone).forEach(([zone, count]) => {
-        message += `\n  • ${zone}: ${count}`;
-         });   
-    message += `\n`
-
-    if (VERBCONSOLE>0) { console.log(message) }
-    alert(message);
-}
-
 
 // ============ MODAL HOSPITALISATION ==================
 
@@ -5999,7 +5923,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 const hosp = hospCheckbox.checked;
                 const hospDate = hosp ? hospDateInput.value : '';
                 
-                const response = await fetch(`${API_URL}/lockers/${CURRENT_LOCKER_FOR_HOSP.number}/hospitalisation`, {
+                const updatedLocker = await fetchJSON(`${API_URL}/lockers/${CURRENT_LOCKER_FOR_HOSP.number}/hospitalisation`, {
                     method: 'POST',
                     credentials: 'include',
                     headers: {
@@ -6009,25 +5933,14 @@ document.addEventListener('DOMContentLoaded', function() {
                     body: JSON.stringify({ hosp, hospDate })
                 });
                 
-                if (!response.ok) {
-                    handleCsrfError(response);
-                    const error = await response.json();
-                    throw new Error(error.error || 'Erreur ' + response.status);
-                }
-                
-                const updatedLocker = await response.json();
-                
                 // Mettre à jour DATA
                 const index = DATA.findIndex(l => l.number === CURRENT_LOCKER_FOR_HOSP.number);
                 if (index !== -1) {
                     DATA[index] = updatedLocker;
                 }
                 
-                // Rafraîchir l'affichage
-                renderAllTables();
-                
-                // Fermer le modal
-                closeHospitalisationModal();
+                renderAllTables(); // Rafraîchir l'affichage
+                closeHospitalisationModal();  // Fermer le modal
                 
                 // Message de succès
                 const icon = updatedLocker.hosp ? '🏥' : '✓';
@@ -6051,7 +5964,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
-// DEPRECATED Fonction utilitaire
+// Affichage listing hospi avec dates : à relooker
 function showHospitalisationList() {
     // Filtrer les casiers occupés avec hosp = 1
     const hospLockers = DATA.filter(l => l.occupied && l.hosp);
@@ -6184,7 +6097,7 @@ function getSelectedLockersForLabels() {
         }
     }
     
-    // NOUVEAU : Filtre par marqueur (s'applique après)
+    // Filtre par marqueur (s'applique après)
     if (markerFilter !== 'none') {
         switch(markerFilter) {
             case 'marked':

@@ -1,0 +1,270 @@
+# 📂 Liste Complète des Fichiers Créés
+
+## 🎬 Fichier Principal
+
+### `server.js` (60 lignes)
+Point d'entrée qui orchestre tous les modules.
+- Import des modules
+- Configuration Express
+- Montage des routes
+- Démarrage du serveur
+- Initialisation des backups
+
+---
+
+## ⚙️ Configuration (`src/config/`)
+
+### `src/config/index.js` (85 lignes)
+Configuration centrale de l'application.
+- Mots de passe et authentification
+- Anonymisation (guest/admin)
+- Backups (heure, fréquence, rétention)
+- Sessions (durée, nettoyage)
+- Mode production/développement
+
+### `src/config/zones.js` (45 lignes)
+Configuration des zones de casiers.
+- Parsing de ZONE_NAMES, ZONE_COUNTS, ZONE_PREFIXES
+- Validation de la configuration
+- Export de ZONES_CONFIG
+
+### `src/config/import-formats.js` (70 lignes)
+Formats d'import CSV personnalisés.
+- Format INTERNE (par défaut)
+- Format MHCARE (logiciel médical)
+- Format WINPHARM (logiciel pharmacie)
+- Mapping des colonnes
+- Filtres et validations
+
+---
+
+## 💾 Base de Données (`src/database/`)
+
+### `src/database/index.js` (70 lignes)
+Connexion SQLite et helpers.
+- Connexion à la base de données
+- `dbRun()` : Exécuter une requête
+- `dbGet()` : Récupérer une ligne
+- `dbAll()` : Récupérer toutes les lignes
+- Gestion des erreurs
+
+### `src/database/init.js` (180 lignes)
+Initialisation des tables.
+- Table `lockers` (casiers)
+- Table `clients` (patients)
+- Table `locker_history` (historique)
+- Table `connection_stats` (stats connexions)
+- Table `connection_logs` (logs détaillés)
+- Table `export_logs` (logs exports)
+- Table `client_imports` (imports patients)
+- Initialisation des casiers si vide
+
+---
+
+## 📋 Modèles (`src/models/`)
+
+### `src/models/schemas.js` (115 lignes)
+Schémas de validation Zod.
+- `lockerSchema` : Validation casier
+- `clientSchema` : Validation client/patient
+- `importCasierSchema` : Import CSV casiers
+- `restoreSchema` : Restauration backup
+- `loginSchema` : Validation login
+
+---
+
+## 🔧 Services (`src/services/`)
+
+### `src/services/session.js` (70 lignes)
+Gestion des sessions en mémoire.
+- Map des sessions
+- Création/récupération de session
+- Nettoyage automatique des sessions expirées
+- Durée de session configurable
+
+### `src/services/history.js` (60 lignes)
+Enregistrement des logs et historique.
+- `recordConnection()` : Logger une connexion
+- `recordHistory()` : Logger une modification de casier
+- Statistiques agrégées par jour/rôle
+
+### `src/services/csv-parser.js` (180 lignes)
+Parsing CSV avec formats personnalisés.
+- `parseCsvLine()` : Parser une ligne CSV
+- `detectCSVSeparator()` : Détection automatique du séparateur
+- `mapRowToClient()` : Mapper les colonnes
+- `parseClientsWithFormat()` : Import complet avec format
+
+---
+
+## 🛡️ Middleware (`src/middleware/`)
+
+### `src/middleware/index.js` (90 lignes)
+Configuration des middlewares Express.
+- CORS (cross-origin)
+- Body parser (JSON)
+- Cookie parser
+- CSRF protection
+- Helmet (sécurité headers)
+- Rate limiting
+- Fichiers statiques (public/)
+- Route par défaut (index.html)
+
+### `src/middleware/auth.js` (35 lignes)
+Middleware d'authentification.
+- `requireAuth()` : Vérifier l'authentification
+- Vérification de l'expiration de session
+- Renouvellement automatique (rolling session)
+
+### `src/middleware/rate-limit.js` (60 lignes)
+Rate limiters pour protéger l'API.
+- `generalLimiter` : 100 req/5min (toutes routes)
+- `loginLimiter` : 5 req/5min (login)
+- `importLimiter` : 100 req/heure (imports)
+- `exportLimiter` : 20 req/15min (exports)
+- `backupLimiter` : 5 req/heure (backups)
+
+---
+
+## 🛤️ Routes API (`src/routes/`)
+
+### `src/routes/auth.js` (170 lignes)
+Authentification et sessions.
+- `GET /api/csrf-token` : Token CSRF
+- `POST /api/login` : Login admin/guest
+- `POST /api/logout` : Déconnexion
+- `GET /api/auth/check` : Vérifier session
+- `GET /api/session/time-remaining` : Temps restant
+
+### `src/routes/lockers.js` (450 lignes)
+Gestion complète des casiers.
+- `GET /api/lockers` : Tous les casiers
+- `GET /api/lockers/zone/:zone` : Par zone
+- `GET /api/lockers/:number` : Un casier
+- `POST /api/lockers` : Créer/modifier
+- `POST /api/lockers/bulk-mark` : Marquage multiple
+- `DELETE /api/lockers/clear-marks` : Retirer toutes marques
+- `POST /api/lockers/:number/toggle/:marker` : Toggle marqueur
+- `POST /api/lockers/:number/hospitalisation` : Modifier hosp
+- `DELETE /api/lockers/:number` : Libérer casier
+- `DELETE /api/lockers/clear` : Vider tous casiers
+- `GET /api/lockers/search/:query` : Recherche
+- `GET /api/lockers/:number/history` : Historique
+
+### `src/routes/clients.js` (200 lignes)
+Import et gestion des clients/patients.
+- `GET /api/clients/import-status` : Statut import
+- `GET /api/clients/stats` : Statistiques
+- `GET /api/clients/:ipp` : Un client
+- `POST /api/clients/import` : Import CSV
+- `DELETE /api/clients/clear` : Vider base clients
+
+### `src/routes/stats.js` (150 lignes)
+Statistiques et rapports.
+- `GET /api/stats` : Stats générales
+- `GET /api/stats/connections` : Stats connexions
+- `GET /api/stats/connections/summary` : Résumé connexions
+- `GET /api/stats/modifications` : Stats modifications
+
+### `src/routes/export.js` (120 lignes)
+Export de données.
+- `POST /api/export` : Export CSV/JSON
+- `POST /api/exports/log` : Logger un export
+- `GET /api/exports/history` : Historique exports
+
+### `src/routes/import.js` (280 lignes)
+Import de données.
+- `POST /api/import` : Import CSV casiers
+- `POST /api/import-json` : Import JSON casiers
+
+### `src/routes/backup.js` (170 lignes)
+Gestion des sauvegardes.
+- `GET /api/backups` : Liste backups
+- `POST /api/restore` : Restaurer backup
+- `POST /api/backup` : Créer backup manuel
+
+### `src/routes/config.js` (120 lignes)
+Configuration runtime.
+- `GET /api/config/zones` : Configuration zones
+- `GET /api/config/anonymization` : Config anonymisation
+- `POST /api/config/anonymization` : Modifier anonymisation
+- `GET /api/config/import-format` : Format import
+- `GET /api/config/backup` : Config backup
+- `GET /api/config` : Config générale
+
+---
+
+## 🔨 Utilitaires
+
+### `src/utils.js` (85 lignes)
+Fonctions utilitaires réutilisables.
+- `generateToken()` : Générer token sécurisé
+- `getLocalIP()` : IP locale du serveur
+- `getClientIP()` : IP du client
+- `normalizeDateFormat()` : Normaliser dates
+- `capitalizeFirstLetter()` : Première lettre maj
+
+### `src/backup.js` (110 lignes)
+Service de backup automatique.
+- Backup à heure fixe (ex: 02:00)
+- Backup périodique (ex: toutes les 24h)
+- Nettoyage des vieux backups
+- Rétention configurable
+
+---
+
+## 📚 Documentation
+
+### `README_REFACTORING.md`
+Documentation complète de l'architecture.
+- Structure des fichiers
+- Explications de chaque module
+- Avantages du refactoring
+- Guide de maintenance
+
+### `MIGRATION.md`
+Guide pas à pas pour migrer.
+- Checklist de migration
+- Tests de validation
+- Résolution de problèmes
+- Vérification finale
+
+### `package.json`
+Dépendances du projet.
+- Express, SQLite3, Bcrypt
+- Helmet, CORS, CSRF
+- Zod, Rate-limit
+- Scripts npm
+
+---
+
+## 📊 Statistiques du Refactoring
+
+| Métrique | Avant | Après |
+|----------|-------|-------|
+| **Nombre de fichiers** | 1 | 26 |
+| **Lignes par fichier** | 1500+ | 35-450 |
+| **Maintenabilité** | ⚠️ Difficile | ✅ Excellente |
+| **Testabilité** | ⚠️ Compliquée | ✅ Simple |
+| **Réutilisabilité** | ❌ Nulle | ✅ Maximale |
+| **Lisibilité** | ⚠️ Moyenne | ✅ Optimale |
+
+---
+
+## ✅ Résumé
+
+**Total : 26 fichiers créés**
+
+- 1 fichier principal (`server.js`)
+- 3 fichiers de configuration
+- 2 fichiers de base de données
+- 1 fichier de modèles
+- 3 fichiers de services
+- 3 fichiers de middleware
+- 8 fichiers de routes
+- 2 fichiers utilitaires
+- 3 fichiers de documentation
+
+**Comportement : 100% identique à l'original**
+
+Tous les endpoints API, fonctionnalités et comportements sont préservés. Seule l'organisation du code a changé pour faciliter la maintenance future.

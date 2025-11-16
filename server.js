@@ -1529,6 +1529,7 @@ app.delete('/api/lockers/:number', requireAuth, csrfProtection, async (req, res)
     await dbRun(
       `UPDATE lockers 
        SET occupied = 0, recoverable = 0, name = '', firstName = '', code = '', birthDate = '', comment = '',
+           marque = 0, hosp = 0, hospDate = '', idel = 0, stup = 0, frigo = 0, pca = 0, meopa = 0,
            updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
        WHERE number = ?`,
       [userName, req.params.number]
@@ -2808,7 +2809,7 @@ app.post('/api/import-unified', requireAuth, importLimiter, csrfProtection, asyn
     });
     
   } catch (err) {
-    console.error('Erreur import unifié:', err);
+    console.error('Erreur lors de l\'import unifié:', err);
     res.status(500).json({ error: err.message });
   }
 });

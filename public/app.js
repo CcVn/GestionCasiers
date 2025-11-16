@@ -3583,7 +3583,7 @@ async function performLockersImport(content, filename) {
         }
 
         //TEST: route unifiée
-        routeImport = `${API_URL}/import-unified`
+        //routeImport = `${API_URL}/import-unified`
         const result = await fetchJSON(routeImport, {
             method: 'POST',
             headers: { 

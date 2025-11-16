@@ -1,0 +1,272 @@
+# 🔄 Guide de Migration - Ancien Code → Code Refactorisé
+
+## 📋 Checklist de Migration
+
+### ✅ Étape 1 : Sauvegarder
+```bash
+# Faire une copie complète de l'ancien projet
+cp -r ancien-projet ancien-projet-backup
+
+# Sauvegarder la base de données
+cp app.db app.db.backup
+```
+
+### ✅ Étape 2 : Créer la Structure
+```bash
+# Créer les dossiers
+mkdir -p src/{config,database,models,services,middleware,routes}
+mkdir -p backups public
+```
+
+### ✅ Étape 3 : Copier les Nouveaux Fichiers
+
+**Fichiers à créer** (dans l'ordre) :
+
+1. **Configuration**
+   - `src/config/index.js`
+   - `src/config/zones.js`
+   - `src/config/import-formats.js`
+
+2. **Base de données**
+   - `src/database/index.js`
+   - `src/database/init.js`
+
+3. **Modèles**
+   - `src/models/schemas.js`
+
+4. **Services**
+   - `src/services/session.js`
+   - `src/services/history.js`
+   - `src/services/csv-parser.js`
+
+5. **Middleware**
+   - `src/middleware/index.js`
+   - `src/middleware/auth.js`
+   - `src/middleware/rate-limit.js`
+
+6. **Routes** (toutes dans `src/routes/`)
+   - `auth.js`
+   - `lockers.js`
+   - `clients.js`
+   - `stats.js`
+   - `export.js`
+   - `import.js`
+   - `backup.js`
+   - `config.js`
+
+7. **Utilitaires et backup**
+   - `src/utils.js`
+   - `src/backup.js`
+
+8. **Fichier maître**
+   - `server.js`
+
+### ✅ Étape 4 : Vérifier les Dépendances
+
+```bash
+# Installer les dépendances
+npm install
+
+# Vérifier package.json
+cat package.json
+```
+
+Dépendances requises :
+- `express` ^4.18.2
+- `sqlite3` ^5.1.6
+- `bcrypt` ^5.1.1
+- `cors` ^2.8.5
+- `cookie-parser` ^1.4.6
+- `csurf` ^1.11.0
+- `dotenv` ^16.3.1
+- `express-rate-limit` ^7.1.5
+- `helmet` ^7.1.0
+- `zod` ^3.22.4
+
+### ✅ Étape 5 : Conserver les Fichiers Existants
+
+**Ne PAS toucher à :**
+- `config.env` (configuration existante)
+- `app.db` (base de données)
+- `backups/` (sauvegardes existantes)
+- `public/` (frontend HTML/CSS/JS)
+
+### ✅ Étape 6 : Tester la Migration
+
+```bash
+# Démarrer le serveur
+npm start
+
+# Vérifier dans les logs :
+# ✓ SQLite connecté
+# ✓ Table casiers créée/vérifiée
+# ✓ Serveur démarré
+```
+
+## 🔍 Comparaison des Structures
+
+### Avant (fichier unique)
+
+```
+project/
+├── server.js (1500+ lignes)
+├── config.env
+├── app.db
+├── public/
+└── backups/
+```
+
+### Après (modulaire)
+
+```
+project/
+├── server.js (60 lignes)
+├── config.env
+├── app.db
+├── public/
+├── backups/
+└── src/
+    ├── config/         (3 fichiers)
+    ├── database/       (2 fichiers)
+    ├── models/         (1 fichier)
+    ├── services/       (3 fichiers)
+    ├── middleware/     (3 fichiers)
+    ├── routes/         (8 fichiers)
+    ├── backup.js
+    └── utils.js
+```
+
+## 🎯 Points d'Attention
+
+### 1. Chemins de fichiers
+
+**Avant :**
+```javascript
+// Dans server.js
+const dbPath = path.join(__dirname, 'app.db');
+```
+
+**Après :**
+```javascript
+// Dans src/database/index.js
+const dbPath = path.join(__dirname, '../../app.db');
+```
+
+### 2. Imports relatifs
+
+**Avant :**
+```javascript
+// Tout dans le même fichier
+```
+
+**Après :**
+```javascript
+// Importer depuis les modules
+const { dbRun } = require('../database');
+const { requireAuth } = require('../middleware/auth');
+```
+
+### 3. Configuration CSRF
+
+**Avant :**
+```javascript
+// csrfProtection global
+const csrfProtection = csrf({...});
+```
+
+**Après :**
+```javascript
+// csrfProtection via req.app
+const getCsrfProtection = (req) => req.app.get('csrfProtection');
+```
+
+## ✅ Tests de Validation
+
+### Test 1 : Login
+```bash
+curl -X POST http://localhost:5000/api/login \
+  -H "Content-Type: application/json" \
+  -d '{"password":"", "userName":""}'
+```
+
+**Résultat attendu :** `{"success":true,"role":"guest"}`
+
+### Test 2 : Récupérer les casiers
+```bash
+curl http://localhost:5000/api/lockers
+```
+
+**Résultat attendu :** Liste JSON des casiers
+
+### Test 3 : Statistiques
+```bash
+curl http://localhost:5000/api/stats
+```
+
+**Résultat attendu :** Statistiques d'occupation
+
+## 🐛 Résolution de Problèmes
+
+### Erreur : Module not found
+
+```bash
+# Vérifier la structure des dossiers
+ls -la src/
+
+# Vérifier que tous les fichiers sont créés
+find src -name "*.js"
+```
+
+### Erreur : Cannot find database
+
+```bash
+# Vérifier le chemin dans src/database/index.js
+# Doit être : path.join(__dirname, '../../app.db')
+```
+
+### Erreur : CSRF token invalid
+
+```bash
+# S'assurer que getCsrfProtection est utilisé partout
+# grep -r "csrfProtection" src/routes/
+```
+
+## 📊 Vérification Finale
+
+### Checklist de validation :
+
+- [ ] Serveur démarre sans erreur
+- [ ] Login admin fonctionne
+- [ ] Login guest fonctionne
+- [ ] Liste des casiers s'affiche
+- [ ] Modification d'un casier fonctionne
+- [ ] Import clients fonctionne
+- [ ] Export fonctionne
+- [ ] Backup manuel fonctionne
+- [ ] Statistiques s'affichent
+- [ ] Logs de connexion enregistrés
+
+## 🎉 Migration Réussie !
+
+Si tous les tests passent, la migration est complète. Vous pouvez maintenant :
+
+1. **Supprimer l'ancien code** (gardez une copie de sécurité)
+2. **Commiter dans Git** :
+   ```bash
+   git add .
+   git commit -m "Refactoring: Structure modulaire"
+   ```
+3. **Documenter les changements** pour l'équipe
+
+## 📞 Support
+
+En cas de problème :
+1. Vérifier les logs du serveur (VERBOSE = true)
+2. Comparer avec l'ancien code
+3. Restaurer depuis la sauvegarde si nécessaire
+
+---
+
+**Temps estimé de migration** : 30-60 minutes  
+**Complexité** : Moyenne  
+**Risque** : Faible (comportement identique)

@@ -996,6 +996,26 @@
     background: var(--bg-secondary);
 }
 
+/* CSS pour les indicateurs de tri */
+th[data-sort] {
+  cursor: pointer;
+  user-select: none;
+}
+
+th[data-sort]:hover {
+  background: var(--bg-hover);
+}
+
+th.sorted-asc::after {
+  content: ' ▲';
+  color: var(--primary-color);
+}
+
+th.sorted-desc::after {
+  content: ' ▼';
+  color: var(--primary-color);
+}
+
 /* Impression du modal */
 @media print {
     body * {

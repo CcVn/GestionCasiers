@@ -12,6 +12,63 @@ const { isProduction, VERBOSE } = require('../config');
 
 const getCsrfProtection = (req) => req.app.get('csrfProtection');
 
+// ============ ROUTES SPÉCIALES (avant les routes paramétrées) ============
+
+// DEPRECATED: déplacée dans /admin
+// DELETE vider tous les casiers - Route spéciale en premier !
+router.delete('/all/clear', requireAuth, (req, res, next) => {
+    const csrfProtection = getCsrfProtection(req);
+    csrfProtection(req, res, async () => {
+        try {
+            const token = req.cookies.auth_token;
+            const session = getSession(token);
+            const isAdmin = session?.isAdmin;
+            const { getClientIP } = require('../utils');
+            
+            if (!isAdmin) {
+                return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+            }
+            
+            const userName = session?.userName || 'Inconnu';
+            
+            console.log('🗑️ Libération de tous les casiers...');
+            
+            const result = await dbRun(
+                `UPDATE lockers 
+                 SET occupied = 0, recoverable = 0, name = '', firstName = '', code = '', 
+                     birthDate = '', comment = '', marque = 0, hosp = 0, hospDate = '', 
+                     idel = 0, stup = 0, frigo = 0, pca = 0, meopa = 0,
+                     updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
+                 WHERE occupied = 1`,
+                [userName]
+            );
+            
+            const count = result.changes || 0;
+            
+            await recordHistory('ALL', 'CLEAR_ALL', userName, 'admin', `${count} casiers libérés`);
+            
+            console.log(`✓ ${count} casiers libérés`);
+         
+            const clientIP = getClientIP(req);
+            await dbRun(
+                'INSERT INTO connection_logs (role, userName, ipAddress) VALUES (?, ?, ?)',
+                ['admin', `EFFACEMENT_CASIERS (${count})`, clientIP]
+            );
+
+            res.json({
+                success: true,
+                cleared: count,
+                message: 'Tous les casiers ont été libérés'
+            });
+        } catch (err) {
+            console.error('Erreur libération casiers:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+});
+
+// ============ ROUTES STANDARDS ============
+
 // GET tous les casiers
 router.get('/', async (req, res) => {
     try {
@@ -261,6 +318,57 @@ router.delete('/clear-marks', requireAuth, (req, res, next) => {
     });
 });
 
+// DELETE vider tous les casiers (route explicite pour éviter tout conflit)
+router.delete('/all/clear', requireAuth, (req, res, next) => {
+    const csrfProtection = getCsrfProtection(req);
+    csrfProtection(req, res, async () => {
+        try {
+            const token = req.cookies.auth_token;
+            const session = getSession(token);
+            const isAdmin = session?.isAdmin;
+            const { getClientIP } = require('../utils');
+            
+            if (!isAdmin) {
+                return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+            }
+            
+            const userName = session?.userName || 'Inconnu';
+            
+            console.log('🗑️ Libération de tous les casiers...');
+            
+            const result = await dbRun(
+                `UPDATE lockers 
+                 SET occupied = 0, recoverable = 0, name = '', firstName = '', code = '', 
+                     birthDate = '', comment = '', updatedAt = CURRENT_TIMESTAMP, 
+                     updatedBy = ?, version = version + 1
+                 WHERE occupied = 1`,
+                [userName]
+            );
+            
+            const count = result.changes || 0;
+            
+            await recordHistory('ALL', 'CLEAR_ALL', userName, 'admin', `${count} casiers libérés`);
+            
+            console.log(`✓ ${count} casiers libérés`);
+         
+            const clientIP = getClientIP(req);
+            await dbRun(
+                'INSERT INTO connection_logs (role, userName, ipAddress) VALUES (?, ?, ?)',
+                ['admin', `EFFACEMENT_CASIERS (${count})`, clientIP]
+            );
+
+            res.json({
+                success: true,
+                cleared: count,
+                message: 'Tous les casiers ont été libérés'
+            });
+        } catch (err) {
+            console.error('Erreur libération casiers:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+});
+
 // POST Toggle marqueur générique
 router.post('/:number/toggle/:marker', requireAuth, (req, res, next) => {
     const csrfProtection = getCsrfProtection(req);
@@ -376,7 +484,59 @@ router.post('/:number/hospitalisation', requireAuth, (req, res, next) => {
     });
 });
 
-// DELETE libérer un casier
+// DELETE vider tous les casiers (route explicite pour éviter tout conflit)
+router.delete('/all/clear', requireAuth, (req, res, next) => {
+    const csrfProtection = getCsrfProtection(req);
+    csrfProtection(req, res, async () => {
+        try {
+            const token = req.cookies.auth_token;
+            const session = getSession(token);
+            const isAdmin = session?.isAdmin;
+            const { getClientIP } = require('../utils');
+            
+            if (!isAdmin) {
+                return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
+            }
+            
+            const userName = session?.userName || 'Inconnu';
+            
+            console.log('🗑️ Libération de tous les casiers...');
+            
+            const result = await dbRun(
+                `UPDATE lockers 
+                 SET occupied = 0, recoverable = 0, name = '', firstName = '', code = '', 
+                     birthDate = '', comment = '', marque = 0, hosp = 0, hospDate = '', 
+                     idel = 0, stup = 0, frigo = 0, pca = 0, meopa = 0,
+                     updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
+                 WHERE occupied = 1`,
+                [userName]
+            );
+            
+            const count = result.changes || 0;
+            
+            await recordHistory('ALL', 'CLEAR_ALL', userName, 'admin', `${count} casiers libérés`);
+            
+            console.log(`✓ ${count} casiers libérés`);
+         
+            const clientIP = getClientIP(req);
+            await dbRun(
+                'INSERT INTO connection_logs (role, userName, ipAddress) VALUES (?, ?, ?)',
+                ['admin', `EFFACEMENT_CASIERS (${count})`, clientIP]
+            );
+
+            res.json({
+                success: true,
+                cleared: count,
+                message: 'Tous les casiers ont été libérés'
+            });
+        } catch (err) {
+            console.error('Erreur libération casiers:', err);
+            res.status(500).json({ error: err.message });
+        }
+    });
+});
+
+// DELETE libérer un casier individuel
 router.delete('/:number', requireAuth, (req, res, next) => {
     const csrfProtection = getCsrfProtection(req);
     csrfProtection(req, res, async () => {
@@ -392,7 +552,7 @@ router.delete('/:number', requireAuth, (req, res, next) => {
             );
 
             if (!locker) {
-                return res.status(404).json({ error: 'Casier à supprimer non trouvé' });
+                return res.status(404).json({ error: 'Casier non trouvé' });
             }
 
             const details = locker.occupied 
@@ -417,57 +577,6 @@ router.delete('/:number', requireAuth, (req, res, next) => {
 
             res.json(updatedLocker);
         } catch (err) {
-            res.status(500).json({ error: err.message });
-        }
-    });
-});
-
-// DELETE vider tous les casiers
-router.delete('/clear', requireAuth, (req, res, next) => {
-    const csrfProtection = getCsrfProtection(req);
-    csrfProtection(req, res, async () => {
-        try {
-            const token = req.cookies.auth_token;
-            const session = getSession(token);
-            const isAdmin = session?.isAdmin;
-            const { getClientIP } = require('../utils');
-            
-            if (!isAdmin) {
-                return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
-            }
-            
-            const userName = session?.userName || 'Inconnu';
-            
-            console.log('🗑️ Libération de tous les casiers...');
-            
-            const result = await dbRun(
-                `UPDATE lockers 
-                 SET occupied = 0, recoverable = 0, name = '', firstName = '', code = '', 
-                     birthDate = '', comment = '', updatedAt = CURRENT_TIMESTAMP, 
-                     updatedBy = ?, version = version + 1
-                 WHERE occupied = 1`,
-                [userName]
-            );
-            
-            const count = result.changes || 0;
-            
-            await recordHistory('ALL', 'CLEAR_ALL', userName, 'admin', `${count} casiers libérés`);
-            
-            console.log(`✓ ${count} casiers libérés`);
-         
-            const clientIP = getClientIP(req);
-            await dbRun(
-                'INSERT INTO connection_logs (role, userName, ipAddress) VALUES (?, ?, ?)',
-                ['admin', `EFFACEMENT_CASIERS (${count})`, clientIP]
-            );
-
-            res.json({
-                success: true,
-                cleared: count,
-                message: 'Tous les casiers ont été libérés'
-            });
-        } catch (err) {
-            console.error('Erreur libération casiers:', err);
             res.status(500).json({ error: err.message });
         }
     });

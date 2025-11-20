@@ -26,12 +26,12 @@ const lockerSchema = z.object({
 // Schéma pour import clients
 const clientSchema = z.object({
     ipp: z.string().min(1, 'IPP requis'),
-    name: z.string().max(100).optional().default(''),
-    firstName: z.string().max(100).optional().default(''),
-    birthName: z.string().max(100).optional().default(''),
+    name: z.string().max(50).optional().default(''),
+    firstName: z.string().max(20).optional().default(''),
+    birthName: z.string().max(50).optional().default(''),
     birthDate: z.string().optional().default(''),
     sex: z.enum(['M', 'F', '']).optional().default(''),
-    zone: z.string().max(50).optional().default(''),
+    zone: z.string().max(15).optional().default(''),
     entryDate: z.string().optional().default('')
 });
 
@@ -39,8 +39,8 @@ const clientSchema = z.object({
 const importCasierSchema = z.object({
     number: z.string().min(1),
     zone: z.string().min(1),
-    name: z.string().max(100).optional().default(''),
-    firstName: z.string().max(100).optional().default(''),
+    name: z.string().max(50).optional().default(''),
+    firstName: z.string().max(20).optional().default(''),
     code: z.string().max(50).optional().default(''),
     birthDate: z.string().optional().default(''),
     recoverable: z.boolean().optional().default(false),

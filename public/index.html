@@ -842,11 +842,11 @@
                 <table class="clients-preview-table" id="consultationTable">
                     <thead style="position: sticky; top: 0; background: var(--bg-primary); z-index: 10;">
                         <tr>
-                            <th style="cursor: pointer;" onclick="sortConsultationTable('name')">Nom ▼</th>
-                            <th style="cursor: pointer;" onclick="sortConsultationTable('firstName')">Prénom ▼</th>
-                            <th style="cursor: pointer;" onclick="sortConsultationTable('birthDate')">Date de naissance ▼</th>
-                            <th style="cursor: pointer;" onclick="sortConsultationTable('code')">N°IPP ▼</th>
-                            <th style="cursor: pointer;" onclick="sortConsultationTable('number')">N° Casier ▼</th>
+                            <th data-sort="name" style="cursor: pointer;" onclick="sortConsultationTable('name')">Nom ▼</th>
+                            <th data-sort="firstName" style="cursor: pointer;" onclick="sortConsultationTable('firstName')">Prénom ▼</th>
+                            <th data-sort="birthDate" style="cursor: pointer;" onclick="sortConsultationTable('birthDate')">Date de naissance ▼</th>
+                            <th data-sort="code" style="cursor: pointer;" onclick="sortConsultationTable('code')">N°IPP ▼</th>
+                            <th data-sort="number" style="cursor: pointer;" onclick="sortConsultationTable('number')">N° Casier ▼</th>
                             <th>Commentaire</th>
                         </tr>
                     </thead>
@@ -858,10 +858,28 @@
         </div>
     </div>
 
-<!--    <script src="/js/admintools.js"></script> -->
-<!--    <script src="modal_labels.js"></script>  -->
+<!--    <script src="app.js"></script> -->
     <script src="app.js"></script>
-<!--    <script src="modal_consultation.js"></script> -->
+    <script src="cjs/init_page.js"></script>
+    <script src="cjs/auth.js"></script>
+    <script src="cjs/api.js"></script>
+    <script src="cjs/darkmode.js"></script>
+    <script src="cjs/anonymisation.js"></script>
+    <script src="cjs/import_casiers.js"></script>
+    <script src="cjs/export_casiers.js"></script>
+    <script src="cjs/tabs_content.js"></script>
+    <script src="cjs/edit_casiers.js"></script>
+    <script src="cjs/recherche.js"></script>
+    <script src="cjs/marque_groupee.js"></script>
+    <script src="cjs/hospitalisation.js"></script>
+    <script src="cjs/import_patients.js"></script>
+    <script src="cjs/stat_patients.js"></script>
+    <script src="cjs/duplicats_homonymes.js"></script>
+    <script src="cjs/consultation.js"></script>
+    <script src="cjs/backup_create_restore.js"></script>
+    <script src="cjs/stat_connexions.js"></script>
+    <script src="cjs/stat_modif_casiers.js"></script>
+    <script src="cjs/etiquettes.js"></script>
     <script>
         // Fonction pour toggle le container des outils admin
         function toggleAdminTools() {

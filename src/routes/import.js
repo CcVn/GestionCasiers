@@ -12,7 +12,7 @@ const { isProduction, VERBOSE } = require('../config');
 
 const getCsrfProtection = (req) => req.app.get('csrfProtection');
 
-// POST import CSV casiers
+// POST import des casiers au format CSV 
 router.post('/import', requireAuth, importLimiter, (req, res, next) => {
     const csrfProtection = getCsrfProtection(req);
     csrfProtection(req, res, async () => {
@@ -241,7 +241,7 @@ router.post('/import', requireAuth, importLimiter, (req, res, next) => {
     });
 });
 
-// POST import JSON casiers
+// POST import des casiers au format JSON
 router.post('/import-json', requireAuth, importLimiter, (req, res, next) => {
     const csrfProtection = getCsrfProtection(req);
     csrfProtection(req, res, async () => {
@@ -337,6 +337,343 @@ router.post('/import-json', requireAuth, importLimiter, (req, res, next) => {
             console.error('Erreur import JSON:', err);
             res.status(500).json({ error: err.message });
         }
+    });
+});
+
+// POST import casiers unifié (CSV ou JSON) 
+router.post('/import-unified', requireAuth, importLimiter, async (req, res) => {
+
+    const csrfProtection = getCsrfProtection(req);
+    csrfProtection(req, res, async () => {
+
+      try {
+        const { rawContent, format, mode, separator } = req.body;
+        
+        if (!rawContent) {
+          return res.status(400).json({ error: 'Contenu requis' });
+        }
+
+        // Limite de taille
+        const MAX_SIZE = 10 * 1024 * 1024; // 10 MB
+        if (rawContent.length > MAX_SIZE) {
+            return res.status(400).json({ 
+                error: `Fichier trop volumineux (max ${MAX_SIZE / 1024 / 1024} MB)` 
+            });
+        }
+
+        if (VERBOSE > 0) {
+          console.log(`📥 Import casiers unifié`);
+          console.log(` - Mode: ${mode || 'update'}`);
+          console.log(` - Format: ${format || 'auto-detect'}`);
+        }
+
+        // ============ AUTO-DETECTION DU FORMAT ============
+        let detectedFormat = format || 'auto';
+        let parsedData = null;
+        let parseErrors = 0;
+        
+        if (detectedFormat === 'auto') {
+          // Essayer JSON d'abord
+          try {
+            const trimmed = rawContent.trim();
+            if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+              const jsonData = JSON.parse(trimmed);
+              detectedFormat = 'json';
+              parsedData = Array.isArray(jsonData) ? jsonData : (jsonData.lockers || jsonData.data);
+              if (VERBOSE > 0) console.log('  --> Format auto-détecté: JSON');
+            }
+          } catch (jsonErr) {
+            // Pas du JSON, essayer CSV
+          }
+          
+          // Si pas JSON, c'est du CSV
+          if (!parsedData) {
+            detectedFormat = 'csv';
+            if (VERBOSE > 0) console.log('   --> Format auto-détecté: CSV');
+          }
+        }
+
+        // ============ PARSING SELON FORMAT ============
+        if (detectedFormat === 'json' && !parsedData) {
+
+          console.log('-------------------------------');
+          // Parsing JSON manuel (si pas fait en auto-detect)
+          try {
+            const trimmed = rawContent.trim();
+            const jsonData = JSON.parse(trimmed);
+            parsedData = Array.isArray(jsonData) ? jsonData : (jsonData.lockers || jsonData.data);
+            
+            if (!Array.isArray(parsedData)) {
+              return res.status(400).json({ 
+                error: 'JSON invalide: "data" ou "lockers" doit être un tableau' 
+              });
+            }
+            
+            if (VERBOSE > 0) console.log(`   Lignes JSON: ${parsedData.length}`);
+            
+          } catch (err) {
+            return res.status(400).json({ 
+              error: 'Erreur parsing JSON: ' + err.message 
+            });
+          }
+          
+        } else if (detectedFormat === 'csv') {
+          // Validation séparateur
+          const VALID_SEPARATORS = [';', ',', '\t', '|', 'auto'];
+          if (separator && !VALID_SEPARATORS.includes(separator)) {
+            return res.status(400).json({ 
+              error: `Séparateur invalide. Valeurs acceptées: ${VALID_SEPARATORS.join(', ')}` 
+            });
+          }
+
+          // Parsing CSV
+          const parseResult = parseCSVContent(rawContent, {
+            separator: separator || 'auto',
+            headers: true,
+            skipEmptyLines: true,
+            trim: true
+          });
+          
+          if (!parseResult.success) {
+            return res.status(400).json({ 
+              error: 'Erreur parsing CSV: ' + parseResult.error 
+            });
+          }
+          
+          parsedData = parseResult.records;
+          
+          if (VERBOSE > 0) {
+            console.log(`   Headers: ${parseResult.headers.join(', ')}`);
+            console.log(`   Lignes CSV: ${parseResult.rowCount}`);
+            console.log(`   Séparateur: ${parseResult.delimiter === '\t' ? 'TAB' : parseResult.delimiter}`);
+          }
+          
+          // Valider colonnes requises pour CSV
+          const requiredColumns = ['number', 'zone'];
+          const headerLower = parseResult.headers.map(h => h.toLowerCase());
+          const missingColumns = requiredColumns.filter(col => 
+            !headerLower.some(h => h.includes(col))
+          );
+          
+          if (missingColumns.length > 0) {
+            return res.status(400).json({ 
+              error: `Colonnes manquantes: ${missingColumns.join(', ')}`,
+              headers: parseResult.headers,
+              expected: ['number', 'zone', 'name', 'firstName', 'code', 'birthDate', 'recoverable', 'marque', 'hosp', 'hospDate', 'stup', 'idel', 'frigo', 'pca', 'meopa', 'comment']
+            });
+          }
+
+          // Normaliser les données CSV
+          const normalized = [];
+          for (let i = 0; i < parsedData.length; i++) {
+            try {
+              const row = parsedData[i];
+              
+              const findValue = (variants) => {
+                for (const variant of variants) {
+                  const key = Object.keys(row).find(k => 
+                    k.toLowerCase().includes(variant)
+                  );
+                  if (key) return row[key]?.trim() || '';
+                }
+                return '';
+              };
+              
+              const findBoolValue = (variants) => {
+                const value = findValue(variants);
+                return value === '1' || value.toLowerCase() === 'true' || value.toLowerCase() === 'oui';
+              };
+              
+              normalized.push({
+                number: findValue(['number', 'numéro', 'nÂ°', 'casier']),
+                zone: findValue(['zone']),
+                name: findValue(['name', 'nom']),
+                firstName: findValue(['firstname', 'prénom', 'prenom']),
+                code: findValue(['code', 'ipp']),
+                birthDate: findValue(['birthdate', 'ddn', 'date de naissance']),
+                recoverable: findBoolValue(['recoverable', 'récupérable']),
+                marque: findBoolValue(['marque', 'marqué']),
+                hosp: findBoolValue(['hosp', 'hospitalisation']),
+                hospDate: findValue(['hospdate', 'date hosp']),
+                stup: findBoolValue(['stup', 'stupéfiants']),
+                idel: findBoolValue(['idel']),
+                frigo: findBoolValue(['frigo']),
+                pca: findBoolValue(['pca']),
+                meopa: findBoolValue(['meopa']),
+                comment: findValue(['comment', 'commentaire'])
+              });
+            } catch (err) {
+              parseErrors++;
+              console.error(`   Erreur ligne ${i + 2}:`, err.message);
+            }
+          }
+          
+          parsedData = normalized;
+        }
+        
+        if (!parsedData || parsedData.length === 0) {
+          return res.status(400).json({ error: 'Aucune donnée valide à importer' });
+        }
+
+        // ============ VALIDATION ZOD ============
+        const validatedData = [];
+        let validationErrors = 0;
+        
+        for (let i = 0; i < parsedData.length; i++) {
+          const validationResult = importCasierSchema.safeParse(parsedData[i]);
+          if (!validationResult.success) {
+            validationErrors++;
+            if (VERBOSE > 0) {
+              console.warn(`   Ligne ${i + 1} invalide:`, validationResult.error.errors[0].message);
+            }
+            continue;
+          }
+          validatedData.push(validationResult.data);
+        }
+        
+        if (VERBOSE > 0) {
+          console.log(`   âœ" Données valides: ${validatedData.length}`);
+          console.log(`   âœ— Erreurs validation: ${validationErrors}`);
+        }
+        
+        if (validatedData.length === 0) {
+          return res.status(400).json({ 
+            error: 'Aucune donnée valide après validation',
+            validationErrors: validationErrors,
+            total: parsedData.length
+          });
+        }
+
+        // ============ SESSION & USER ============
+        const token = req.cookies.auth_token;
+        const session = sessions.get(token);
+        const userName = session?.userName || 'Inconnu';
+        
+        // ============ MODE REPLACE ============
+        let clearedCount = 0;
+        if (mode === 'replace') {
+          if (VERBOSE > 0) console.log('Mode remplacement : libération de tous les casiers...');
+          
+          const result = await dbRun(
+            `UPDATE lockers 
+             SET occupied = 0, recoverable = 0, name = '', firstName = '', code = '', birthDate = '', comment = '',
+                 marque = 0, hosp = 0, hospDate = '', stup = 0, idel = 0, frigo = 0, pca = 0, meopa = 0,
+                 updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
+             WHERE occupied = 1`,
+            [userName]
+          );
+          
+          clearedCount = result.changes || 0;
+          await recordHistory('ALL', 'CLEAR_BEFORE_IMPORT', userName, 'admin', 
+            `Tous les casiers (${clearedCount}) libérés avant import ${detectedFormat.toUpperCase()}`);
+        }
+        
+        // ============ TRANSACTION IMPORT ============
+        let imported = 0;
+        let errors = 0;
+        let invalidIPP = 0;
+        let notFound = 0;
+        let skipped = 0;
+        
+        await dbRun('BEGIN TRANSACTION');
+        
+        try {
+            for (const row of validatedData) {
+                try {
+                  const { number, zone, name, firstName, code, birthDate, recoverable, comment, 
+                          marque, hosp, hospDate, stup, idel, frigo, pca, meopa } = row;
+                  
+                  // Vérifier que le casier existe
+                  const locker = await dbGet('SELECT * FROM lockers WHERE number = ?', [number]);
+                  
+                  if (!locker) {
+                    notFound++;
+                    if (VERBOSE > 0) console.warn(`   Casier ${number} non trouvé, ignoré`);
+                    continue;
+                  }
+                  
+                  // Mode update : ignorer si déjà occupé
+                  if (mode === 'update' && locker.occupied) {
+                    skipped++;
+                    if (VERBOSE > 0) console.warn(`   Casier ${number} déjà occupé (${locker.name} ${locker.firstName}), ignoré`);
+                    continue;
+                  }
+                  
+                  // Vérifier l'IPP dans la base clients
+                  let isRecoverable = recoverable ? 1 : 0;
+                  if (code) {
+                    const client = await dbGet('SELECT * FROM clients WHERE ipp = ?', [code]);
+                    if (!client) {
+                      isRecoverable = 1;
+                      invalidIPP++;
+                    }
+                  }
+                  
+                  // Mettre à jour le casier
+                  await dbRun(
+                    `UPDATE lockers 
+                     SET zone = ?, occupied = 1, recoverable = ?, name = ?, firstName = ?, code = ?, birthDate = ?, comment = ?,
+                         marque = ?, hosp = ?, hospDate = ?, stup = ?, idel = ?, frigo = ?, pca = ?, meopa = ?,
+                         updatedAt = CURRENT_TIMESTAMP, updatedBy = ?, version = version + 1
+                     WHERE number = ?`,
+                    [zone, isRecoverable, name, firstName, code, birthDate, comment || '', 
+                     marque ? 1 : 0, hosp ? 1 : 0, hospDate || '', stup ? 1 : 0, idel ? 1 : 0, 
+                     frigo ? 1 : 0, pca ? 1 : 0, meopa ? 1 : 0, userName, number]
+                  );
+                  
+                  imported++;
+                  
+                  // Seuil d'erreurs
+                  if (errors > 100) {
+                    await dbRun('ROLLBACK');
+                    return res.status(500).json({ 
+                      error: `Trop d'erreurs (${errors}), import annulé` 
+                    });
+                  }
+                  
+                } catch (err) {
+                  errors++;
+                  console.error('   Erreur insertion casier:', err.message);
+                }
+            }
+              
+            // Commit
+            await dbRun('COMMIT');
+          
+        } catch (err) {
+            await dbRun('ROLLBACK');
+            throw err;
+        }
+        
+        if (VERBOSE > 0) {
+            console.log(`📥 Import ${detectedFormat.toUpperCase()} terminé:`);
+            console.log(`  - Importés: ${imported}`);
+            console.log(`  - Ignorés (occupés): ${skipped}`);
+            console.log(`  - Non trouvés: ${notFound}`);
+            console.log(`  - IPP invalides: ${invalidIPP}`);
+            console.log(`  - Erreurs: ${errors}`);
+            console.log(`  - Erreurs validation: ${validationErrors}`);
+            if (clearedCount > 0) console.log(`  - Casiers libérés: ${clearedCount}`);
+        }
+        
+        // Réponse
+        res.json({
+          success: true,
+          format: detectedFormat,
+          imported: imported,
+          skipped: skipped,
+          notFound: notFound,
+          errors: errors,
+          invalidIPP: invalidIPP,
+          validationErrors: validationErrors,
+          total: parsedData.length,
+          cleared: clearedCount
+        });
+        
+      } catch (err) {
+        console.error('Erreur lors de l\'import unifié:', err);
+        res.status(500).json({ error: err.message });
+      }
     });
 });
 

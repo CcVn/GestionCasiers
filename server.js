@@ -10,7 +10,7 @@ const path = require('path');
 // Import des modules
 const { setupMiddleware } = require('./src/middleware');
 const { initializeDatabase } = require('./src/database/init');
-const { setupAutoBackup } = require('./src/utils/backup-auto');
+const { setupAutoBackup } = require('./src/utils/auto-backup');
 const { getLocalIP, getClientIP } = require('./src/utils/misc-utils');
 
 // Import des routes

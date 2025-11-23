@@ -93,7 +93,7 @@ async function setupApp() {
         }
 
         // Étape 11 : Masquer le bouton de marquage
-        hideMarkButtons();
+        hideMarkButton();
         
         if (VERBCONSOLE>0) { console.log('✅ Application initialisée avec succès'); }
         
@@ -163,7 +163,7 @@ function applyAdminDefaults() {
         select.value = 'name';
     });
     
-    hideMarkButtons();
+    hideMarkButton();
 
     // Démasquer les éléments d'administration   @DEPRECATED
     showAdminElements();

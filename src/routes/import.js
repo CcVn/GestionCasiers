@@ -1,4 +1,4 @@
-// Routes pour les imports
+// Routes pour les imports avec ROUTINE CSV INTERNE
 
 const express = require('express');
 const router = express.Router();
@@ -9,11 +9,17 @@ const { getSession } = require('../services/session');
 const { recordHistory } = require('../services/history');
 const { importLimiter } = require('../middleware/rate-limit');
 const { isProduction, VERBOSE } = require('../config');
+const {
+  LOCKER_COLUMNS,
+  createColumnMapping,
+  validateRequiredColumns,
+  getFieldVariants
+} = require('../config/import-formats');
 
 const getCsrfProtection = (req) => req.app.get('csrfProtection');
 
-// POST import des casiers au format CSV 
-router.post('/import', requireAuth, importLimiter, (req, res, next) => {
+// ============ POST import des casiers au format CSV  ============
+router.post('/import-csv', requireAuth, importLimiter, (req, res, next) => {
     const csrfProtection = getCsrfProtection(req);
     csrfProtection(req, res, async () => {
         try {
@@ -44,12 +50,29 @@ router.post('/import', requireAuth, importLimiter, (req, res, next) => {
             // Parser les headers
             const headers = parseCsvLine(lines[0], usedSeparator);
             const dataLines = lines.slice(1);
+
+            // A IMPLEMENTER+ (remplacer la liste expectedColumns) Créer le mapping à partir de import-formats
+            const { mapping, unmappedColumns } = createColumnMapping(headers, LOCKER_COLUMNS);
+            // Valider
+            const validation = validateRequiredColumns(mapping, 'lockers');
+            if (!validation.isValid) {
+/*                return res.status(400).json({
+                    error: 'Colonnes obligatoires manquantes',
+                    missingFields: validation.missingFields,
+                    expectedVariants: validation.missingFields.map(field => ({
+                        field,
+                        acceptedNames: getFieldVariants(field, 'lockers')
+                    })),
+                    detectedHeaders: headers,
+                    unmappedColumns: unmappedColumns.map(col => col.name)
+                });*/
+            }
             
             if (VERBOSE > 0) {
                 console.log(`   Headers: ${headers.join(', ')}`);
                 console.log(`   Lignes de données: ${dataLines.length}`);
             }
-            
+
             // Mapper les colonnes
             const columnMap = {};
             const expectedColumns = {
@@ -241,7 +264,7 @@ router.post('/import', requireAuth, importLimiter, (req, res, next) => {
     });
 });
 
-// POST import des casiers au format JSON
+// ============ POST import des casiers au format JSON  ============
 router.post('/import-json', requireAuth, importLimiter, (req, res, next) => {
     const csrfProtection = getCsrfProtection(req);
     csrfProtection(req, res, async () => {
@@ -340,7 +363,8 @@ router.post('/import-json', requireAuth, importLimiter, (req, res, next) => {
     });
 });
 
-// POST import casiers unifié (CSV ou JSON) 
+// ============ POST import casiers unifié (CSV et JSON)  ============
+// non fonctionnel pour le moment
 router.post('/import-unified', requireAuth, importLimiter, async (req, res) => {
 
     const csrfProtection = getCsrfProtection(req);
@@ -396,7 +420,7 @@ router.post('/import-unified', requireAuth, importLimiter, async (req, res) => {
         // ============ PARSING SELON FORMAT ============
         if (detectedFormat === 'json' && !parsedData) {
 
-          console.log('-------------------------------');
+          console.log('-----------JSON--------------------');
           // Parsing JSON manuel (si pas fait en auto-detect)
           try {
             const trimmed = rawContent.trim();
@@ -485,7 +509,7 @@ router.post('/import-unified', requireAuth, importLimiter, async (req, res) => {
               };
               
               normalized.push({
-                number: findValue(['number', 'numéro', 'nÂ°', 'casier']),
+                number: findValue(['number', 'numéro', 'n°', 'casier']),
                 zone: findValue(['zone']),
                 name: findValue(['name', 'nom']),
                 firstName: findValue(['firstname', 'prénom', 'prenom']),

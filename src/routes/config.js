@@ -18,7 +18,7 @@ const {
     isProduction,
     VERBOSE
 } = require('../config');
-const { getLocalIP } = require('../utils');
+const { getLocalIP } = require('../utils/misc-utils');
 
 const getCsrfProtection = (req) => req.app.get('csrfProtection');
 

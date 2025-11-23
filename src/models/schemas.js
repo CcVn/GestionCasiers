@@ -26,23 +26,23 @@ const lockerSchema = z.object({
 // Schéma pour import clients
 const clientSchema = z.object({
     ipp: z.string().min(1, 'IPP requis'),
-    name: z.string().max(50).optional().default(''),
-    firstName: z.string().max(20).optional().default(''),
+    name: z.string().max(50).default(''),
+    firstName: z.string().max(20).default('Cc'),
     birthName: z.string().max(50).optional().default(''),
-    birthDate: z.string().optional().default(''),
+    birthDate: z.string().default(''),
     sex: z.enum(['M', 'F', '']).optional().default(''),
     zone: z.string().max(15).optional().default(''),
-    entryDate: z.string().optional().default('')
+    entryDate: z.string().optional().default('1/1/2000')
 });
 
 // Schéma pour import CSV casiers
 const importCasierSchema = z.object({
     number: z.string().min(1),
     zone: z.string().min(1),
-    name: z.string().max(50).optional().default(''),
-    firstName: z.string().max(20).optional().default(''),
-    code: z.string().max(50).optional().default(''),
-    birthDate: z.string().optional().default(''),
+    name: z.string().max(50).default(''),
+    firstName: z.string().max(20).default(''),
+    code: z.string().max(50).default(''),
+    birthDate: z.string().default(''),
     recoverable: z.boolean().optional().default(false),
     marque: z.boolean().optional().default(false),
     hosp: z.boolean().optional().default(false),
@@ -69,7 +69,7 @@ const restoreSchema = z.object({
 // Schéma pour login
 const loginSchema = z.object({
     password: z.string()
-        .max(100, 'Mot de passe trop long')
+        .max(25, 'Mot de passe trop long')
         .optional()
         .default(''),
     userName: z.string()

@@ -186,7 +186,7 @@ function generateContentSections() {
     
     container.insertBefore(searchSection, footerElement);
     
-    //---- Section/onglet d'aide
+    //-------------- Section/onglet d'aide  ------------------------------
     const helpSection = document.createElement('div');
     helpSection.id = 'content-HELP';
     helpSection.className = 'content-section';
@@ -566,23 +566,6 @@ function updateImportExportButtons() {
 
 // ============ AFFICHAGE TABLEAUX ============
 
-// --- Génération de toutes les tables, mode normal ou recherche ---
-function renderAllTables() {
-    // Vérifier s'il y a une recherche active
-    const searchInput = document.getElementById('globalSearch');
-    const searchQuery = searchInput ? searchInput.value.trim() : '';
-    
-    if (searchQuery) {
-        // Si recherche active, lancer la recherche
-        searchLockers(searchQuery);
-    } else {
-        // Sinon, affichage normal
-        ZONES_CONFIG.forEach(zone => {
-            renderTable(zone.name);
-        });
-    }
-}
-
 // --- Génération d'une ligne de tableau (normal ou recherche) ----
 function generateTableRow(locker, showZone = false) {
     // Détection des doublons et homonymes
@@ -816,6 +799,23 @@ function renderTable(zone) {
     tbody.innerHTML = lockers.map(locker => generateTableRow(locker, false)).join('');
 }
 
+// --- Génération de toutes les tables, mode normal ou recherche ---
+function renderAllTables() {
+    // Vérifier s'il y a une recherche active
+    const searchInput = document.getElementById('globalSearch');
+    const searchQuery = searchInput ? searchInput.value.trim() : '';
+    
+    if (searchQuery) {
+        // Si recherche active, lancer la recherche
+        searchLockers(searchQuery);
+    } else {
+        // Sinon, affichage normal
+        ZONES_CONFIG.forEach(zone => {
+            renderTable(zone.name);
+        });
+    }
+}
+
 // --------  Créer la table de recherche ------------
 function renderSearchResults(zone, results, searchTerm) {
     const tbody = document.getElementById(`tbody-${zone}`);
@@ -909,6 +909,11 @@ function sortTable(zone, value) {
     });
 }
 
+// ---- Imprimer le tableau affiché dans l'onglet. TODO: CSS à revoir
+function printTable() {
+    window.print();
+}
+
 // ============ NAVIGATION ============
 
 function switchTab(zone) {
@@ -930,6 +935,7 @@ window.updateImportExportButtons = updateImportExportButtons;
 window.renderAllTables = renderAllTables;
 window.generateTableRow = generateTableRow;
 window.renderTable = renderTable;
+window.printTable = printTable;
 window.renderSearchResults = renderSearchResults;
 window.filterTable = filterTable;
 window.sortTable = sortTable;

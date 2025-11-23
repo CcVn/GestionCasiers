@@ -1,8 +1,9 @@
-// Service de parsing CSV
+// ==========  Service de parsing CSV
 
 const { IMPORT_FORMATS } = require('../config/import-formats');
 const { isProduction, VERBOSE } = require('../config');
-const { normalizeDateFormat, capitalizeFirstLetter } = require('../utils');
+const { normalizeDateFormat } = require('../utils/date');
+const { capitalizeFirstLetter } = require('../utils/misc-utils');
 
 // Parser une ligne CSV avec séparateur personnalisé
 function parseCsvLine(line, separator = ',') {
@@ -33,7 +34,7 @@ function parseCsvLine(line, separator = ',') {
     return result.map(v => v.replace(/^"|"$/g, ''));
 }
 
-// Détecter automatiquement le séparateur CSV
+// --- Détecter automatiquement le séparateur CSV
 function detectCSVSeparator(fileContent) {
     const lines = fileContent.split('\n').filter(line => line.trim());
     if (lines.length < 2) return ',';
@@ -63,11 +64,11 @@ function detectCSVSeparator(fileContent) {
         }
     }
 
-    if (!isProduction && VERBOSE) console.log('detectCSVSeparator → choisi:', bestSep, 'scores:', scores);
+    if (!isProduction && VERBOSE) console.log('detectCSVSeparator → choisi:', bestSep); //, 'scores:', scores
     return bestSep || ',';
 }
 
-// Mapper une ligne aux champs de la base de données
+// --- Mapper une ligne aux champs de la base de données
 function mapRowToClient(row, mapping) {
     const client = {
         ipp: '',
@@ -102,7 +103,7 @@ function mapRowToClient(row, mapping) {
     return client;
 }
 
-// Fonction principale d'import avec format
+// --- Fonction principale d'import avec format
 function parseClientsWithFormat(fileContent, formatName, separator = ',') {
     const format = IMPORT_FORMATS[formatName];
     
@@ -194,7 +195,7 @@ function parseClientsWithFormat(fileContent, formatName, separator = ',') {
     
     if (!isProduction && VERBOSE) {
         console.log(`✓ Parsing terminé:`);
-        console.log(`  - Importés: ${imported}`);
+        console.log(`  - Sélectionnés: ${imported}`);
         console.log(`  - Filtrés: ${filtered}`);
         console.log(`  - Erreurs: ${errors}`);
     }

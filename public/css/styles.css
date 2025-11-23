@@ -828,12 +828,12 @@ tr.duplicate-row td:first-child strong::after {
     color: var(--text-primary);
 }
 .post-it {
-    color: #A9A9A9; !important
+    color: #A9A9A9 !important; 
     background: #fef3c7;
     border-left: 4px solid #f59e0b;
     padding: 12px;
     margin-top: 12px;
-    border-radius: 4px;"
+    border-radius: 4px;
 }
 .help-content {
     font-size: 14px;

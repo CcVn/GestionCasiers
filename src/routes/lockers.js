@@ -23,7 +23,7 @@ router.delete('/all/clear', requireAuth, (req, res, next) => {
             const token = req.cookies.auth_token;
             const session = getSession(token);
             const isAdmin = session?.isAdmin;
-            const { getClientIP } = require('../utils');
+            const { getClientIP } = require('../utils/misc-utils');
             
             if (!isAdmin) {
                 return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
@@ -275,7 +275,7 @@ router.delete('/clear-marks', requireAuth, (req, res, next) => {
             const token = req.cookies.auth_token;
             const session = getSession(token);
             const isAdmin = session?.isAdmin;
-            const { getClientIP } = require('../utils');
+            const { getClientIP } = require('../utils/misc-utils');
             
             if (!isAdmin) {
                 return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
@@ -326,7 +326,7 @@ router.delete('/all/clear', requireAuth, (req, res, next) => {
             const token = req.cookies.auth_token;
             const session = getSession(token);
             const isAdmin = session?.isAdmin;
-            const { getClientIP } = require('../utils');
+            const { getClientIP } = require('../utils/misc-utils');
             
             if (!isAdmin) {
                 return res.status(403).json({ error: 'Accès réservé aux administrateurs' });
@@ -492,7 +492,7 @@ router.delete('/all/clear', requireAuth, (req, res, next) => {
             const token = req.cookies.auth_token;
             const session = getSession(token);
             const isAdmin = session?.isAdmin;
-            const { getClientIP } = require('../utils');
+            const { getClientIP } = require('../utils/misc-utils');
             
             if (!isAdmin) {
                 return res.status(403).json({ error: 'Accès réservé aux administrateurs' });

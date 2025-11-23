@@ -81,49 +81,37 @@
                 <fieldset id="blocAnalyseCasiers" class="group-box">
                     <legend>Casiers</legend>
                     <div class="buttons-container" title="Contrôle des casiers">
-                        <button class="btn-secondary" onclick="openConsultationCasiers('had')">👁️ Vues</button>
-                        <button class="btn-secondary" onclick="showModificationStats()" title="Afficher les statistiques de modifications">
-                            📝 Modif.
-                        </button>
-                        <button class="btn-secondary" onclick="clearAllMarks()" title="Retirer toutes les marques des casiers">
-                            🔖→🗑️ 
-                        </button>
-                        <button class="btn-secondary" onclick="clearLockersDatabase()" title="Vider tous les casiers">Casiers→🗑️</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('idel')">ℹ️ IDEL</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('hosp')">🏥 Hospitalisations</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('stup')">💊 Stupéfiants</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('marked')">🔖 Marqués</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('duplicates')">⚠️ Doublons</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('homonyms')">👥 Homonymes</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('frigo')">❄ Frigo</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('pca')">💉 PCA</button>
-                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('meopa')">⛽️ MEOPA</button>
-                    </div>
-                </fieldset>
-                <fieldset id="blocImportExport" class="group-box">
-                    <legend>Import/Export des casiers</legend>
-                    <div class="buttons-container" title="Export des casiers">
                         <button class="btn-secondary" onclick="showLockersExportOptions()" title="Exporter les casiers avec options">
                             ⬇ Export
                         </button>
                         <button class="btn-secondary" onclick="showLockersImportOptions()" title="Importer des casiers">
                                 ⬆️ Import
                         </button>
+                        <button class="btn-secondary" onclick="clearAllMarks()" title="Retirer toutes les marques des casiers">
+                            🔖→🗑️ 
+                        </button>
+                        <button class="btn-secondary" onclick="clearLockersDatabase()" title="Vider tous les casiers">Casiers→🗑️</button>
+                        <button class="btn-secondary" onclick="openConsultationCasiers('had')">👁️ Vues</button>
+                        <button class="btn-secondary" onclick="showModificationStats()" title="Afficher les statistiques de modifications">
+                            📝 Modif.
+                        </button>
+                        <!-- ℹ️ 🏥 💊 🔖 ⚠️ 👥 ❄ 💉 ⛽️ 
+                        <button style="display: none;" class="btn-small" onclick="openConsultationCasiers('idel')">ℹ️ IDEL</button> -->
                     </div>
                 </fieldset>
                 <fieldset id="blocPatients" class="group-box">
                     <legend>Patients</legend>
                     <div class="buttons-container" title="Patients">
-                       <button class="btn-secondary" onclick="importClients()" title="Importer les patients présents depuis un export MH ou Winpharm">
+                        <button class="btn-secondary" onclick="importClients()" title="Importer les patients présents depuis un export MH ou Winpharm">
                             ⬆️ Import
-                       </button>
-                       <button class="btn-secondary" onclick="showAnonymizationConfig()" title="Configurer l'anonymisation">
+                        </button>
+                        <button style="display: none;" class="btn-secondary" onclick="clearClientsDatabase()" title="Vider la base patients">Patients→🗑️</button>
+                        <button class="btn-secondary" onclick="showAnonymizationConfig()" title="Configurer l'anonymisation">
                             🎭 Anon.
                         </button>
                         <button class="btn-secondary" onclick="showClientsStats()" title="Afficher les statistiques de la base patients">
                             📊 Stats
                         </button>
-                        <!--<button class="btn-secondary" onclick="clearClientsDatabase()" title="Vider la base patients">🧹 Vider la base</button> -->
                     </div>
                 </fieldset>
                 <fieldset id="blocConnexions" class="group-box">
@@ -859,27 +847,28 @@
     </div>
 
 <!--    <script src="app.js"></script> -->
+    <script src="cjs/mobile.js"></script>
     <script src="app.js"></script>
     <script src="cjs/init_page.js"></script>
-    <script src="cjs/auth.js"></script>
-    <script src="cjs/api.js"></script>
+    <script src="cjs/core/auth.js"></script>
+    <script src="cjs/core/api.js"></script>
     <script src="cjs/darkmode.js"></script>
-    <script src="cjs/anonymisation.js"></script>
-    <script src="cjs/import_casiers.js"></script>
-    <script src="cjs/export_casiers.js"></script>
+    <script src="cjs/utils/anonymisation.js"></script>
+    <script src="cjs/modals/import_casiers.js"></script>
+    <script src="cjs/modals/export_casiers.js"></script>
     <script src="cjs/tabs_content.js"></script>
-    <script src="cjs/edit_casiers.js"></script>
+    <script src="cjs/modals/edit_casiers.js"></script>
     <script src="cjs/recherche.js"></script>
-    <script src="cjs/marque_groupee.js"></script>
-    <script src="cjs/hospitalisation.js"></script>
-    <script src="cjs/import_patients.js"></script>
-    <script src="cjs/stat_patients.js"></script>
-    <script src="cjs/duplicats_homonymes.js"></script>
-    <script src="cjs/consultation.js"></script>
-    <script src="cjs/backup_create_restore.js"></script>
-    <script src="cjs/stat_connexions.js"></script>
-    <script src="cjs/stat_modif_casiers.js"></script>
-    <script src="cjs/etiquettes.js"></script>
+    <script src="cjs/utils/marque_groupee.js"></script>
+    <script src="cjs/modals/hospitalisation.js"></script>
+    <script src="cjs/modals/import_patients.js"></script>
+    <script src="cjs/stats/stats_patients.js"></script>
+    <script src="cjs/utils/duplicats_homonymes.js"></script>
+    <script src="cjs/modals/consultation.js"></script>
+    <script src="cjs/modals/backup_create_restore.js"></script>
+    <script src="cjs/stats/stats_connexions.js"></script>
+    <script src="cjs/stats/stats_modif_casiers.js"></script>
+    <script src="cjs/modals/etiquettes.js"></script>
     <script>
         // Fonction pour toggle le container des outils admin
         function toggleAdminTools() {

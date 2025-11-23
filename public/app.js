@@ -135,10 +135,7 @@ async function loadData() {
     }
 }
 
-
-
-
-// Autre fonction utilitaire sur format de date
+// fonction utilitaire sur format de date
 function formatDate(inputDate) {
   //const [year, month, day] = inputDate.split('-');
   //return `${day}/${month}/${year}`; // Note : Les mois en JavaScript commencent à 0, donc on ne retire pas 1 ici.
@@ -151,85 +148,6 @@ function formatDate(inputDate) {
   const month = String(date.getMonth() + 1).padStart(2, '0');
   const year = date.getFullYear();
   return `${day}/${month}/${year}`;
-}
-
-// ============ UTILISATION SUR MOBILE =====================
-
-function detectMobile() {
-    IS_MOBILE = window.innerWidth <= 768;
-    if (VERBCONSOLE>0) { console.log('Mode mobile:', IS_MOBILE); }
-    return IS_MOBILE;
-}
-
-//--- Support Swipe Tactile
-function initSwipeSupport() {
-    let touchStartX = 0;
-    let touchEndX = 0;
-    let touchStartY = 0;
-    let touchEndY = 0;
-    
-    const minSwipeDistance = 50; // pixels minimum pour déclencher le swipe
-    const maxVerticalDistance = 100; // tolérance verticale
-    
-    document.addEventListener('touchstart', (e) => {
-        touchStartX = e.changedTouches[0].screenX;
-        touchStartY = e.changedTouches[0].screenY;
-    }, { passive: true });
-    
-    document.addEventListener('touchend', (e) => {
-        touchEndX = e.changedTouches[0].screenX;
-        touchEndY = e.changedTouches[0].screenY;
-        handleSwipe();
-    }, { passive: true });
-    
-    function handleSwipe() {
-        const horizontalDistance = touchEndX - touchStartX;
-        const verticalDistance = Math.abs(touchEndY - touchStartY);
-        
-        // Ignorer si trop de mouvement vertical (scroll)
-        if (verticalDistance > maxVerticalDistance) return;
-        
-        // Ignorer si distance horizontale insuffisante
-        if (Math.abs(horizontalDistance) < minSwipeDistance) return;
-        
-        // Récupérer l'onglet actuel
-        const currentTab = document.querySelector('.tab-button.active');
-        if (!currentTab) return;
-        
-        const currentZone = currentTab.dataset.zone;
-        
-        // Créer la liste ordonnée des onglets
-        const allTabs = [...ZONES_CONFIG.map(z => z.name), 'SEARCH', 'HELP'];
-        const currentIndex = allTabs.indexOf(currentZone);
-        
-        if (currentIndex === -1) return;
-        
-        let newIndex;
-        
-        // Swipe vers la gauche (onglet suivant)
-        if (horizontalDistance < 0) {
-            newIndex = currentIndex + 1;
-            if (newIndex >= allTabs.length) newIndex = 0; // Boucle au début
-        }
-        // Swipe vers la droite (onglet précédent)
-        else {
-            newIndex = currentIndex - 1;
-            if (newIndex < 0) newIndex = allTabs.length - 1; // Boucle à la fin
-        }
-        
-        const newZone = allTabs[newIndex];
-        
-        // Changer d'onglet
-        switchTab(newZone);
-        
-        // Ne recharger que si nécessaire
-        const searchInput = document.getElementById('globalSearch');
-        const hasActiveSearch = searchInput && searchInput.value.trim() !== '';
-        
-        if (newZone !== 'SEARCH' && newZone !== 'HELP' && !hasActiveSearch) {
-            loadData();
-        }
-    }
 }
 
 // ============ INITIALISATION DE LA PAGE ==================
@@ -316,11 +234,6 @@ document.addEventListener('DOMContentLoaded', async function() {
     });
 });
 
-
-// ================== MODE ADMIN ===========================
-
-
-
 // ============ SUIVI OCCUPATION CASIERS ============
 
 function updateCounters() {
@@ -365,11 +278,6 @@ function updateCounters() {
             }
         }
     });
-}
-
-// Imprimer le tableau affiché dans l'onglet. TODO: CSS à revoir
-function printTable() {
-    window.print();
 }
 
 // Message affiché en haut de modal pour réussite ou échec
@@ -544,28 +452,128 @@ async function toggleMarker(lockerNumber, marker, currentValue) {
     }
 }
 
-// Fonction pour vérifier le temps restant dans la session
-async function checkSessionExpiration() {
-    try {
-    const data = await fetchJSON(`${API_URL}/session/time-remaining`, {
-      credentials: 'include'
-    });
+// Dépendances: AppState, Utils, CONSTANTS, LockersModule, TablesModule
 
-    // Avertir si moins de 10 minutes restantes
-    if (data.expiresInMinutes < 10 && data.expiresInMinutes > 0) {
-        console.warn(`⏰ Session expire dans ${data.expiresInMinutes} minutes`);
-
-        // Afficher une notification (optionnel)
-        if (data.expiresInMinutes === 5) {
-            if (confirm('⏰ Votre session expire dans 5 minutes.\n\nVoulez-vous prolonger votre session ?')) {
-                // Faire une requête pour renouveler
-                loadData(); // N'importe quelle requête authentifiée
-            }
+const ConsultationModule = {
+    
+    loadConsultationData() {
+        // En mode consultation (guest), créer une vue simplifiée
+        const lockers = LockersModule.getOccupiedLockers();
+        
+        AppState.consultationData = lockers.map(locker => ({
+            number: locker.number,
+            name: AppState.config.anonymizeEnabled 
+                ? Utils.anonymizeName(locker.client_name || '')
+                : locker.client_name || '',
+            surname: AppState.config.anonymizeEnabled
+                ? Utils.anonymizeName(locker.client_surname || '')
+                : locker.client_surname || '',
+            dateEntry: locker.date_entry ? Utils.formatDate(locker.date_entry) : '-',
+            markers: this._getMarkers(locker),
+            hospitalized: locker.hospitalisation ? '🚑' : '',
+            idel: locker.idel ? 'ℹ️' : '',
+            stupefiants: locker.stupefiants ? '💊' : ''
+        }));
+        
+        return AppState.consultationData;
+    },
+    
+    _getMarkers(locker) {
+        const markers = [];
+        if (locker.hospitalization) markers.push('Hospi');
+        if (locker.idel) markers.push('IDEL');
+        if (locker.stupefiants) markers.push('Stup');
+        if (locker.recuperable) markers.push('Récup');
+        return markers.join(', ');
+    },
+    
+    sortData(column, direction) {
+        AppState.config.consultation.sortColumn = column;
+        AppState.config.consultation.sortDirection = direction;
+        
+        const sorted = Utils.sortBy(
+            AppState.consultationData,
+            column,
+            direction
+        );
+        
+        AppState.consultationData = sorted;
+        return sorted;
+    },
+    
+    toggleSort(column) {
+        const current = AppState.config.consultation.sortColumn;
+        let direction = 'asc';
+        
+        if (current === column) {
+            direction = AppState.config.consultation.sortDirection === 'asc' ? 'desc' : 'asc';
         }
+        
+        return this.sortData(column, direction);
+    },
+    
+    renderConsultationTable(containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        
+        const data = AppState.consultationData;
+        
+        const table = Utils.createElement('table', 'consultation-table');
+        
+        // Header
+        const thead = Utils.createElement('thead');
+        const headerRow = Utils.createElement('tr');
+        
+        const headers = [
+            { label: 'N°', column: 'number' },
+            { label: 'Nom', column: 'name' },
+            { label: 'Prénom', column: 'surname' },
+            { label: 'Entrée', column: 'dateEntry' },
+            { label: 'Marqueurs', column: 'markers' }
+        ];
+        
+        headers.forEach(header => {
+            const th = Utils.createElement('th');
+            const btn = Utils.createElement('button');
+            btn.textContent = header.label;
+            btn.className = 'sort-button';
+            
+            if (AppState.config.consultation.sortColumn === header.column) {
+                btn.classList.add('active');
+                const arrow = AppState.config.consultation.sortDirection === 'asc' ? '↑' : '↓';
+                btn.textContent += ' ' + arrow;
+            }
+            
+            btn.addEventListener('click', () => {
+                this.toggleSort(header.column);
+                this.renderConsultationTable(containerId);
+            });
+            
+            th.appendChild(btn);
+            headerRow.appendChild(th);
+        });
+        
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+        
+        // Body
+        const tbody = Utils.createElement('tbody');
+        data.forEach(row => {
+            const tr = Utils.createElement('tr');
+            tr.innerHTML = `
+                <td>${row.number}</td>
+                <td>${row.name}</td>
+                <td>${row.surname}</td>
+                <td>${row.dateEntry}</td>
+                <td>${row.hospitalized}${row.idel}${row.stupefiants}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        
+        container.innerHTML = '';
+        container.appendChild(table);
     }
-    } catch (err) {
-    console.error('Erreur vérification expiration:', err);
-    }
-}
+};
 
-//const etiquettes = require('./cjs/etiquettes');
+window.ConsultationModule = ConsultationModule;

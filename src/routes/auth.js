@@ -13,7 +13,7 @@ const router = express.Router();
 
 const { loginSchema } = require('../models/schemas');
 const { ADMIN_PASSWORD_HASH, getAnonymizeAdmin, getAnonymizeGuest, DARK_MODE, isProduction, VERBOSE } = require('../config');
-const { generateToken, getClientIP } = require('../utils');
+const { generateToken, getClientIP } = require('../utils/misc-utils');
 const { createSession, getSession, deleteSession } = require('../services/session');
 const { recordConnection } = require('../services/history');
 const { loginLimiter } = require('../middleware/rate-limit');

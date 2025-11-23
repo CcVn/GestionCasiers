@@ -10,8 +10,8 @@ const path = require('path');
 // Import des modules
 const { setupMiddleware } = require('./src/middleware');
 const { initializeDatabase } = require('./src/database/init');
-const { setupAutoBackup } = require('./src/backup');
-const { getLocalIP, getClientIP } = require('./src/utils');
+const { setupAutoBackup } = require('./src/utils/backup-auto');
+const { getLocalIP, getClientIP } = require('./src/utils/misc-utils');
 
 // Import des routes
 const authRoutes = require('./src/routes/auth');
@@ -66,7 +66,7 @@ app.delete('/api/admin/clear-all-lockers', (req, res, next) => {
                 const { getSession } = require('./src/services/session');
                 const { dbRun } = require('./src/database');
                 const { recordHistory } = require('./src/services/history');
-                const { getClientIP } = require('./src/utils');
+                //const { getClientIP } = require('./src/utils/misc-utils');
                 
                 const token = req.cookies.auth_token;
                 const session = getSession(token);

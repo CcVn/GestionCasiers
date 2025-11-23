@@ -4,7 +4,7 @@
 function searchLockers(query) {
     if (!query || query.trim() === '') {
         SEARCH_RESULTS = [];
-        hideMarkButtons();
+        hideMarkButton();
         renderAllTables(); // Recherche vide : afficher toutes les tables normalement
         return;
     }
@@ -72,7 +72,7 @@ function clearSearch() {
     
     SEARCH_RESULTS = [];
     SEARCH_RESULTS_MARKED = false;
-    hideMarkButtons();
+    hideMarkButton();
     
     // Restaurer les compteurs normaux
     ZONES_CONFIG.forEach(zone => {

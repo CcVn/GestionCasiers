@@ -135,7 +135,7 @@ async function loadData() {
     }
 }
 
-// fonction utilitaire sur format de date
+// Fonction utilitaire sur format de date
 function formatDate(inputDate) {
   //const [year, month, day] = inputDate.split('-');
   //return `${day}/${month}/${year}`; // Note : Les mois en JavaScript commencent à 0, donc on ne retire pas 1 ici.

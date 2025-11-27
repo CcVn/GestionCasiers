@@ -6,6 +6,7 @@
     <meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' 'unsafe-eval';">
     <title>HADO - Casiers PUI zone départ</title>
     <link rel="stylesheet" href="css/styles.css">
+    <link rel="stylesheet" href="css/indicateurs.css">
     <link rel="stylesheet" href="css/dropdown-menu.css">
     <link rel="stylesheet" href="css/mobile.css">
     <link rel="stylesheet" href="css/print.css">
@@ -44,6 +45,9 @@
                     <div style="display: flex; gap: 20px; align-items: center;">
                         <div id="authStatus" style="font-size: 16px; color: #666; margin-top: 5px;"></div>
                         <div class="server-status2 admin-only" id="importStatus" style="font-size: 14px; color: #666; margin-top: 5px;"><span class="status-dot"></span></div>
+                        <div style="display: none;" class="server-status2" id="anonymizationStatus" style="font-size: 14px; margin-top: 5px;">
+                            <span class="status-dot"></span><span class="anon-icon">🎭</span>
+                        </div>
                     </div>
                 </div>
                 <div style="display: flex; gap: 15px; align-items: center; flex-wrap: wrap;">
@@ -846,28 +850,30 @@
         </div>
     </div>
 
-<!--    <script src="app.js"></script> -->
-    <script src="cjs/mobile.js"></script>
+    <script src="cjs/ui/mobile.js"></script>
     <script src="app.js"></script>
-    <script src="cjs/init_page.js"></script>
+    <script src="cjs/core/state.js"></script>
     <script src="cjs/core/auth.js"></script>
     <script src="cjs/core/api.js"></script>
-    <script src="cjs/darkmode.js"></script>
+    <script src="cjs/init_page.js"></script>
+    <script src="cjs/ui/darkmode.js"></script>
     <script src="cjs/utils/anonymisation.js"></script>
     <script src="cjs/modals/import_casiers.js"></script>
     <script src="cjs/modals/export_casiers.js"></script>
     <script src="cjs/tabs_content.js"></script>
+    <script src="cjs/table_content.js"></script>
     <script src="cjs/modals/edit_casiers.js"></script>
-    <script src="cjs/recherche.js"></script>
+    <script src="cjs/services/recherche.js"></script>
+    <script src="cjs/services/locker-lock.js"></script>
     <script src="cjs/utils/marque_groupee.js"></script>
     <script src="cjs/modals/hospitalisation.js"></script>
     <script src="cjs/modals/import_patients.js"></script>
-    <script src="cjs/stats/stats_patients.js"></script>
+    <script src="cjs/modals/stats/stats_patients.js"></script>
     <script src="cjs/utils/duplicats_homonymes.js"></script>
     <script src="cjs/modals/consultation.js"></script>
     <script src="cjs/modals/backup_create_restore.js"></script>
-    <script src="cjs/stats/stats_connexions.js"></script>
-    <script src="cjs/stats/stats_modif_casiers.js"></script>
+    <script src="cjs/modals/stats/stats_connexions.js"></script>
+    <script src="cjs/modals/stats/stats_modif_casiers.js"></script>
     <script src="cjs/modals/etiquettes.js"></script>
     <script>
         // Fonction pour toggle le container des outils admin

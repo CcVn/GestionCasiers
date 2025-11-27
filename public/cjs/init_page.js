@@ -1,5 +1,11 @@
 // ============ CONFIGURATION API ==========================
 
+// Stocker les IDs d'interval
+const intervals = {
+  autoRefresh: null,
+  sessionCheck: null
+};
+
 async function setupApp() {
     if (VERBCONSOLE>0) { console.log('🚀 Setup de l\'application...'); }
     if (VERBCONSOLE>0) { console.log('API_URL actuelle:', API_URL); }
@@ -67,9 +73,10 @@ async function setupApp() {
         }
         updateThemeIcon(); // Mettre à jour l'icône du toggle
 
-        // ÉTAPE 7b : Charger statut import
+        // ÉTAPE 7b : Charger statut import et anonymisation
         if (VERBCONSOLE>0) { console.log('7️⃣b Chargement statut import...'); }
         updateImportStatus();
+        updateAnonymizationStatus();
 
         // ÉTAPE 8 : Appliquer mode guest si nécessaire
         if (IS_GUEST) {
@@ -79,17 +86,21 @@ async function setupApp() {
 
         // ÉTAPE 9 : Rafraîchissement automatique
         if (VERBCONSOLE>0) { console.log('8️⃣ Démarrage rafraîchissement auto...'); }
-        setInterval(() => {
-            if (VERBCONSOLE>0) { console.log('⟳ Rafraîchissement automatique...'); }
+        // Nettoyer les anciens intervals avant d'en créer de nouveaux
+        Object.values(intervals).forEach(id => id && clearInterval(id));
+ 
+        // Créer les nouveaux intervals
+        intervals.autoRefresh = setInterval(() => {
+                if (VERBCONSOLE>0) { console.log('⟳ Rafraîchissement automatique...'); }
             loadData();
             checkServerStatus();
             updateImportStatus();
         }, 120000);
-
+  
         // ÉTAPE 10 : Vérification expiration session (si authentifié)
         if (IS_AUTHENTICATED || IS_GUEST) {
             if (VERBCONSOLE>0) { console.log('9️⃣ Démarrage vérification expiration session...'); }
-            setInterval(checkSessionExpiration, 5 * 60 * 1000); // Toutes les 5 minutes
+            intervals.sessionCheck = setInterval(checkSessionExpiration, 5 * 60 * 1000);  // Toutes les 5 minutes
         }
 
         // Étape 11 : Masquer le bouton de marquage
@@ -276,8 +287,8 @@ function showAdminElements() {
 }
 
 // ============ SERVEUR ============
-//Peut rester en fetch() - Vérifie juste la connectivité, pas besoin de retry
 async function checkServerStatus() {
+//Peut rester en fetch() - Vérifie juste la connectivité, pas besoin de retry
     const statusEl = document.getElementById('serverStatus');
     if (!statusEl) return;
     

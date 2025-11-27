@@ -99,6 +99,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 statusEl.className = 'status-message status-success';
                 statusEl.textContent = '✓ Configuration appliquée ! Rechargez la page pour voir les changements.';
                 
+                updateAnonymizationStatus();
+
                 // Proposer de recharger
                 setTimeout(() => {
                     if (confirm('Configuration appliquée.\n\nVoulez-vous recharger la page pour appliquer les changements ?')) {
@@ -120,6 +122,46 @@ document.addEventListener('DOMContentLoaded', function() {
     }
 });
 
+/**
+ * Met à jour l'indicateur d'anonymisation
+ * Appeler après chaque changement d'état d'anonymisation Par exemple dans setupApp() ou après login
+ */
+function updateAnonymizationStatus(icone = true) {
+    const statusEl = document.getElementById('anonymizationStatus');
+    if (!statusEl) return;
+    
+    const isGuest = ('IS_GUEST');  // utiliser getState('IS_GUEST') quand ce sera implémenté
+    const isAuth = ('IS_AUTHENTICATED');
+    const isEnabled = ('ANONYMIZE_ENABLED');
+    
+    // Retirer les classes existantes
+    statusEl.classList.remove('active', 'inactive');
+    
+    // Déterminer le mode actuel
+    const mode = isAuth ? 'Admin' : isGuest ? 'Guest' : 'N/A';
+    
+    if (icone) {
+        if (isEnabled) {
+            statusEl.classList.add('active');
+            statusEl.innerHTML = '<span class="status-dot"></span> <span class="anon-icon">🎭</span>';
+            statusEl.title = 'Anonymisation active';
+        } else {
+            statusEl.classList.add('inactive');
+            statusEl.innerHTML = '<span class="status-dot"></span> <span class="anon-icon">🎭</span>';
+            statusEl.title = 'Anonymisation inactive';
+        }
+    } else {
+        if (isEnabled) {
+            statusEl.classList.add('active');
+            statusEl.innerHTML = '<span class="status-dot"></span> Anonymisation active';
+            statusEl.title = `Anonymisation activée (mode ${mode})`;
+        } else {
+            statusEl.classList.add('inactive');
+            statusEl.innerHTML = '<span class="status-dot"></span> Anonymisation inactive';
+            statusEl.title = `Anonymisation désactivée (mode ${mode})`;
+        }
+    }
+}
 
 // Rendre les fonctions globales
 window.anonymizeName = anonymizeName;
@@ -127,3 +169,4 @@ window.anonymizeFirstName = anonymizeFirstName;
 window.PascalCase = PascalCase;
 window.showAnonymizationConfig = showAnonymizationConfig;
 window.closeAnonymizationConfig = closeAnonymizationConfig;
+window.updateAnonymizationStatus = updateAnonymizationStatus;

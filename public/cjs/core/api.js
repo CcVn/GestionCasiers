@@ -40,6 +40,21 @@ async function fetchWithRetry(url, options = {}, retryConfig = {}) {
             const res = await fetch(url, fetchOptions);
             clearTimeout(timeoutId);
             
+            // Gestion spécifique des erreurs d'authentification
+            if (res.status === 401) {
+              // Session expirée
+              await handleSessionExpired();
+              throw new Error('Session expirée');
+            }
+            
+            if (res.status === 403) {
+              const data = await res.json();
+              if (data.error?.includes('CSRF')) {
+                await handleCsrfError(data);
+                throw new Error('Token CSRF invalide');
+              }
+            }
+
             // Vérifier le statut
             if (!res.ok) {
                 // Vérifier si on doit retry ce code
@@ -172,7 +187,14 @@ fetch(url, options)
     }
 }
 
+async function handleSessionExpired() {
+  await cleanupAllLocks(); // Libérer les locks
+  showStatus('⏱️ Session expirée. Redirection...', 'error');
+  setTimeout(() => logout(), 2000);
+}
+
 // Rendre les fonctions globales
 window.fetchWithRetry = fetchWithRetry;
 window.fetchJSON = fetchJSON;
 window.handleCsrfError = handleCsrfError;
+window.handleSessionExpired = handleSessionExpired;

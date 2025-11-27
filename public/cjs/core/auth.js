@@ -224,9 +224,20 @@ function loginAsGuestAuto() {
     });
 }
 
-// Quitter l'interface principale et réinitialiser les filtres
-function logout() {
+// Fonction de cleanup à appeler lors du logout
+function cleanupIntervals() {
+  Object.values(intervals).forEach(id => clearInterval(id));
+  intervals.autoRefresh = null;
+  intervals.sessionCheck = null;
+}
 
+// Quitter l'interface principale et réinitialiser les filtres
+async function logout() {
+
+    // Libérer tous les locks avant de se déconnecter
+    await cleanupAllLocks();
+    
+    // Route de déconnexion
     fetch(`${API_URL}/logout`, {
         method: 'POST',
         credentials: 'include',  // IMPORTANT
@@ -260,6 +271,8 @@ function logout() {
     IS_AUTHENTICATED = false;
     IS_GUEST = false;
     ANONYMIZE_ENABLED = false;
+    
+    cleanupIntervals();
 
     document.body.classList.remove('dark-mode');
     showLoginPage(true);
@@ -353,3 +366,4 @@ window.showLoginPage = showLoginPage;
 window.updateAuthStatus = updateAuthStatus;
 window.loadCsrfToken = loadCsrfToken;
 window.checkSessionExpiration = checkSessionExpiration;
+

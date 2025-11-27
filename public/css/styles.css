@@ -85,63 +85,6 @@ h1 {
     margin-bottom: 15px;
 }
 
-.server-status {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 6px 12px;
-    border-radius: 20px;
-    font-size: 12px;
-    font-weight: 600;
-    transition: all 0.3s ease;
-}
-
-.server-status .status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    display: inline-block;
-}
-
-.server-status.online {
-    background: #d1fae5;
-    color: #065f46;
-}
-
-.server-status.online .status-dot {
-    background: #10b981;
-    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
-    animation: pulse-green 2s infinite;
-}
-
-.server-status.offline {
-    background: #fee2e2;
-    color: #991b1b;
-}
-
-.server-status.offline .status-dot {
-    background: #ef4444;
-    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
-}
-
-/* status2 non utilisé */
-.server-status2 {
-    padding: 8px 16px;
-    border-radius: 20px;
-    font-weight: 500;
-    font-size: 13px;
-}
-
-.server-status2.online {
-    background: #e8f5e9;
-    color: #2e7d32;
-}
-
-.server-status2.offline {
-    background: #ffebee;
-    color: #c62828;
-}
-
 @keyframes pulse-green {
     0%, 100% {
         opacity: 1;
@@ -1185,4 +1128,19 @@ select option[value="idel"] {
   }
 }
 
+/* Casier sélectionné et verrouillé */
+#lockerNumber.locked {
+    border: 2px solid #10b981 !important;
+    background-color: #d1fae5 !important;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
 
+/* Casier verrouillé par un autre (désactivé) */
+#lockerNumber option[data-locked="true"] {
+    color: #ef4444;
+    font-style: italic;
+}
+
+#lockerNumber option[data-locked="true"]::after {
+    content: " 🔒";
+}

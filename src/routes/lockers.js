@@ -9,6 +9,7 @@ const { ZONES_CONFIG } = require('../config/zones');
 const { getSession } = require('../services/session');
 const { recordHistory } = require('../services/history');
 const { isProduction, VERBOSE } = require('../config');
+const { acquireLock, releaseLock, checkLock, renewLock, LOCK_TIMEOUT } = require('../services/locker-lock');
 
 const getCsrfProtection = (req) => req.app.get('csrfProtection');
 
@@ -145,6 +146,7 @@ router.post('/', requireAuth, (req, res, next) => {
             const session = getSession(token);
             const userName = session?.userName || 'Inconnu';
 
+            // Vérifier existence du casier
             const existingLocker = await dbGet(
                 'SELECT * FROM lockers WHERE number = ?',
                 [number]
@@ -154,7 +156,32 @@ router.post('/', requireAuth, (req, res, next) => {
                 return res.status(404).json({ error: 'Casier non trouvé' });
             }
 
-            // Vérification du conflit de version
+            // ============================================================
+            // VÉRIFIER LE LOCK AVANT MODIFICATION
+            // ============================================================
+            const userId = token;
+            const lockCheck = await checkLock(number);
+
+            if (lockCheck.locked) {
+                // Vérifier si c'est le même utilisateur
+                const session = getSession(token);
+                const currentLock = await dbGet(
+                    'SELECT * FROM locker_locks WHERE locker_number = ?',
+                    [number]
+                );
+                
+                if (!currentLock || currentLock.locked_by !== userId) {
+                    return res.status(423).json({
+                        error: 'Ce casier est en cours d\'édition par un autre utilisateur',
+                        lockedBy: lockCheck.lockedBy,
+                        expiresIn: lockCheck.expiresIn
+                    });
+                }
+            }
+
+            // ============================================================
+            // VÉRIFIER LA VERSION (protection supplémentaire)
+            // ============================================================
             if (expectedVersion !== undefined && expectedVersion !== null) {
                 if (existingLocker.version !== expectedVersion) {
                     console.warn(`⚠️ Conflit de version détecté sur casier ${number}: attendu=${expectedVersion}, actuel=${existingLocker.version}`);
@@ -166,6 +193,9 @@ router.post('/', requireAuth, (req, res, next) => {
                 }
             }
 
+            // ============================================================
+            // VÉRIFIER SI RECUPERABLE
+            // ============================================================
             let isRecoverable = recoverable ? 1 : 0;
             let ippValid = true;
             if (code) {
@@ -176,6 +206,9 @@ router.post('/', requireAuth, (req, res, next) => {
                 }
             }
 
+            // ============================================================
+            // SAUVEGARDER LE CASIER
+            // ============================================================
             const action = existingLocker.occupied ? 'MODIFICATION' : 'ATTRIBUTION';
             const details = `${name} ${firstName} (IPP: ${code})`;
 
@@ -202,10 +235,17 @@ router.post('/', requireAuth, (req, res, next) => {
                 [number]
             );
 
+            // ============================================================
+            // LIBÉRER LE LOCK APRÈS SAUVEGARDE
+            // ============================================================
+            await releaseLock(number, userId);
+
             res.json({
+                success: true,
                 locker: updatedLocker,
                 ippValid: ippValid
             });
+
         } catch (err) {
             console.error('Erreur modification casier:', err);
             res.status(500).json({ error: err.message });
@@ -582,6 +622,108 @@ router.delete('/:number', requireAuth, (req, res, next) => {
     });
 });
 
+// POST /api/lockers/:number/lock : Acquiert un lock sur un casier avant édition
+router.post('/:number/lock', requireAuth, async (req, res) => {
+    try {
+        const lockerNumber = req.params.number;
+        const token = req.cookies.auth_token;
+        const session = getSession(token);
+        
+        if (!session) {
+            return res.status(401).json({ error: 'Session invalide' });
+        }
+        
+        const userId = token; // Utiliser le token comme ID unique
+        const userName = session.userName || 'Utilisateur';
+        const ipAddress = req.ip;
+        
+        const result = await acquireLock(lockerNumber, userId, userName, ipAddress);
+        
+        if (!result.success) {
+            if (result.error === 'LOCKED_BY_OTHER') {
+                return res.status(423).json({ // 423 Locked
+                    error: 'Casier en cours d\'édition',
+                    lockedBy: result.lockedBy,
+                    expiresIn: result.expiresIn
+                });
+            }
+            
+            return res.status(500).json({
+                error: 'Erreur lors de l\'acquisition du lock',
+                details: result.message
+            });
+        }
+        
+        res.json({
+            success: true,
+            lock: result.lock,
+            expiresIn: Math.ceil(LOCK_TIMEOUT / 1000)
+        });
+        
+    } catch (err) {
+        console.error('Erreur route lock:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// DELETE /api/lockers/:number/lock : Libère un lock sur un casier
+router.delete('/:number/lock', requireAuth, async (req, res) => {
+    try {
+        const lockerNumber = req.params.number;
+        const token = req.cookies.auth_token;
+        const userId = token;
+        
+        const result = await releaseLock(lockerNumber, userId);
+        
+        res.json({ success: result.success });
+        
+    } catch (err) {
+        console.error('Erreur route unlock:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+// Route POST /api/lockers/:number/lock/renew : Renouvelle un lock (heartbeat)
+router.post('/:number/lock/renew', requireAuth, async (req, res) => {
+    try {
+        const lockerNumber = req.params.number;
+        const token = req.cookies.auth_token;
+        const userId = token;
+        
+        const result = await renewLock(lockerNumber, userId);
+        
+        if (!result.success) {
+            return res.status(410).json({ error: 'Lock expiré ou inexistant' });
+        }
+        
+        res.json({
+            success: true,
+            expiresAt: result.expiresAt
+        });
+        
+    } catch (err) {
+        console.error('Erreur route renew lock:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * Route GET /api/lockers/locks/active
+ * Liste tous les locks actifs (pour UI)
+ */
+router.get('/locks/active', requireAuth, async (req, res) => {
+    try {
+        const { listActiveLocks } = require('../services/locker-lock');
+        const result = await listActiveLocks();
+        
+        res.json(result);
+        
+    } catch (err) {
+        console.error('Erreur liste locks actifs:', err);
+        res.status(500).json({ error: err.message });
+    }
+});
+
 // GET recherche par nom
 router.get('/search/:query', async (req, res) => {
     try {
@@ -611,6 +753,23 @@ router.get('/:number/history', async (req, res) => {
         
         res.json(history);
     } catch (err) {
+        res.status(500).json({ error: err.message });
+    }
+});
+
+/**
+ * Route GET /api/lockers/:number/lock/check
+ * Vérifie l'état du lock
+ */
+router.get('/:number/lock/check', requireAuth, async (req, res) => {
+    try {
+        const lockerNumber = req.params.number;
+        const result = await checkLock(lockerNumber);
+        
+        res.json(result);
+        
+    } catch (err) {
+        console.error('Erreur route check lock:', err);
         res.status(500).json({ error: err.message });
     }
 });

@@ -95,6 +95,16 @@ Parsing CSV avec formats personnalisés.
 - `mapRowToClient()` : Mapper les colonnes
 - `parseClientsWithFormat()` : Import complet avec format
 
+### `src/services/locker-lock.js` (220 lignes)
+Système de verrouillage (lock) des casiers en cours d'édition
+- `acquireLock()` : Tente d'acquérir un lock sur un casier
+- `releaseLock()` : Libère un lock sur un casier
+- `checkLock()` : Vérifie si un casier est verrouillé
+- `renewLock()` : Renouvelle un lock existant (heartbeat)
+- `cleanExpiredLocks()` : Nettoie tous les locks expirés
+- `listActiveLocks()` : Liste tous les locks actifs
+- `forceReleaseLock()` : Force la libération d'un lock (admin seulement)
+
 ---
 
 ## 🛡️ Middleware (`src/middleware/`)
@@ -196,7 +206,7 @@ Configuration runtime.
 
 ## 🔨 Utilitaires
 
-### `src/utils.js` (85 lignes)
+### `src/utils/misc-utils.js` (85 lignes)
 Fonctions utilitaires réutilisables.
 - `generateToken()` : Générer token sécurisé
 - `getLocalIP()` : IP locale du serveur
@@ -204,12 +214,18 @@ Fonctions utilitaires réutilisables.
 - `normalizeDateFormat()` : Normaliser dates
 - `capitalizeFirstLetter()` : Première lettre maj
 
-### `src/backup.js` (110 lignes)
+### `src/utils/auto-backup.js` (110 lignes)
 Service de backup automatique.
 - Backup à heure fixe (ex: 02:00)
 - Backup périodique (ex: toutes les 24h)
 - Nettoyage des vieux backups
 - Rétention configurable
+
+Ajout de 3 autres fichiers
+- csv-cleaner.js
+- date.js
+- winpharm-parser.js
+
 
 ---
 

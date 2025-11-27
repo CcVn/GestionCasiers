@@ -13,7 +13,7 @@ async function initializeDatabase() {
             // Liste des zones valides
             const zonesList = ZONES_CONFIG.map(z => `'${z.name}'`).join(', ');
 
-            // Table lockers
+            // --- Table lockers
             db.run(`
                 CREATE TABLE IF NOT EXISTS lockers (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,7 +49,7 @@ async function initializeDatabase() {
                 }
             });
 
-            // Table clients
+            // --- Table clients
             db.run(`
                 CREATE TABLE IF NOT EXISTS clients (
                     ipp INTEGER PRIMARY KEY,
@@ -66,7 +66,36 @@ async function initializeDatabase() {
                 else if (!isProduction && VERBOSE) console.log('✓ Table patients créée/vérifiée');
             });
 
-            // Table locker_history
+            // --- Table lockers_locks pour gérer les verrous
+            db.run(`
+                CREATE TABLE IF NOT EXISTS locker_locks (
+                    locker_number TEXT PRIMARY KEY,
+                    locked_by TEXT NOT NULL,
+                    locked_at INTEGER NOT NULL,
+                    expires_at INTEGER NOT NULL,
+                    user_name TEXT,
+                    ip_address TEXT
+                )
+            `, (err) => {
+                if (err) console.error('Erreur création table lockers_locks:', err);
+                else if (!isProduction && VERBOSE) console.log('✓ Table lockers_locks créée/vérifiée');
+            });
+            // Créer l'index si non existant
+            db.get(`
+                SELECT name FROM sqlite_master 
+                WHERE type='index' AND name='idx_locker_locks_expires'
+            `, (err, row) => {
+                if (!row) {
+                    // L'index n'existe pas, on le crée
+                    db.run(`
+                        CREATE INDEX idx_locker_locks_expires ON locker_locks(expires_at);
+                    `, (err) => {
+                        if (err) console.error('Erreur création index table lockers_locks:', err);
+                    });
+                }
+            });
+
+            // --- Table locker_history
             db.run(`
                 CREATE TABLE IF NOT EXISTS locker_history (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,7 +111,7 @@ async function initializeDatabase() {
                 else if (!isProduction && VERBOSE) console.log('✓ Table locker_history créée/vérifiée');
             });
 
-            // Table connection_stats
+            // --- Table connection_stats
             db.run(`
                 CREATE TABLE IF NOT EXISTS connection_stats (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -96,7 +125,7 @@ async function initializeDatabase() {
                 else if (!isProduction && VERBOSE) console.log('✓ Table connection_stats créée/vérifiée');
             });
 
-            // Table connection_logs
+            // --- Table connection_logs
             db.run(`
                 CREATE TABLE IF NOT EXISTS connection_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -110,7 +139,7 @@ async function initializeDatabase() {
                 else if (!isProduction && VERBOSE) console.log('✓ Table connection_logs créée/vérifiée');
             });
 
-            // Table export_logs
+            // --- Table export_logs
             db.run(`
                 CREATE TABLE IF NOT EXISTS export_logs (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -125,7 +154,7 @@ async function initializeDatabase() {
                 else if (!isProduction && VERBOSE) console.log('✓ Table export_logs créée/vérifiée');
             });
 
-            // Table client_imports
+            // --- Table client_imports
             db.run(`
                 CREATE TABLE IF NOT EXISTS client_imports (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,

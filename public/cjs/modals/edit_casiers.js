@@ -1,4 +1,5 @@
 // ===================== MODAL CASIER ========================
+//import { acquireLockerLock, releaseLockerLock } from '../../services/locker-lock.js';
 
 // Générer dynamiquement la liste des zones (sur la base de config.env)
 function populateZoneSelect() {
@@ -11,13 +12,39 @@ function populateZoneSelect() {
 }
 
 // Générer la liste déroulante des casiers (avec état libre/occupé) dans le modal
-function populateLockerSelect(zone, selected = null) {
+async function populateLockerSelect(zone, selected = null) {
     const select = document.getElementById('lockerNumber');
     const lockers = DATA.filter(l => l.zone === zone);
+
+    // Récupérer la liste des casiers verrouillés
+    let lockedLockers = new Set();
+    try {
+        //const API_URL = getState('API_URL');  //TODO 
+        const response = await fetchJSON(`${API_URL}/lockers/locks/active`, {
+            credentials: 'include'
+        });
+        
+        if (response.locks) {
+            lockedLockers = new Set(response.locks.map(l => l.locker_number));
+        }
+    } catch (err) {
+        console.warn('Impossible de récupérer les locks actifs:', err);
+    }
     
     select.innerHTML = lockers.map(locker => {
         const isAvailable = !locker.occupied || locker.number === selected;
-        return `<option value="${locker.number}" ${!isAvailable ? 'disabled' : ''}>${locker.number}${isAvailable ? '' : ' (occupé)'}</option>`;
+        const isLocked = lockedLockers.has(locker.number) && locker.number !== selected;
+            let label = locker.number;
+        if (!isAvailable) label += ' (occupé)';
+        if (isLocked) label += ' 🔒';
+        
+        //return `<option value="${locker.number}" ${!isAvailable ? 'disabled' : ''}>${locker.number}${isAvailable ? '' : ' (occupé)'}</option>`;
+        return `<option 
+            value="${locker.number}" 
+            ${!isAvailable || isLocked ? 'disabled' : ''}
+            ${isLocked ? 'data-locked="true"' : ''}
+        >${label}</option>`;
+
     }).join('');
     
     if (selected) {
@@ -26,7 +53,7 @@ function populateLockerSelect(zone, selected = null) {
 }
 
 // --- Attribuer nouveau casier
-function openModal(zone) {
+async function openModal(zone) {
     if (!isEditAllowed()) return;
 
     // Réinitialiser (pas d'édition)
@@ -50,57 +77,176 @@ function openModal(zone) {
     populateLockerSelect(zone);
     
     const zoneSelect = document.getElementById('zone');
+    const lockerSelect = document.getElementById('lockerNumber');
+
+    // ============================================================
+    // GESTION DU LOCK LORS DU CHANGEMENT DE ZONE
+    // ============================================================
     zoneSelect.onchange = function() {
+        // Si un casier était verrouillé, le libérer
+        if (EDITING_LOCKER_NUMBER) {
+            releaseLockerLock(EDITING_LOCKER_NUMBER).then(() => {
+                console.log(`🔓 Casier ${EDITING_LOCKER_NUMBER} déverrouillé (changement de zone)`);
+                EDITING_LOCKER_NUMBER = null;
+            });
+        }
+        
         populateLockerSelect(this.value);
     };
-    
+
+    // ============================================================
+    // ACQUÉRIR LE LOCK LORS DE LA SÉLECTION D'UN CASIER
+    // ============================================================
+    lockerSelect.onchange = async function() {
+        const selectedLocker = this.value;
+        
+        if (!selectedLocker) return;
+        
+        // Si un autre casier était verrouillé, le libérer
+        if (EDITING_LOCKER_NUMBER && EDITING_LOCKER_NUMBER !== selectedLocker) {
+            await releaseLockerLock(EDITING_LOCKER_NUMBER);
+            console.log(`🔓 Casier ${EDITING_LOCKER_NUMBER} déverrouillé (changement de sélection)`);
+        }
+        
+        // Tenter d'acquérir le lock sur le nouveau casier
+        try {
+            showStatus('🔒 Verrouillage du casier...', 'info');
+            
+            const lockResult = await acquireLockerLock(selectedLocker);
+
+            if (!lockResult.success) {
+                // Quelqu'un d'autre a pris ce casier
+                const lockedBy = lockResult.lockedBy || 'un autre utilisateur';
+                const expiresIn = lockResult.expiresIn || 300;
+                const minutes = Math.ceil(expiresIn / 60);
+                
+                showStatus(`⚠️ Casier verrouillé par ${lockedBy}`, 'error');
+                
+                alert(
+                    `⚠️ Ce casier est en cours d'attribution par ${lockedBy}\n\n` +
+                    `Le verrouillage expire dans environ ${minutes} minute${minutes > 1 ? 's' : ''}.\n\n` +
+                    `Veuillez choisir un autre casier ou réessayer dans quelques minutes.`
+                );
+                
+                // Réinitialiser la sélection
+                this.value = '';
+                EDITING_LOCKER_NUMBER = null;
+                return;
+            }
+            
+            // Lock acquis avec succès
+            EDITING_LOCKER_NUMBER = selectedLocker;
+            EDITING_LOCKER_VERSION = null; // Nouveau casier, pas de version
+            
+            console.log(`🔒 Casier ${selectedLocker} verrouillé pour attribution`);
+            showStatus(`✓ Casier ${selectedLocker} verrouillé`, 'success');
+            
+            // Mettre en évidence visuellement le casier sélectionné
+            this.style.borderColor = '#10b981';
+            this.style.backgroundColor = '#d1fae5';
+
+        } catch (err) {
+            console.error('Erreur verrouillage casier:', err);
+            
+            showStatus('❌ Erreur lors du verrouillage', 'error');
+            
+            alert(
+                `❌ Impossible de verrouiller le casier ${selectedLocker}\n\n` +
+                `Erreur: ${err.message}\n\n` +
+                `Veuillez réessayer ou choisir un autre casier.`
+            );
+            
+            // Réinitialiser la sélection
+            this.value = '';
+            EDITING_LOCKER_NUMBER = null;
+        }   
+    };
     document.getElementById('modal').classList.add('active');
     trapFocus(document.getElementById('modal'));
+
 }
 
 // --- Editer casier existant
-function openModalEdit(lockerNumber) {
+async function openModalEdit(lockerNumber) {
     if (!isEditAllowed()) return;
-    
-    const locker = DATA.find(l => l.number === lockerNumber);
-    if (!locker) return;
-    
-    //Mémoriser le numéro original
-    EDITING_LOCKER_NUMBER = lockerNumber;
-    EDITING_LOCKER_VERSION = locker.version || 0;
 
-    populateZoneSelect();
+    try {
+        // ============================================================
+        // ACQUÉRIR LE LOCK AVANT D'OUVRIR LE MODAL
+        // ============================================================
+        showStatus('🔒 Verrouillage du casier...', 'info');
+        
+        const lockResult = await acquireLockerLock(lockerNumber);
+        
+        if (!lockResult.success) {
+            throw new Error('Impossible de verrouiller le casier');
+        }
+        
+        console.log(`🔒 Casier ${lockerNumber} verrouillé`);
+        
+        // ============================================================
+        // CHARGER LES DONNÉES DU CASIER
+        // ============================================================
+        const locker = DATA.find(l => l.number === lockerNumber);
+        if (!locker) {
+            await releaseLockerLock(lockerNumber);
+            alert('Casier non trouvé');
+            return;
+        }
 
-    document.getElementById('zone').value = locker.zone;
-    document.getElementById('modalTitle').textContent = `Modifier ${locker.number}`;
-    document.getElementById('lockerNumber').value = lockerNumber;
-    document.getElementById('lastName').value = locker.name;
-    document.getElementById('firstName').value = locker.firstName;
-    document.getElementById('code').value = locker.code;
-    document.getElementById('birthDate').value = locker.birthDate;
-    document.getElementById('comment').value = locker.comment || '';
-    document.getElementById('recoverable').checked = locker.recoverable || false;
-    document.getElementById('stup').checked = locker.stup || false;
-    document.getElementById('idel').checked = locker.stup || false;
-    document.getElementById('frigo').checked = locker.frigo || false;
-    document.getElementById('pca').checked = locker.pca || false;
-    document.getElementById('meopa').checked = locker.meopa || false;
-    document.getElementById('statusMessage').innerHTML = '';
-    
-    populateLockerSelect(locker.zone, lockerNumber);
-    
-    const zoneSelect = document.getElementById('zone');
-    zoneSelect.onchange = function() {
-        populateLockerSelect(this.value, lockerNumber);
-    };
-    
-    document.getElementById('modal').classList.add('active');
-    trapFocus(document.getElementById('modal'));
+        // Mémoriser le numéro pour libérer le lock à la fermeture
+        EDITING_LOCKER_NUMBER = lockerNumber;
+        EDITING_LOCKER_VERSION = locker.version || 0;
+
+        populateZoneSelect();
+
+        document.getElementById('zone').value = locker.zone;
+        document.getElementById('modalTitle').textContent = `Modifier ${locker.number}`;
+        document.getElementById('lockerNumber').value = lockerNumber;
+        document.getElementById('lastName').value = locker.name;
+        document.getElementById('firstName').value = locker.firstName;
+        document.getElementById('code').value = locker.code;
+        document.getElementById('birthDate').value = locker.birthDate;
+        document.getElementById('comment').value = locker.comment || '';
+        document.getElementById('recoverable').checked = locker.recoverable || false;
+        document.getElementById('stup').checked = locker.stup || false;
+        document.getElementById('idel').checked = locker.stup || false;
+        document.getElementById('frigo').checked = locker.frigo || false;
+        document.getElementById('pca').checked = locker.pca || false;
+        document.getElementById('meopa').checked = locker.meopa || false;
+        document.getElementById('statusMessage').innerHTML = '';
+        
+        populateLockerSelect(locker.zone, lockerNumber);
+        
+        const zoneSelect = document.getElementById('zone');
+        zoneSelect.onchange = function() {
+            populateLockerSelect(this.value, lockerNumber);
+        };
+        
+        document.getElementById('modal').classList.add('active');
+        trapFocus(document.getElementById('modal'));
+
+    } catch (err) {
+        console.error('Erreur ouverture modal:', err);
+        
+        if (err.message.includes('en cours d\'édition')) {
+            alert(`⚠️ ${err.message}\n\nCe casier est actuellement modifié par un autre utilisateur. Veuillez réessayer dans quelques minutes.`);
+        } else {
+            alert('Erreur lors de l\'ouverture du casier: ' + err.message);
+        }
+    }
 }
 
 // --- Fermeture du modal (utilisé par handleFormSubmit)
-function closeModal() {
+async function closeModal() {
+    // Libérer le lock à la fermeture
+    if (EDITING_LOCKER_NUMBER) {
+        await releaseLockerLock(EDITING_LOCKER_NUMBER);
+        console.log(`🔓 Casier ${EDITING_LOCKER_NUMBER} déverrouillé (fermeture modal)`);
+    }
     document.getElementById('modal').classList.remove('active');
+    EDITING_LOCKER_NUMBER = null;
+    EDITING_LOCKER_VERSION = null;
 }
 
 // --- Soumission du formulaire
@@ -126,9 +272,21 @@ async function handleFormSubmit(e) {
         const pca = document.getElementById('pca')?.checked || false;
         const meopa = document.getElementById('meopa')?.checked || false;
 
+        // VÉRIFIER QU'ON A BIEN LE LOCK AVANT DE SAUVEGARDER
+        if (!EDITING_LOCKER_NUMBER || EDITING_LOCKER_NUMBER !== newLockerNumber) {
+            showStatus('❌ Erreur: casier non verrouillé', 'error');
+            alert(
+                '⚠️ Erreur de verrouillage\n\n' +
+                'Le casier n\'est pas correctement verrouillé.\n' +
+                'Veuillez fermer et rouvrir le modal.'
+            );
+            return;
+        }
+
         // Détecter si le numéro de casier a changé
         const isLockerChanged = EDITING_LOCKER_NUMBER && EDITING_LOCKER_NUMBER !== newLockerNumber;
         
+        // Gestion du tranfert
         if (isLockerChanged) {
             // Afficher une popup de confirmation
             const oldNumber = EDITING_LOCKER_NUMBER;
@@ -184,10 +342,15 @@ async function handleFormSubmit(e) {
                 }
                 // Sinon, on ne fait rien (l'utilisateur annule tout)
             }
+        // Sauvegarde normale
         } else {
             // Pas de changement de numéro, comportement normal avec vérification de version
             try {
                 await saveLocker(newLockerNumber, zone, recoverable, comment, stup, idel, frigo, pca, meopa);
+                // Libérer le lock après sauvegarde réussie
+                await releaseLockerLock(newLockerNumber);
+                console.log(`🔓 Casier ${newLockerNumber} déverrouillé (sauvegarde réussie)`);
+                
                 closeModal();
                 loadData();
                 
@@ -211,11 +374,22 @@ async function handleFormSubmit(e) {
                     );
                     
                     if (reload) {
+                        await releaseLockerLock(newLockerNumber);
                         closeModal();
                         await loadData();
                         // Rouvrir le modal avec les nouvelles données
                         setTimeout(() => openModalEdit(newLockerNumber), 500);
                     }
+
+                } else if (err.message.includes('en cours d\'édition')) {
+                    // Lock perdu pendant l'édition
+                    alert(
+                        '⚠️ VERROUILLAGE PERDU\n\n' +
+                        'Un autre utilisateur a pris le contrôle de ce casier.\n\n' +
+                        'Vos modifications n\'ont pas été enregistrées.'
+                    );
+                    closeModal();
+                    loadData();
                 } else {
                     showStatus('Erreur: ' + err.message, 'error');
                 }

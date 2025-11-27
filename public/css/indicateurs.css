@@ -1,0 +1,116 @@
+
+.server-status {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 12px;
+    border-radius: 20px;
+    font-size: 12px;
+    font-weight: 600;
+    transition: all 0.3s ease;
+}
+
+.server-status .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+}
+
+.server-status.online {
+    background: #d1fae5;
+    color: #065f46;
+}
+
+.server-status.online .status-dot {
+    background: #10b981;
+    box-shadow: 0 0 8px rgba(16, 185, 129, 0.5);
+    animation: pulse-green 2s infinite;
+}
+
+.server-status.offline {
+    background: #fee2e2;
+    color: #991b1b;
+}
+
+.server-status.offline .status-dot {
+    background: #ef4444;
+    box-shadow: 0 0 8px rgba(239, 68, 68, 0.5);
+}
+
+/* status2 non utilisé */
+.server-status2 {
+    padding: 8px 16px;
+    border-radius: 20px;
+    font-weight: 500;
+    font-size: 13px;
+}
+
+.server-status2.online {
+    background: #e8f5e9;
+    color: #2e7d32;
+}
+
+.server-status2.offline {
+    background: #ffebee;
+    color: #c62828;
+}
+
+
+/* Indicateur d'anonymisation (cohérent avec server-status) */
+#anonymizationStatus {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 4px 12px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 500;
+    transition: all 0.3s ease;
+}
+
+/* État actif (vert) */
+#anonymizationStatus.active {
+    background-color: #d1fae5;
+    color: #065f46;
+    border: 1px solid #10b981;
+}
+
+#anonymizationStatus.active .status-dot {
+    background-color: #10b981;
+    box-shadow: 0 0 0 3px rgba(16, 185, 129, 0.2);
+}
+
+/* État inactif (rouge) */
+#anonymizationStatus.inactive {
+    background-color: #fee2e2;
+    color: #991b1b;
+    border: 1px solid #ef4444;
+}
+
+#anonymizationStatus.inactive .status-dot {
+    background-color: #ef4444;
+    box-shadow: 0 0 0 3px rgba(239, 68, 68, 0.2);
+}
+
+/* Animation du point (même que server-status) */
+#anonymizationStatus .status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    display: inline-block;
+    transition: all 0.3s ease;
+}
+
+/* Mode sombre */
+.dark-mode #anonymizationStatus.active {
+    background-color: rgba(16, 185, 129, 0.15);
+    color: #34d399;
+    border-color: #10b981;
+}
+
+.dark-mode #anonymizationStatus.inactive {
+    background-color: rgba(239, 68, 68, 0.15);
+    color: #f87171;
+    border-color: #ef4444;
+}

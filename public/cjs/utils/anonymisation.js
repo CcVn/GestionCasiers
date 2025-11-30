@@ -1,7 +1,7 @@
 // ============ UTILITAIRES D'ANONYMISATION ===============
 
-// PascalCase (UpperCamelCase) 1er caractère en majuscule, le reste en minuscules
-function PascalCase(str) {
+// toPascalCase (UpperCamelCase) 1er caractère en majuscule, le reste en minuscules
+function toPascalCase(str) {
   if (!str) return '';
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 }
@@ -22,7 +22,7 @@ function anonymizeName(name, force = false, crypto = false) {
 function anonymizeFirstName(firstName, force = false) {
     if (!firstName) return firstName;
     const maxLength = (ANONYMIZE_ENABLED || force) ? (NB_MAX_ANON_PRENOM || 2) : (NB_MAX_CAR_PRENOM || 15);
-    return PascalCase(firstName.substring(0, maxLength));
+    return toPascalCase(firstName.substring(0, maxLength));
 }
 
 // ================ MODAL CONFIG ANONYMISATION ================
@@ -130,9 +130,9 @@ function updateAnonymizationStatus(icone = true) {
     const statusEl = document.getElementById('anonymizationStatus');
     if (!statusEl) return;
     
-    const isGuest = ('IS_GUEST');  // utiliser getState('IS_GUEST') quand ce sera implémenté
-    const isAuth = ('IS_AUTHENTICATED');
-    const isEnabled = ('ANONYMIZE_ENABLED');
+    const isGuest = getState('IS_GUEST');  // utiliser getState('IS_GUEST') quand ce sera implémenté
+    const isAuth = getState('IS_AUTHENTICATED');
+    const isEnabled = getState('ANONYMIZE_ENABLED');
     
     // Retirer les classes existantes
     statusEl.classList.remove('active', 'inactive');
@@ -166,7 +166,7 @@ function updateAnonymizationStatus(icone = true) {
 // Rendre les fonctions globales
 window.anonymizeName = anonymizeName;
 window.anonymizeFirstName = anonymizeFirstName;
-window.PascalCase = PascalCase;
+window.toPascalCase = toPascalCase;
 window.showAnonymizationConfig = showAnonymizationConfig;
 window.closeAnonymizationConfig = closeAnonymizationConfig;
 window.updateAnonymizationStatus = updateAnonymizationStatus;

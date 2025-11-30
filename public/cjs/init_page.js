@@ -141,6 +141,9 @@ function applyGuestDefaults() {
         select.value = 'name';
     });
     
+    hideMarkButton();
+    updateAnonymizationStatus();
+
     // Masquer les éléments admin
     hideAdminElements();
     
@@ -175,6 +178,7 @@ function applyAdminDefaults() {
     });
     
     hideMarkButton();
+    updateAnonymizationStatus();
 
     // Démasquer les éléments d'administration   @DEPRECATED
     showAdminElements();

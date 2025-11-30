@@ -3,6 +3,7 @@
 
 let activeLocks = new Map(); // Map<lockerNumber, intervalId>
 const RENEW_INTERVAL = 2 * 60 * 1000; // Renouveler toutes les 2 minutes
+//const RENEW_INTERVAL = getState('config.ui.lockRenewInterval');
 
 /**
  * Acquiert un lock sur un casier

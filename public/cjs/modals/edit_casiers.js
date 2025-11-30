@@ -71,6 +71,7 @@ async function openModal(zone) {
     document.getElementById('comment').value = '';
     document.getElementById('recoverable').checked = false;
     document.getElementById('stup').checked = false;
+    //document.getElementById('hosp').checked = false;
     document.getElementById('idel').checked = false;
     document.getElementById('statusMessage').innerHTML = '';
     
@@ -163,7 +164,8 @@ async function openModal(zone) {
     };
     document.getElementById('modal').classList.add('active');
     trapFocus(document.getElementById('modal'));
-
+    
+    enableRealtimeValidation(); // Activer validation temps réel
 }
 
 // --- Editer casier existant
@@ -209,8 +211,9 @@ async function openModalEdit(lockerNumber) {
         document.getElementById('birthDate').value = locker.birthDate;
         document.getElementById('comment').value = locker.comment || '';
         document.getElementById('recoverable').checked = locker.recoverable || false;
+        //document.getElementById('hosp').checked = locker.hosp || false;
         document.getElementById('stup').checked = locker.stup || false;
-        document.getElementById('idel').checked = locker.stup || false;
+        document.getElementById('idel').checked = locker.idel || false;
         document.getElementById('frigo').checked = locker.frigo || false;
         document.getElementById('pca').checked = locker.pca || false;
         document.getElementById('meopa').checked = locker.meopa || false;
@@ -225,6 +228,7 @@ async function openModalEdit(lockerNumber) {
         
         document.getElementById('modal').classList.add('active');
         trapFocus(document.getElementById('modal'));
+        enableRealtimeValidation(); // Activer validation temps réel
 
     } catch (err) {
         console.error('Erreur ouverture modal:', err);
@@ -249,10 +253,54 @@ async function closeModal() {
     EDITING_LOCKER_VERSION = null;
 }
 
+// Validation côté client
+function validateLockerForm() {
+  const errors = [];
+  
+  const lastName = document.getElementById('lastName').value.trim();
+  const firstName = document.getElementById('firstName').value.trim();
+  const code = document.getElementById('code').value.trim();
+  const birthDate = document.getElementById('birthDate').value;
+  
+  if (!lastName || lastName.length < 2) {
+    errors.push('Le nom doit contenir au moins 2 caractères');
+  }
+  
+  if (!firstName || firstName.length < 2) {
+    errors.push('Le prénom doit contenir au moins 2 caractères');
+  }
+  
+  if (!code || !/^\d+$/.test(code)) {
+    errors.push('L\'IPP doit être un nombre');
+  }
+  
+  if (!birthDate) {
+    errors.push('La date de naissance est obligatoire');
+  } else {
+    const date = new Date(birthDate);
+    const now = new Date();
+    if (date > now) {
+      errors.push('La date de naissance ne peut pas être dans le futur');
+    }
+    if (date < new Date('1900-01-01')) {
+      errors.push('La date de naissance est invalide');
+    }
+  }
+  
+  return errors;
+}
+
 // --- Soumission du formulaire
 async function handleFormSubmit(e) {
     e.preventDefault();
-    
+      
+    // Valider avant soumission
+    const validationErrors = validateLockerForm();
+    if (validationErrors.length > 0) {
+      displayValidationErrors(validationErrors);
+      return; // Arrêter la soumission
+    }
+
     const submitBtn = e.target.querySelector('button[type="submit"]');
     const originalText = submitBtn.textContent;
     

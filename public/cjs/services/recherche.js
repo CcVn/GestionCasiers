@@ -115,7 +115,7 @@ const debouncedSearch = debounce((query) => {
     } else {
         renderAllTables();
     }
-}, 400); // Attendre 400ms après la dernière frappe (range 250-500ms conseillé)
+}, getState('config.ui.searchDebounceDelay') ); // Attendre 400ms après la dernière frappe (range 250-500ms conseillé)
 
 
 // Rendre les fonctions globales

@@ -127,7 +127,7 @@ function generateTableRow(locker, showZone = false) {
             <td class="hide-mobile">${locker.comment || '<span class="cell-empty">—</span>'}</td>
             <td class="hide-mobile">
                 <div class="menu-dot">
-                    <button class="btn-secondary" onclick="toggleDropdown(event)">⋮</button>
+                    <button class="btn-secondary dropdown-trigger" onclick="toggleDropdown(event)">⋮</button>
                     <div class="dropdown-menu">
                         <button onclick="openModalEdit('${locker.number}')">
                             ✏️ Modifier
@@ -145,7 +145,7 @@ function generateTableRow(locker, showZone = false) {
                             </button>
                             <div class="dropdown-submenu-content">
                                 <button onclick="openHospitalisationModal('${locker.number}')">
-                                    ${locker.stup ? '❌ Retirer hospi' : '🚑 Hospitalisation'}
+                                    ${locker.hosp ? '❌ Retirer hospi' : '🚑 Hospitalisation'}
                                 </button>
                                 <button onclick="toggleMarker('${locker.number}', 'idel', ${locker.idel ? 'true' : 'false'})">
                                     ${locker.idel ? '❌ Retirer IDEL' : 'ℹ️ Avec IDEL'}
@@ -153,14 +153,14 @@ function generateTableRow(locker, showZone = false) {
                                 <button onclick="toggleMarker('${locker.number}', 'stup', ${locker.stup ? 'true' : 'false'})">
                                     ${locker.stup ? '❌ Retirer stup.' : '💊 Avec stupéfiants'}
                                 </button>
-                                <button onclick="toggleMarker('${locker.number}', 'frigo', ${locker.marque ? 'true' : 'false'})">
-                                    ${locker.marque ? '❌ Retirer frigo' : '❄️ Avec frigo'}
+                                <button onclick="toggleMarker('${locker.number}', 'frigo', ${locker.frigo ? 'true' : 'false'})">
+                                    ${locker.frigo ? '❌ Retirer frigo' : '❄️ Avec frigo'}
                                 </button>
-                                <button onclick="toggleMarker('${locker.number}', 'pca', ${locker.marque ? 'true' : 'false'})">
-                                    ${locker.marque ? '❌ Retirer PCA' : '💉 Avec PCA'}
+                                <button onclick="toggleMarker('${locker.number}', 'pca', ${locker.pca ? 'true' : 'false'})">
+                                    ${locker.pca ? '❌ Retirer PCA' : '💉 Avec PCA'}
                                 </button>
-                                <button onclick="toggleMarker('${locker.number}', 'meopa', ${locker.marque ? 'true' : 'false'})">
-                                    ${locker.marque ? '❌ Retirer MEOPA' : '⛽️ Avec MEOPA'}
+                                <button onclick="toggleMarker('${locker.number}', 'meopa', ${locker.meopa ? 'true' : 'false'})">
+                                    ${locker.meopa ? '❌ Retirer MEOPA' : '⛽️ Avec MEOPA'}
                                 </button>
                                 <button onclick="toggleMarker('${locker.number}', 'marque', ${locker.marque ? 'true' : 'false'})">
                                     ${locker.marque ? '❌ Retirer marque' : '🔖 Marquer'}
@@ -231,6 +231,11 @@ function renderTable(zone) {
     
    // Utiliser la fonction de génération de ligne (commune avec la table de recherche renderSearchResults)
     tbody.innerHTML = lockers.map(locker => generateTableRow(locker, false)).join('');
+
+    // Initialiser l'accessibilité après le rendu
+    requestAnimationFrame(() => {
+      initDropdownAccessibility();
+    });
 }
 
 // --- Génération de toutes les tables, mode normal ou recherche ---
@@ -293,6 +298,11 @@ function renderSearchResults(zone, results, searchTerm) {
         
         return row;
     }).join('');
+
+    // Initialiser l'accessibilité après le rendu
+    requestAnimationFrame(() => {
+      initDropdownAccessibility();
+    });
 }
 
 // ---- FILTRE de la table : avec gestion du filtre "duplicates" ----

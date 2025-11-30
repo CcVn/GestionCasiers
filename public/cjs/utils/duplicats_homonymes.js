@@ -1,7 +1,22 @@
 //======== FONCTIONS UTILITAIRES DOUBLONS & HOMONYMES ===============
 
+// Optimisation avec cache 
+let cachedDuplicates = null;
+let cachedHomonyms = null;
+let lastDataHash = null;
+
+function getDataHash() {
+  return DATA.map(l => l.number + l.code + l.name).join(',');
+}
+
 // Fonction de détection des doublons
-function detectDuplicates() {
+function detectDuplicates(useCache = true) {
+    const currentHash = getDataHash();
+
+    if (useCache && cachedDuplicates && lastDataHash === currentHash) {
+        return cachedDuplicates;
+    }
+
     const duplicates = new Set();
     const seen = {
         byIPP: {},           // { IPP: [numbers...] }
@@ -46,11 +61,23 @@ function detectDuplicates() {
         console.log('  Par identité:', Object.entries(seen.byIdentity).filter(([k,v]) => v.length > 1));
     }
     
+    // Mise en cache
+    //cachedDuplicates = result;
+    //lastDataHash = currentHash;
+    //return result;
+
     return {
         duplicates: duplicates,
         byIPP: seen.byIPP,
         byIdentity: seen.byIdentity
     };
+}
+
+// Invalider le cache lors des modifications
+function invalidateDetectionCache() {
+  cachedDuplicates = null;
+  cachedHomonyms = null;
+  lastDataHash = null;
 }
 
 // Fonction de détection des homonymes

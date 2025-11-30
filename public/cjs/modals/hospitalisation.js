@@ -100,17 +100,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 if (index !== -1) {
                     DATA[index] = updatedLocker;
                 }
-                
-                renderAllTables(); // Rafraîchir l'affichage
-                closeHospitalisationModal();  // Fermer le modal
-                
-                // Message de succès
+
+                // Message de succès (pas très utile car fenêtre fermé immédiatement)
                 const icon = updatedLocker.hosp ? '🏥' : '✓';
                 const message = updatedLocker.hosp 
                     ? `${icon} Hospitalisation enregistrée pour ${CURRENT_LOCKER_FOR_HOSP.number}${updatedLocker.hospDate ? ` (${formatDate(updatedLocker.hospDate)})` : ''}`
                     : `${icon} Hospitalisation retirée du casier ${CURRENT_LOCKER_FOR_HOSP.number}`;
-                
                 showStatus(message, 'success');
+
+                renderAllTables(); // Rafraîchir l'affichage
+                closeHospitalisationModal();  // Fermer le modal
                 
             } catch (err) {
                 console.error('Erreur modification hospitalisation:', err);

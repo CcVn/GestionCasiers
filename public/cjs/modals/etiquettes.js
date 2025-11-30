@@ -127,10 +127,11 @@ function openLabelPrintWindow() {
         return;
     }
     
-    if (repetition > 10) {
-        repetition = 10;
-        repetitionInput.value = 10;
-        alert('⚠️ Le nombre de copies ne peut pas dépasser 10.\nValeur limitée à 10.');
+    const nb_max_repet = 20;
+    if (repetition > nb_max_repet) {
+        repetition = nb_max_repet;
+        repetitionInput.value = nb_max_repet;
+        alert(`⚠️ Le nombre de copies ne peut pas dépasser ${nb_max_repet}.\nValeur limitée à ${nb_max_repet}.`);
         return;
     }
 
@@ -206,10 +207,10 @@ function generateLabelHTML(lockers, format, anonymize) {
     // Dimensions calculées (A4 = 210mm × 297mm)
     const pageWidth = 210; // mm
     const pageHeight = 297; // mm
-    const marginTop = format === '5x13' ? 10 : 15; // mm
-    const marginBottom = format === '5x13' ? 10 : 15; // mm
-    const marginLeft = format === '5x13' ? 5 : 6; // mm
-    const marginRight = format === '5x13' ? 5 : 6; // mm
+    const marginTop = format === '5x13' ? 11 : 15; // physiquement 10 et 15 mm
+    const marginBottom = format === '5x13' ? 10 : 15; // physiquement 10 et 15 mm
+    const marginLeft = format === '5x13' ? 6 : 6; // physiquement 5 et 6 mm
+    const marginRight = format === '5x13' ? 5 : 6; // physiquement 5 et 6 mm
     
     const usableWidth = pageWidth - marginLeft - marginRight;
     const usableHeight = pageHeight - marginTop - marginBottom;

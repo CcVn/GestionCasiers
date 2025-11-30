@@ -84,7 +84,7 @@ function closeImportOptions() {
 }
 
 // util
-function isUTF8valid(csvFileName = 'data.csv') { 
+function isUTF8Valid(csvFileName = 'data.csv') { 
   const buffer = fs.readFileSync(csvFileName);
 
   // Vérification BOM UTF-8
@@ -118,7 +118,7 @@ function selectFileForImport() {
 async function handleClientFileSelected(e) {
     const file = e.target.files[0];
     if (!file) return;
-    if (!isUTF8valid) {
+    if (!isUTF8Valid) {
         alert('Format UTF8 invalide!');
         return;
     }
@@ -388,7 +388,7 @@ async function updateImportStatus() {
 window.importClients = importClients;
 window.closeImportOptions = closeImportOptions;
 window.selectFileForImport = selectFileForImport;
-window.isUTF8valid = isUTF8valid;
+window.isUTF8Valid = isUTF8Valid;
 window.handleClientFileSelected = handleClientFileSelected;
 window.clearClientsDatabase = clearClientsDatabase;
 window.searchClient = searchClient;

@@ -1,5 +1,129 @@
 // ============ MODAL CONSULTATION MULTIZONES DES CASIERS  ============
 
+// Dépendances: AppState, Utils, CONSTANTS, LockersModule, TablesModule
+
+const ConsultationModule = {
+    
+    loadConsultationData() {
+        // En mode consultation (guest), créer une vue simplifiée
+        const lockers = LockersModule.getOccupiedLockers();
+        
+        AppState.consultationData = lockers.map(locker => ({
+            number: locker.number,
+            name: AppState.config.anonymizeEnabled 
+                ? Utils.anonymizeName(locker.client_name || '')
+                : locker.client_name || '',
+            surname: AppState.config.anonymizeEnabled
+                ? Utils.anonymizeName(locker.client_surname || '')
+                : locker.client_surname || '',
+            dateEntry: locker.date_entry ? Utils.formatDate(locker.date_entry) : '-',
+            markers: this._getMarkers(locker),
+            hospitalized: locker.hospitalisation ? '🚑' : '',
+            idel: locker.idel ? 'ℹ️' : '',
+            stupefiants: locker.stupefiants ? '💊' : ''
+        }));
+        
+        return AppState.consultationData;
+    },
+    
+    _getMarkers(locker) {
+        const markers = [];
+        if (locker.hospitalization) markers.push('Hospi');
+        if (locker.idel) markers.push('IDEL');
+        if (locker.stupefiants) markers.push('Stup');
+        if (locker.recuperable) markers.push('Récup');
+        return markers.join(', ');
+    },
+    
+    sortData(column, direction) {
+        AppState.config.consultation.sortColumn = column;
+        AppState.config.consultation.sortDirection = direction;
+        
+        const sorted = Utils.sortBy(
+            AppState.consultationData,
+            column,
+            direction
+        );
+        
+        AppState.consultationData = sorted;
+        return sorted;
+    },
+    
+    toggleSort(column) {
+        const current = AppState.config.consultation.sortColumn;
+        let direction = 'asc';
+        
+        if (current === column) {
+            direction = AppState.config.consultation.sortDirection === 'asc' ? 'desc' : 'asc';
+        }
+        
+        return this.sortData(column, direction);
+    },
+    
+    renderConsultationTable(containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return;
+        
+        const data = AppState.consultationData;
+        
+        const table = Utils.createElement('table', 'consultation-table');
+        
+        // Header
+        const thead = Utils.createElement('thead');
+        const headerRow = Utils.createElement('tr');
+        
+        const headers = [
+            { label: 'N°', column: 'number' },
+            { label: 'Nom', column: 'name' },
+            { label: 'Prénom', column: 'surname' },
+            { label: 'Entrée', column: 'dateEntry' },
+            { label: 'Marqueurs', column: 'markers' }
+        ];
+        
+        headers.forEach(header => {
+            const th = Utils.createElement('th');
+            const btn = Utils.createElement('button');
+            btn.textContent = header.label;
+            btn.className = 'sort-button';
+            
+            if (AppState.config.consultation.sortColumn === header.column) {
+                btn.classList.add('active');
+                const arrow = AppState.config.consultation.sortDirection === 'asc' ? '↑' : '↓';
+                btn.textContent += ' ' + arrow;
+            }
+            
+            btn.addEventListener('click', () => {
+                this.toggleSort(header.column);
+                this.renderConsultationTable(containerId);
+            });
+            
+            th.appendChild(btn);
+            headerRow.appendChild(th);
+        });
+        
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+        
+        // Body
+        const tbody = Utils.createElement('tbody');
+        data.forEach(row => {
+            const tr = Utils.createElement('tr');
+            tr.innerHTML = `
+                <td>${row.number}</td>
+                <td>${row.name}</td>
+                <td>${row.surname}</td>
+                <td>${row.dateEntry}</td>
+                <td>${row.hospitalized}${row.idel}${row.stupefiants}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        
+        container.innerHTML = '';
+        container.appendChild(table);
+    }
+};
+
 // Ouvrir le modal de consultation
 function openConsultationCasiers(filterType = 'all') {
     const modal = document.getElementById('consultationCasiersModal');
@@ -350,7 +474,9 @@ function printConsultationTable() {
     };
 }
 
+
 // Rendre les fonctions globales
+window.ConsultationModule = ConsultationModule;
 window.openConsultationCasiers = openConsultationCasiers;
 window.closeConsultationCasiers = closeConsultationCasiers;
 window.updateConsultationTable = updateConsultationTable;

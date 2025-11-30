@@ -43,11 +43,24 @@ function updateDarkModeButtons() {
     });
 }
 
+function safeLocalStorage(key, value) {
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (e) {
+    if (e.name === 'QuotaExceededError') {
+      console.warn('LocalStorage quota exceeded');
+      // Fallback: cookies ou sessionStorage
+    }
+    return false;
+  }
+}
+
 function setDarkMode(mode) {
     if (VERBCONSOLE>0) { console.log('🌓 Changement mode:', mode); }
     
     // Sauvegarder la préférence localement
-    localStorage.setItem('darkMode', mode);
+    safeLocalStorage('darkMode', mode);
     
     // Appliquer immédiatement
     applyDarkMode(mode);
@@ -76,7 +89,9 @@ function toggleDarkModeQuick() {
     const btn = document.getElementById('btnThemeToggle');
     if (btn) {
         btn.classList.add('animating');
-        setTimeout(() => btn.classList.remove('animating'), 500);
+        setTimeout(() => btn.classList.remove('animating'), 
+          getState('config.ui.animationDuration')
+        );
     }
     
     setDarkMode(newMode); // Appliquer le mode

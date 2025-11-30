@@ -21,6 +21,23 @@ const AppState = {
     editingLockerNumber: null,
     editingLockerVersion: null,
     activeLocks: new Map()
+  },
+  config: {
+    ui: {
+      animationDuration: 500,
+      searchDebounceDelay: 400,
+      lockRenewInterval: 2 * 60 * 1000
+    },
+    api: {
+      retryAttempts: 3,
+      timeout: 30000
+    },
+    display: {
+      anonymization: {
+        maxNameLength: 3,
+        maxFirstNameLength: 2
+      }
+    }
   }
 };
 

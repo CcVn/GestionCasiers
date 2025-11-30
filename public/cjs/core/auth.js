@@ -100,6 +100,7 @@ function handleLogin(e) {
         
         showLoginPage(false);
         updateAuthStatus();
+        updateAnonymizationStatus();
         setupApp();
     })
     .catch(err => {
@@ -162,6 +163,7 @@ function loginAsGuest() {
         hideAdminElements();
         showLoginPage(false);
         updateAuthStatus();
+        updateAnonymizationStatus();
         setupApp();
     })
     .catch(err => {
@@ -214,6 +216,7 @@ function loginAsGuestAuto() {
         hideAdminElements();
         showLoginPage(false);
         updateAuthStatus();
+        updateAnonymizationStatus();
         setupApp();
     })
     .catch(err => {

@@ -510,7 +510,52 @@ function generateContentSections() {
     });
 }
 
-// @TODO plus utilisée pour l'instant?
+// --- Suivi occupation casiers ---
+function updateCounters() {
+    if (!DATA || DATA.length === 0) {
+        if (VERBCONSOLE>0) { console.log('⚠️ Pas de données pour les compteurs'); }
+        return;
+    }
+    if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
+        if (VERBCONSOLE>0) { console.log('⚠️ ZONES_CONFIG non chargée'); }
+        return;
+    }
+    
+    const zones = {};
+    
+    // Initialiser pour chaque zone configurée
+    ZONES_CONFIG.forEach(zoneConfig => {
+        zones[zoneConfig.name] = {
+            total: zoneConfig.count,
+            occupied: 0
+        };
+    });
+    
+    // Compter les occupés
+    DATA.forEach(locker => {
+        if (locker.occupied && zones[locker.zone]) {
+            zones[locker.zone].occupied++;
+        }
+    });
+    
+    // Mettre à jour l'affichage
+    Object.keys(zones).forEach(zoneName => {
+        const counter = document.getElementById(`counter-${zoneName}`);
+        if (counter) {
+            const { occupied, total } = zones[zoneName];
+            counter.textContent = `${occupied}/${total}`;
+            
+            counter.classList.remove('full', 'warning');
+            if (occupied === total) {
+                counter.classList.add('full');
+            } else if (occupied / total >= 0.8) {
+                counter.classList.add('warning');
+            }
+        }
+    });
+}
+
+// @TODO DEPRECATED? plus utilisée pour l'instant?
 function updateImportExportButtons() {
     const importExportButtons = document.querySelectorAll('.search-bar button');
     if (VERBCONSOLE>0) { console.log('Mise à jour des boutons header, IS_GUEST:', IS_GUEST); }
@@ -568,3 +613,4 @@ function updateImportExportButtons() {
 window.generateTabs = generateTabs;
 window.generateContentSections = generateContentSections;
 window.updateImportExportButtons = updateImportExportButtons;
+window.updateCounters = updateCounters;

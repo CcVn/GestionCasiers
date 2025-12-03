@@ -321,7 +321,7 @@ async function handleFormSubmit(e) {
         const meopa = document.getElementById('meopa')?.checked || false;
 
         // VÉRIFIER QU'ON A BIEN LE LOCK AVANT DE SAUVEGARDER
-        if (!EDITING_LOCKER_NUMBER || EDITING_LOCKER_NUMBER !== newLockerNumber) {
+        if (!EDITING_LOCKER_NUMBER) {
             showStatus('❌ Erreur: casier non verrouillé', 'error');
             alert(
                 '⚠️ Erreur de verrouillage\n\n' +
@@ -332,42 +332,83 @@ async function handleFormSubmit(e) {
         }
 
         // Détecter si le numéro de casier a changé
-        const isLockerChanged = EDITING_LOCKER_NUMBER && EDITING_LOCKER_NUMBER !== newLockerNumber;
+        const isLockerChanged = (EDITING_LOCKER_NUMBER !== newLockerNumber);
         
         // Gestion du tranfert
         if (isLockerChanged) {
+            console.log(`/!\ Déplacement de casier détecté: ${EDITING_LOCKER_NUMBER} → ${newLockerNumber}`);
+            
             // Afficher une popup de confirmation
             const oldNumber = EDITING_LOCKER_NUMBER;
             const patientName = document.getElementById('lastName').value + ' ' + document.getElementById('firstName').value;
             
+            // Vérifier que le nouveau casier est disponible
+            const targetLocker = getState('data.lockers').find(l => l.number === newLockerNumber);
+            if (targetLocker && targetLocker.occupied) {
+              showStatus('✖ Le casier cible est déjà occupé', 'error');
+              alert(
+                `❌ CASIER OCCUPÉ\n\n` +
+                `Le casier ${newLockerNumber} est déjà occupé par:\n` +
+                `${targetLocker.name} ${targetLocker.firstName}\n\n` +
+                `Veuillez choisir un autre casier.`
+              );
+              return;
+            }
+
+            // Demander confirmation
             const confirmMessage = `⚠️ CHANGEMENT DE CASIER\n\n` +
                 `Patient : ${patientName}\n` +
                 `Ancien casier : ${oldNumber}\n` +
                 `Nouveau casier : ${newLockerNumber}\n\n` +
                 `Voulez-vous libérer automatiquement l'ancien casier ${oldNumber} ?`;
-            
+
             const shouldReleaseOld = confirm(confirmMessage);
             
             if (shouldReleaseOld) {
                 // Enregistrer le nouveau casier d'abord
                 try {
+
+                    // IMPORTANT : Libérer le lock de l'ancien casier AVANT de sauvegarder
+                    await releaseLockerLock(oldNumber);
+                    console.log(`🔓 Lock libéré pour ${oldNumber}`);
+                    
+                    // Acquérir le lock sur le NOUVEAU casier
+                    const lockResult = await acquireLockerLock(newLockerNumber);
+                    if (!lockResult.success) {
+                      throw new Error(`Impossible de verrouiller ${newLockerNumber}`);
+                    }
+                    console.log(`🔒 Lock acquis pour ${newLockerNumber}`);
+                    
+                    // Mettre à jour le state avec le nouveau numéro
+                    EDITING_LOCKER_NUMBER = newLockerNumber; //setState('locks.editingLockerNumber', newLockerNumber);
                     // Sauvegarder le nouveau casier SANS vérification de version
                     const oldVersion = EDITING_LOCKER_VERSION;
-                    EDITING_LOCKER_VERSION = null;  // Désactiver la vérification
-                    
+                    // Désactiver la vérification
+                    EDITING_LOCKER_VERSION = null; //setState('locks.editingLockerVersion', null); // Nouveau casier = pas de version
+
                     await saveLocker(newLockerNumber, zone, recoverable, comment, stup, idel, frigo, pca, meopa);
                     
                     // Restaurer la version pour la libération
                     EDITING_LOCKER_VERSION = oldVersion;
-                    
                     // Puis libérer l'ancien casier
                     await releaseLockerSilent(oldNumber);
-                    
+
+                    // Libérer le lock du nouveau casier
+                    await releaseLockerLock(newLockerNumber);
+                    console.log(`🔓 Lock libéré pour ${newLockerNumber}`);
+
                     closeModal();
                     loadData();
                     showStatus(`✓ ${patientName} déplacé de ${oldNumber} vers ${newLockerNumber}`, 'success');
                 } catch (err) {
+                    console.error('Erreur déplacement:', err);
                     showStatus('Erreur lors du déplacement: ' + err.message, 'error');
+                    
+                    // Nettoyer en cas d'erreur
+                    await releaseLockerLock(oldNumber).catch(() => {});
+                    await releaseLockerLock(newLockerNumber).catch(() => {});
+                    EDITING_LOCKER_NUMBER = null; //setState('locks.editingLockerNumber', null);
+                    EDITING_LOCKER_VERSION = null; //setState('locks.editingLockerVersion', null);
                 }
             } else {
                 // L'utilisateur ne veut pas libérer l'ancien, juste créer le nouveau
@@ -391,8 +432,9 @@ async function handleFormSubmit(e) {
                 // Sinon, on ne fait rien (l'utilisateur annule tout)
             }
         // Sauvegarde normale
+
         } else {
-            // Pas de changement de numéro, comportement normal avec vérification de version
+        // Pas de changement de numéro, comportement normal avec vérification de version
             try {
                 await saveLocker(newLockerNumber, zone, recoverable, comment, stup, idel, frigo, pca, meopa);
                 // Libérer le lock après sauvegarde réussie
@@ -402,7 +444,7 @@ async function handleFormSubmit(e) {
                 closeModal();
                 loadData();
                 
-                // Vérifier si l'IPP était valide
+                // Vérifier si l'IPP était dans la base patients
                 const data = await fetchJSON(`${API_URL}/lockers/${newLockerNumber}`, {
                     credentials: 'include'
                 });
@@ -413,7 +455,7 @@ async function handleFormSubmit(e) {
                     showStatus('✓ Casier enregistré', 'success');
                 }
             } catch (err) {
-                // GÉRER SPÉCIFIQUEMENT LES CONFLITS
+                // Gérer spécifiquement les conflits
                 if (err.message.includes('conflit') || err.message.includes('version')) {
                     const reload = confirm(
                         '⚠️ CONFLIT DÉTECTÉ\n\n' +
@@ -444,6 +486,7 @@ async function handleFormSubmit(e) {
             }
         }
     } catch (err) {
+        console.error('Erreur générale handleFormSubmit:', err);
         showStatus('Erreur: ' + err.message, 'error');
     } finally {
         // RESET STATE (même en cas d'erreur)
@@ -541,6 +584,16 @@ async function releaseLockerSilent(lockerNumber, reason = 'TRANSFERT') {
     return data;
 }
 
+// --- Message affiché en haut de modal pour réussite ou échec
+function showStatus(msg, type) {
+    const el = document.getElementById('statusMessage');
+    el.className = 'status-message status-' + type;
+    el.textContent = msg;
+    setTimeout(() => {
+        el.innerHTML = '';
+    }, 3000);
+}
+
 // Rendre les fonctions globales
 window.populateZoneSelect = populateZoneSelect;
 window.populateLockerSelect = populateLockerSelect;
@@ -551,3 +604,4 @@ window.handleFormSubmit = handleFormSubmit;
 window.releaseLocker = releaseLocker;
 window.saveLocker = saveLocker;
 window.releaseLockerSilent = releaseLockerSilent;
+window.showStatus = showStatus;

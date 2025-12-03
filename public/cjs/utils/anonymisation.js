@@ -130,9 +130,9 @@ function updateAnonymizationStatus(icone = true) {
     const statusEl = document.getElementById('anonymizationStatus');
     if (!statusEl) return;
     
-    const isGuest = getState('IS_GUEST');  // utiliser getState('IS_GUEST') quand ce sera implémenté
-    const isAuth = getState('IS_AUTHENTICATED');
-    const isEnabled = getState('ANONYMIZE_ENABLED');
+    const isGuest = IS_GUEST; //getState('IS_GUEST');  // utiliser getState('IS_GUEST') quand ce sera implémenté
+    const isAuth = IS_AUTHENTICATED; // getState('IS_AUTHENTICATED');
+    const isEnabled = ANONYMIZE_ENABLED; //getState('ANONYMIZE_ENABLED');
     
     // Retirer les classes existantes
     statusEl.classList.remove('active', 'inactive');

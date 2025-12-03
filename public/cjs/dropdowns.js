@@ -1,5 +1,18 @@
 // ============ MARQUES CASIER ON/OFF ============
 
+function toggleDropdown(event) {
+  event.stopPropagation();
+  
+  const menu = event.target.closest('.menu-dot').querySelector('.dropdown-menu');
+  
+  // Fermer tous les autres menus
+  document.querySelectorAll('.dropdown-menu').forEach(m => {
+    if (m !== menu) m.classList.remove('active');
+  });
+  
+  menu.classList.toggle('active');
+}
+
 // Fonction générique pour activer un marqueur (IDEL, Stup, Marque etc.)
 async function toggleMarker(lockerNumber, marker, currentValue) {
     const locker = DATA.find(l => l.number === lockerNumber);
@@ -102,5 +115,15 @@ async function toggleMarker(lockerNumber, marker, currentValue) {
     }
 }
 
+// Fermer les dropdowns au clic extérieur
+document.addEventListener('click', (e) => {
+  if (!e.target.closest('.menu-dot')) {
+    document.querySelectorAll('.dropdown-menu').forEach(m => {
+      m.classList.remove('active');
+    });
+  }
+});
+
 // Rendre les fonctions globales
+window.toggleDropdown = toggleDropdown;
 window.toggleMarker = toggleMarker;

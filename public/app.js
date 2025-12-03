@@ -1,56 +1,195 @@
-// Configuration
-let API_URL = 'http://localhost:5000/api';
-let DATA = []; // données casiers
-let ZONES_CONFIG = []; // Variable globale pour stocker la config des zones
-let IS_AUTHENTICATED = false;
-let IS_GUEST = false;
-let IS_MOBILE = false;
-let USER_NAME = '';
+// ============ APP.JS - GESTION GLOBALE DE L'APPLICATION ============
 
-let DARK_MODE_SETTING = 'system'
-let EDITING_LOCKER_NUMBER = null; // Mémoriser le casier en cours d'édition
-let EDITING_LOCKER_VERSION = null; // Mémoriser la version du casier en cours d'édition
-let CURRENT_LOCKER_FOR_HOSP = null;
-let SEARCH_RESULTS = []; 
-let SEARCH_RESULTS_MARKED = false;
-let VERBCONSOLE = 1   // Console verbeuse si >0
+// Import du système de state centralisé
+//import { getState, setState } from './cjs/core/state.js';
 
-let ANONYMIZE_ENABLED = false;
-let NB_MAX_ANON_PRENOM = 2;   // nombre de caractères gardés pour le nom à l'écran lors de l'anonymisation
-let NB_MAX_ANON_NOM = 3;   // nombre de caractères gardés pour le prénom à l'écran lors de l'anonymisation
-let NB_MAX_CAR_NOM = 20;   // nombre de caractères max affichés pour le nom à l'écran
-let NB_MAX_CAR_PRENOM = 15;    // nombre de caractères max affichés pour le nom à l'écran
+// ============ CONFIGURATION ============
+const API_URL = window.location.hostname === 'localhost' 
+  ? 'http://localhost:5000/api' 
+  : '/api';
 
-let consultationData = [];
-let consultationSortColumn = 'name';
-let consultationSortDirection = 'asc';
+const VERBCONSOLE = 1; // 0=rien, 1=logs importants, 2=tous les logs
 
-// Fonction générique pour Focus trap dans les modals
-function trapFocus(modal) {
-    const focusableElements = modal.querySelectorAll(
-        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
-    );
-    const firstElement = focusableElements[0];
-    const lastElement = focusableElements[focusableElements.length - 1];
-    
-    modal.addEventListener('keydown', function(e) {
-        if (e.key === 'Tab') {
-            if (e.shiftKey && document.activeElement === firstElement) {
-                lastElement.focus();
-                e.preventDefault();
-            } else if (!e.shiftKey && document.activeElement === lastElement) {
-                firstElement.focus();
-                e.preventDefault();
-            }
-        }
-    });
-    
-    // Focus auto sur premier élément
-    setTimeout(() => firstElement?.focus(), 100);
-}
+// Constantes d'anonymisation (peuvent être déplacées dans state.config)
+const NB_MAX_ANON_NOM = 3;
+const NB_MAX_ANON_PRENOM = 2;
+const NB_MAX_CAR_NOM = 20;
+const NB_MAX_CAR_PRENOM = 15;
 
-// =============== CONFIG DES ZONES ======================
+// ============ COMPATIBILITÉ : VARIABLES GLOBALES → STATE ============
+// Ces getters/setters permettent au code existant de continuer à fonctionner
+// en utilisant les variables globales, mais en lisant/écrivant dans le state
 
+// --- DATA ET CONFIGURATION ---
+Object.defineProperty(window, 'DATA', {
+  get: () => getState('data.lockers'),
+  set: (value) => setState('data.lockers', value),
+  configurable: true
+});
+
+Object.defineProperty(window, 'ZONES_CONFIG', {
+  get: () => getState('data.zonesConfig'),
+  set: (value) => setState('data.zonesConfig', value),
+  configurable: true
+});
+
+// --- AUTHENTIFICATION ---
+Object.defineProperty(window, 'IS_AUTHENTICATED', {
+  get: () => getState('auth.isAuthenticated'),
+  set: (value) => setState('auth.isAuthenticated', value),
+  configurable: true
+});
+
+Object.defineProperty(window, 'IS_GUEST', {
+  get: () => getState('auth.isGuest'),
+  set: (value) => setState('auth.isGuest', value),
+  configurable: true
+});
+
+Object.defineProperty(window, 'USER_NAME', {
+  get: () => getState('auth.userName'),
+  set: (value) => setState('auth.userName', value),
+  configurable: true
+});
+
+Object.defineProperty(window, 'CSRF_TOKEN', {
+  get: () => getState('auth.csrfToken'),
+  set: (value) => setState('auth.csrfToken', value),
+  configurable: true
+});
+
+// --- UI STATE ---
+Object.defineProperty(window, 'CURRENT_ZONE', {
+  get: () => getState('ui.currentZone'),
+  set: (value) => setState('ui.currentZone', value),
+  configurable: true
+});
+
+Object.defineProperty(window, 'CURRENT_FILTER', {
+  get: () => getState('ui.currentFilter'),
+  set: (value) => setState('ui.currentFilter', value),
+  configurable: true
+});
+
+Object.defineProperty(window, 'SEARCH_RESULTS', {
+  get: () => getState('ui.searchResults'),
+  set: (value) => setState('ui.searchResults', value),
+  configurable: true
+});
+
+Object.defineProperty(window, 'SEARCH_RESULTS_MARKED', {
+  get: () => getState('ui.searchResultsMarked'),
+  set: (value) => setState('ui.searchResultsMarked', value),
+  configurable: true
+});
+
+Object.defineProperty(window, 'ANONYMIZE_ENABLED', {
+  get: () => getState('ui.anonymizeEnabled'),
+  set: (value) => setState('ui.anonymizeEnabled', value),
+  configurable: true
+});
+
+Object.defineProperty(window, 'DARK_MODE_SETTING', {
+  get: () => getState('ui.darkMode'),
+  set: (value) => setState('ui.darkMode', value),
+  configurable: true
+});
+
+Object.defineProperty(window, 'IS_MOBILE', {
+  get: () => getState('ui.isMobile'),
+  set: (value) => setState('ui.isMobile', value),
+  configurable: true
+});
+
+// --- LOCKS (ÉDITION DE CASIERS) ---
+Object.defineProperty(window, 'EDITING_LOCKER_NUMBER', {
+  get: () => getState('locks.editingLockerNumber'),
+  set: (value) => setState('locks.editingLockerNumber', value),
+  configurable: true
+});
+
+Object.defineProperty(window, 'EDITING_LOCKER_VERSION', {
+  get: () => getState('locks.editingLockerVersion'),
+  set: (value) => setState('locks.editingLockerVersion', value),
+  configurable: true
+});
+
+// --- MODALES TEMPORAIRES ---
+Object.defineProperty(window, 'CURRENT_LOCKER_FOR_HOSP', {
+  get: () => getState('ui.currentLockerForHosp'),
+  set: (value) => setState('ui.currentLockerForHosp', value),
+  configurable: true
+});
+
+Object.defineProperty(window, 'CURRENT_LOCKER_FOR_PRINT', {
+  get: () => getState('ui.currentLockerForPrint'),
+  set: (value) => setState('ui.currentLockerForPrint', value),
+  configurable: true
+});
+
+// --- CONSULTATION (MODAL MULTI-ZONES) ---
+Object.defineProperty(window, 'consultationData', {
+  get: () => getState('ui.consultationData'),
+  set: (value) => setState('ui.consultationData', value),
+  configurable: true
+});
+
+Object.defineProperty(window, 'consultationSortColumn', {
+  get: () => getState('ui.consultationSortColumn'),
+  set: (value) => setState('ui.consultationSortColumn', value),
+  configurable: true
+});
+
+Object.defineProperty(window, 'consultationSortDirection', {
+  get: () => getState('ui.consultationSortDirection'),
+  set: (value) => setState('ui.consultationSortDirection', value),
+  configurable: true
+});
+
+// ============ VARIABLES GLOBALES RÉELLES (non migrées vers state) ============
+// Ces variables restent globales car elles sont des constantes ou peu critiques
+
+window.API_URL = API_URL;
+window.VERBCONSOLE = VERBCONSOLE;
+window.NB_MAX_ANON_NOM = NB_MAX_ANON_NOM;
+window.NB_MAX_ANON_PRENOM = NB_MAX_ANON_PRENOM;
+window.NB_MAX_CAR_NOM = NB_MAX_CAR_NOM;
+window.NB_MAX_CAR_PRENOM = NB_MAX_CAR_PRENOM;
+
+// ============ INITIALISATION AU CHARGEMENT DE LA PAGE ============
+
+document.addEventListener('DOMContentLoaded', async function() {
+  if (VERBCONSOLE > 0) {
+    console.log('🚀 Initialisation de l\'application...');
+  }
+  
+  // Détecter si mode mobile
+  detectMobile();
+  
+  // Ajouter listener pour resize
+  window.addEventListener('resize', detectMobile);
+  
+  // Vérifier si login automatique en guest (via URL ?guest=true)
+  const urlParams = new URLSearchParams(window.location.search);
+  if (urlParams.get('guest') === 'true') {
+    if (VERBCONSOLE > 0) {
+      console.log('🔓 Connexion automatique en mode guest (URL)');
+    }
+    loginAsGuestAuto();
+  } else {
+    // Afficher la page de login
+    showLoginPage(true);
+    setupLoginPage();
+  }
+  
+  if (VERBCONSOLE > 0) {
+    console.log('✅ Application initialisée');
+  }
+});
+
+// ============ GESTION DES DONNÉES ============
+
+// --- Nettoyer les noms de zones (utilisé par loadZonesConfig)
 function sanitizeName(name) {
   // Nettoie d'abord le nom
   let cleanName = name.replace(/[^A-Z0-9_]/gi, '');
@@ -66,227 +205,139 @@ function sanitizeName(name) {
   return cleanName;
 }
 
-// Fonction pour charger la configuration des zones
 async function loadZonesConfig() {
-    try {
-        const data = await fetchJSON(`${API_URL}/config/zones`, {
-            credentials: 'include'
-        });
-        ZONES_CONFIG = data.zones;
+  try {
+    const data = await fetchJSON(`${API_URL}/config/zones`, {
+      credentials: 'include'
+    });
 
-        if (VERBCONSOLE>0) {
-            const zonesList = ZONES_CONFIG
-                .map(z => z.name)
-                .map(name => sanitizeName(name))
-                .map(z => `'${z}'`)
-                .join(', ');
-            console.log(zonesList);
-        }
-
-        if (VERBCONSOLE>0) { console.log('📋 Configuration des zones chargée:', ZONES_CONFIG); }
-        return ZONES_CONFIG;
-    } catch (err) {
-        console.error('Erreur chargement config zones:', err);
-        // Fallback sur la config par défaut
-        ZONES_CONFIG = [
-            { name: 'ZoneA', count: 50, prefix: 'A', color: '#3b82f6' },
-            { name: 'ZoneB', count: 40, prefix: 'B', color: '#10b981' },
-            { name: 'ZoneC', count: 20, prefix: 'C', color: '#f59e0b' },
-            { name: 'ZoneD', count: 20, prefix: 'D', color: '#ef4444' }
-        ];
-        return ZONES_CONFIG; 
+    const zonesList = data.zones
+        .map(z => z.name)
+        .map(name => sanitizeName(name))
+        .map(z => `'${z}'`)
+        .join(', ');
+    if (VERBCONSOLE>0) {
+        console.log(zonesList);
     }
-}
 
-// Charger les données casiers (appel route [public_url]/api/lockers)
-// ---> SELECT * FROM lockers ORDER BY number ASC
-async function loadData() {
-    try {
-        const data = await fetchJSON(`${API_URL}/lockers`, {
-            credentials: 'include'
-        }, {
-            retries: 3,
-            retryDelay: 1000,
-            logRequests: VERBCONSOLE > 0
-        });
-        
-        DATA = data;
-        if (VERBCONSOLE > 0) {
-            console.log('📦 Données chargées:', DATA.length);
-        }
-        
-        renderAllTables();
-        updateCounters();
-        
-    } catch (err) {
-        console.error('Erreur chargement:', err);
-        
-        // Messages d'erreur adaptés selon le type
-        if (err.isTimeout) {
-            alert('⏱️ La requête a pris trop de temps.\n\nLe serveur est peut-être surchargé. Réessayez dans quelques instants.');
-        } else if (err.isNetworkError) {
-            alert('🔌 Impossible de contacter le serveur.\n\nAssurez-vous que:\n1. Le serveur Node.js est lancé (npm run dev)\n2. L\'URL est correcte: ' + API_URL);
-        } else if (err.status === 401) {
-            alert('🔒 Session expirée. Veuillez vous reconnecter.');
-            logout();
-        } else {
-            alert('❌ Erreur lors du chargement des données.\n\n' + err.message);
-        }
+    setState('data.zonesConfig', data.zones);
+    
+    if (VERBCONSOLE > 0) {
+      console.log('📋 Configuration zones chargée:', data.zones.length, 'zone(s)');
     }
-}
-
-// Fonction utilitaire sur format de date
-function formatDate(inputDate) {
-  //const [year, month, day] = inputDate.split('-');
-  //return `${day}/${month}/${year}`; // Note : Les mois en JavaScript commencent à 0, donc on ne retire pas 1 ici.
-
-  const date = new Date(inputDate);
-  if (isNaN(date.getTime())) {
-    return "Date invalide";
+  } catch (err) {
+    console.error('✖ Erreur chargement zones:', err);
+    throw err;
   }
-  const day = String(date.getDate()).padStart(2, '0');
-  const month = String(date.getMonth() + 1).padStart(2, '0');
-  const year = date.getFullYear();
-  return `${day}/${month}/${year}`;
 }
 
-// ============ INITIALISATION DE LA PAGE ==================
-
-document.addEventListener('DOMContentLoaded', async function() {
-    if (VERBCONSOLE>0) { console.log('Page chargée'); }
+async function loadData() {
+  try {
+    const data = await fetchJSON(`${API_URL}/lockers`, {
+      credentials: 'include'
+    });
     
-    const protocol = window.location.protocol;
-    const host = window.location.host;
-    API_URL = `${protocol}//${host}/api`;
-    if (VERBCONSOLE>0) { console.log('API_URL configurée:', API_URL); }
+    setState('data.lockers', data);
     
-    detectMobile();
+    renderAllTables();
+    updateCounters();
     
-    // Charger le token CSRF immédiatement
-    await loadCsrfToken();
-
-    // Vérifier si le paramètre ?guest est présent dans l'URL
-    const urlParams = new URLSearchParams(window.location.search);
-    const autoGuest = urlParams.get('guest') !== null;
-    if (autoGuest) {
-        if (VERBCONSOLE>0) { console.log('Mode guest automatique détecté via URL'); }
-        loginAsGuestAuto();
-        return;
+    if (VERBCONSOLE > 1) {
+      console.log('✓ Données chargées:', data.length, 'casier(s)');
     }
+  } catch (err) {
+    console.error('✖ Erreur chargement données:', err);
+    showStatus('Erreur de chargement des données', 'error');
+  }
+}
 
-    // Vérifier si une session existe via cookie
-    fetch(`${API_URL}/auth/check`, {
-        credentials: 'include'  // Envoie le cookie automatiquement
-    })
-    .then(res => res.json())
-    .then(data => {
-        if (data.authenticated) {
-            if (VERBCONSOLE>0) { console.log('Session valide, rôle:', data.role); }
-            IS_AUTHENTICATED = data.role === 'admin';
-            IS_GUEST = data.role === 'guest';
-            ANONYMIZE_ENABLED = data.anonymize || false;
-            USER_NAME = data.userName || '';
-            applyDarkMode(data.darkMode || 'system');
-            if (VERBCONSOLE>0) { console.log('Anonymisation activée:', ANONYMIZE_ENABLED); }
-            if (VERBCONSOLE>0) { console.log('Utilisateur:', USER_NAME); }
-            showLoginPage(false);
-            updateAuthStatus();
-            setupApp();
-        } else {
-            if (VERBCONSOLE>0) { console.log('Pas de session valide. Retour à la page de login.'); }
-            setupLoginPage();
-        }
-    })
-    .catch(err => {
-        console.error('Erreur vérification session:', err);
-        setupLoginPage();
+// ============ UTILITAIRES UI ============
+
+function formatDate(dateStr) {
+  if (!dateStr) return '';
+  
+  try {
+    const date = new Date(dateStr);
+    return date.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
     });
-
-    // Gérer le changement de sélection d'étiquettes
-    const labelSelection = document.getElementById('labelSelection');
-    if (labelSelection) {
-        labelSelection.addEventListener('change', updateLabelPreview);
-    }
-
-    CURRENT_ZONE = 'NORD';
-    
-    window.addEventListener('resize', () => {
-        detectMobile();
-        if (DATA.length > 0) {
-            renderAllTables();
-        }
-    });
-
-    // Fermeture des modals avec ESC
-    document.addEventListener('keydown', function(e) {
-        if (e.key === 'Escape') {
-            // Fermer tous les modals actifs
-            document.querySelectorAll('.modal.active').forEach(modal => {
-                modal.classList.remove('active');
-            });
-            
-            // Réinitialiser les variables globales
-            EDITING_LOCKER_NUMBER = null;
-            EDITING_LOCKER_VERSION = null;
-            CURRENT_LOCKER_FOR_HOSP = null;
-            CURRENT_LOCKER_FOR_PRINT = null;
-        }
-    });
-});
-
-// ============ SUIVI OCCUPATION CASIERS ============
+  } catch (err) {
+    return dateStr;
+  }
+}
 
 function updateCounters() {
-    if (!DATA || DATA.length === 0) {
-        if (VERBCONSOLE>0) { console.log('⚠️ Pas de données pour les compteurs'); }
-        return;
+  const zonesConfig = getState('data.zonesConfig');
+  const lockers = getState('data.lockers');
+  
+  if (!zonesConfig || !lockers) return;
+  
+  zonesConfig.forEach(zone => {
+    const counter = document.getElementById(`counter-${zone.name}`);
+    if (!counter) return;
+    
+    const occupied = lockers.filter(l => l.zone === zone.name && l.occupied).length;
+    const total = zone.count;
+    const percentage = Math.round((occupied / total) * 100);
+    
+    counter.textContent = `${occupied}/${total}`;
+    
+    // Couleur selon occupation
+    if (occupied >= total) {
+      counter.style.background = '#ef4444'; // Rouge : plein
+    } else if (percentage >= 80) {
+      counter.style.background = '#f59e0b'; // Orange : ≥80%
+    } else {
+      counter.style.background = '#10b981'; // Vert : <80%
     }
-    if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
-        if (VERBCONSOLE>0) { console.log('⚠️ ZONES_CONFIG non chargée'); }
-        return;
-    }
-    
-    const zones = {};
-    
-    // Initialiser pour chaque zone configurée
-    ZONES_CONFIG.forEach(zoneConfig => {
-        zones[zoneConfig.name] = {
-            total: zoneConfig.count,
-            occupied: 0
-        };
-    });
-    
-    // Compter les occupés
-    DATA.forEach(locker => {
-        if (locker.occupied && zones[locker.zone]) {
-            zones[locker.zone].occupied++;
-        }
-    });
-    
-    // Mettre à jour l'affichage
-    Object.keys(zones).forEach(zoneName => {
-        const counter = document.getElementById(`counter-${zoneName}`);
-        if (counter) {
-            const { occupied, total } = zones[zoneName];
-            counter.textContent = `${occupied}/${total}`;
-            
-            counter.classList.remove('full', 'warning');
-            if (occupied === total) {
-                counter.classList.add('full');
-            } else if (occupied / total >= 0.8) {
-                counter.classList.add('warning');
-            }
-        }
-    });
+  });
 }
 
-// Message affiché en haut de modal pour réussite ou échec
-function showStatus(msg, type) {
-    const el = document.getElementById('statusMessage');
-    el.className = 'status-message status-' + type;
-    el.textContent = msg;
-    setTimeout(() => {
-        el.innerHTML = '';
-    }, 3000);
+//import { getState, setState, watch } from './cjs/core/state.js';
+
+// ============ WATCHERS AUTOMATIQUES ============
+
+// Re-render quand les données changent
+watch('data.lockers', () => {
+  renderAllTables();
+  updateCounters();
+});
+
+// Mettre à jour l'UI quand l'auth change
+watch('auth', (auth) => {
+  updateAuthStatus();
+  if (auth.isGuest) {
+    applyGuestDefaults();
+  } else if (auth.isAuthenticated) {
+    applyAdminDefaults();
+  }
+});
+
+// Appliquer le dark mode automatiquement
+watch('ui.darkMode', (mode) => {
+  applyDarkMode(mode);
+});
+
+// Logger les changements en mode debug
+if (VERBCONSOLE > 1) {
+  watch('*', (value, oldValue, path) => {
+    console.log(`🔄 [${path}]`, oldValue, '→', value);
+  });
 }
 
+// ============ RENDRE LES FONCTIONS GLOBALES ============
+
+window.loadZonesConfig = loadZonesConfig;
+window.loadData = loadData;
+window.formatDate = formatDate;
+window.updateCounters = updateCounters;
+
+// Exposer getState et setState pour le debug
+window.getState = getState;
+window.setState = setState;
+
+if (VERBCONSOLE > 0) {
+  console.log('📦 State management activé - utilisez getState() et setState() pour le debug');
+}

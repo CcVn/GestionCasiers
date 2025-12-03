@@ -1,6 +1,30 @@
-// ============ ACCESSIBILITÉ CLAVIER - VERSION COMPATIBLE ============
-
 // ============ ACCESSIBILITÉ CLAVIER - VERSION AVEC SOUS-MENUS ============
+
+/**
+ * Fonction générique pour Focus trap dans les modals
+ */
+function trapFocus(modal) {
+    const focusableElements = modal.querySelectorAll(
+        'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])'
+    );
+    const firstElement = focusableElements[0];
+    const lastElement = focusableElements[focusableElements.length - 1];
+    
+    modal.addEventListener('keydown', function(e) {
+        if (e.key === 'Tab') {
+            if (e.shiftKey && document.activeElement === firstElement) {
+                lastElement.focus();
+                e.preventDefault();
+            } else if (!e.shiftKey && document.activeElement === lastElement) {
+                firstElement.focus();
+                e.preventDefault();
+            }
+        }
+    });
+    
+    // Focus auto sur premier élément
+    setTimeout(() => firstElement?.focus(), 100);
+}
 
 /**
  * Rend un dropdown accessible au clavier
@@ -376,6 +400,7 @@ function toggleDropdown(e) {
 
 
 // Rendre les fonctions globales
+window.trapFocus = trapFocus;
 window.toggleDropdown = toggleDropdown;
 window.makeDropdownAccessible = makeDropdownAccessible;
 window.makeSubmenuAccessible = makeSubmenuAccessible;

@@ -1,7 +1,7 @@
 // ============ MODE SOMBRE ===============================
 
 function applyDarkMode(setting) {
-    DARK_MODE_SETTING = setting || 'system';
+    let DARK_MODE_SETTING = setting || 'system';
     if (VERBCONSOLE>1) { console.log('Application du mode sombre:', DARK_MODE_SETTING); }
     
     if (DARK_MODE_SETTING === 'active') {
@@ -26,7 +26,8 @@ function applyDarkMode(setting) {
             }
         });
     }
-    
+    setState('ui.darkMode', DARK_MODE_SETTING);
+
     // Mettre à jour l'interface du sélecteur
     updateDarkModeButtons();
     // Mettre à jour l'icône du bouton header
@@ -37,7 +38,7 @@ function updateDarkModeButtons() {
     const buttons = document.querySelectorAll('.mode-btn');
     buttons.forEach(btn => {
         btn.classList.remove('active');
-        if (btn.dataset.mode === DARK_MODE_SETTING) {
+        if (btn.dataset.mode === getState('ui.darkMode')) {
             btn.classList.add('active');
         }
     });
@@ -79,7 +80,7 @@ function toggleDarkModeQuick() {
     // Cycle: inactive → active → inactive
     let newMode;
     
-    if (DARK_MODE_SETTING === 'inactive') {
+    if (getState('ui.darkMode') === 'inactive') {
         newMode = 'active';
     } else {
         newMode = 'inactive';
@@ -105,7 +106,7 @@ function updateThemeIcon() {
     const icon = btn.querySelector('.theme-icon');
     if (!icon) return;
     
-    if (DARK_MODE_SETTING === 'active') {
+    if (getState('ui.darkMode') === 'active') {
         icon.textContent = '🌙';
         btn.title = 'Activer le mode clair';
     } else {

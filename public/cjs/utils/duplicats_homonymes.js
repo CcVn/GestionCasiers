@@ -6,7 +6,7 @@ let cachedHomonyms = null;
 let lastDataHash = null;
 
 function getDataHash() {
-  return DATA.map(l => l.number + l.code + l.name).join(',');
+  return getState('data.lockers').map(l => l.number + l.code + l.name).join(',');
 }
 
 // Fonction de détection des doublons
@@ -24,7 +24,7 @@ function detectDuplicates(useCache = true) {
     };
     
     // Parcourir tous les casiers occupés
-    DATA.filter(l => l.occupied).forEach(locker => {
+    getState('data.lockers').filter(l => l.occupied).forEach(locker => {
         const ipp = locker.code?.trim();
         const identity = `${locker.name}|${locker.firstName}|${locker.birthDate}`.toUpperCase();
         
@@ -89,7 +89,7 @@ function detectHomonyms() {
     };
     
     // Parcourir tous les casiers occupés
-    DATA.filter(l => l.occupied).forEach(locker => {
+    getState('data.lockers').filter(l => l.occupied).forEach(locker => {
         const fullName = `${locker.name}|${locker.firstName}`.toUpperCase();
         const lastName = locker.name.toUpperCase();
         

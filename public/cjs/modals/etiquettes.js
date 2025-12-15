@@ -40,7 +40,7 @@ function showLabelPrintDialog() {
     
     // Remplir le sélecteur de zones
     const zoneSelect = document.getElementById('labelZone');
-    zoneSelect.innerHTML = ZONES_CONFIG.map(zone => 
+    zoneSelect.innerHTML = getState('data.zonesConfig').map(zone => 
         `<option value="${zone.name}">${zone.name}</option>`
     ).join('');
     
@@ -61,7 +61,7 @@ function showLabelPrintDialog() {
 function getSelectedLockersForLabels() {
     const selection = document.getElementById('labelSelection').value;
     const markerFilter = document.getElementById('labelMarkerFilter').value;
-    let lockers = DATA.filter(l => l.occupied);
+    let lockers = getState('data.lockers').filter(l => l.occupied);
     
     // Filtre de sélection (tous/zone/plage)
     if (selection === 'zone') {
@@ -344,7 +344,7 @@ function generateLabelHTML(lockers, format, anonymize) {
 
     // Créer une map des couleurs par zone
     const zoneColors = {};
-    ZONES_CONFIG.forEach(zone => {
+    getState('data.zonesConfig').forEach(zone => {
         zoneColors[zone.name] = zone.color || '#667eea';
     });
     //Détection homonymes
@@ -423,7 +423,7 @@ let CURRENT_LOCKER_FOR_PRINT = null;
 
 // Configurer le modal "Etiquettes 1 casier"
 function printSingleLockerLabels(lockerNumber) {
-    const locker = DATA.find(l => l.number === lockerNumber);
+    const locker = getState('data.lockers').find(l => l.number === lockerNumber);
     
     if (!locker) {
         alert('Casier non trouvé');

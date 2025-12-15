@@ -8,7 +8,7 @@ const ConsultationModule = {
         // En mode consultation (guest), créer une vue simplifiée
         const lockers = LockersModule.getOccupiedLockers();
         
-        AppState.consultationData = lockers.map(locker => ({
+        AppState.ui.consultationData = lockers.map(locker => ({
             number: locker.number,
             name: AppState.config.anonymizeEnabled 
                 ? Utils.anonymizeName(locker.client_name || '')
@@ -23,7 +23,7 @@ const ConsultationModule = {
             stupefiants: locker.stupefiants ? '💊' : ''
         }));
         
-        return AppState.consultationData;
+        return AppState.ui.consultationData;
     },
     
     _getMarkers(locker) {
@@ -40,12 +40,12 @@ const ConsultationModule = {
         AppState.config.consultation.sortDirection = direction;
         
         const sorted = Utils.sortBy(
-            AppState.consultationData,
+            AppState.ui.consultationData,
             column,
             direction
         );
         
-        AppState.consultationData = sorted;
+        AppState.ui.consultationData = sorted;
         return sorted;
     },
     
@@ -64,7 +64,7 @@ const ConsultationModule = {
         const container = document.getElementById(containerId);
         if (!container) return;
         
-        const data = AppState.consultationData;
+        const data = AppState.ui.consultationData;
         
         const table = Utils.createElement('table', 'consultation-table');
         
@@ -127,11 +127,11 @@ const ConsultationModule = {
 // Ouvrir le modal de consultation
 function openConsultationCasiers(filterType = 'all') {
     const modal = document.getElementById('consultationCasiersModal');
-    
+
     // Remplir le sélecteur de zones dynamiquement
     const zoneSelect = document.getElementById('consultationZone');
     zoneSelect.innerHTML = '<option value="all">Toutes les zones</option>';
-    ZONES_CONFIG.forEach(zone => {
+    getState('data.zonesConfig').forEach(zone => {
         const option = document.createElement('option');
         option.value = zone.name;
         option.textContent = zone.name;
@@ -143,8 +143,8 @@ function openConsultationCasiers(filterType = 'all') {
     document.getElementById('consultationZone').value = 'all';
     
     // Réinitialiser le tri
-    consultationSortColumn = 'name';
-    consultationSortDirection = 'asc';
+    setState('ui.consultationSortColumn', 'name');
+    setState('ui.consultationSortDirection', 'asc');
     
     // Charger les données
     updateConsultationTable();
@@ -156,7 +156,7 @@ function openConsultationCasiers(filterType = 'all') {
 // Fermer le modal
 function closeConsultationCasiers() {
     document.getElementById('consultationCasiersModal').classList.remove('active');
-    consultationData = [];
+    AppState.ui.consultationData = [];
 }
 
 // Mettre à jour la table selon les filtres
@@ -165,7 +165,7 @@ function updateConsultationTable() {
     const zone = document.getElementById('consultationZone').value;
     
     // Filtrer les données
-    let filtered = DATA.filter(l => l.occupied);
+    let filtered = getState('data.lockers').filter(l => l.occupied);
     
     // Appliquer le filtre de type
     switch(filterType) {
@@ -204,7 +204,7 @@ function updateConsultationTable() {
     if (zone !== 'all') {
         filtered = filtered.filter(l => l.zone === zone);
     }
-    consultationData = filtered;
+    AppState.ui.consultationData = filtered;
 
     sortConsultationData(); // Appliquer le tri actuel
     renderConsultationTable(); // Mettre à jour l'affichage
@@ -212,13 +212,13 @@ function updateConsultationTable() {
 
 // Trier les données
 function sortConsultationTable(column) {
-    if (consultationSortColumn === column) {
+    if (getState('ui.consultationSortColumn') === column) {
         // Inverser la direction si même colonne
-        consultationSortDirection = consultationSortDirection === 'asc' ? 'desc' : 'asc';
+        setState('ui.consultationSortDirection', getState('ui.consultationSortDirection') === 'asc' ? 'desc' : 'asc' );
     } else {
         // Nouvelle colonne, tri ascendant par défaut
-        consultationSortColumn = column;
-        consultationSortDirection = 'asc';
+        setState('ui.consultationSortColumn', column);
+        setState('ui.consultationSortDirection', 'asc');
     }
     
     sortConsultationData();
@@ -227,12 +227,12 @@ function sortConsultationTable(column) {
 
 // Fonction de tri des données
 function sortConsultationData() {
-    consultationData.sort((a, b) => {
-        let valA = a[consultationSortColumn] || '';
-        let valB = b[consultationSortColumn] || '';
+    AppState.ui.consultationData.sort((a, b) => {
+        let valA = a[getState('ui.consultationSortColumn')] || '';
+        let valB = b[getState('ui.consultationSortColumn')] || '';
         
         // Pour les dates, convertir en timestamp
-        if (consultationSortColumn === 'birthDate') {
+        if (getState('ui.consultationSortColumn') === 'birthDate') {
             valA = valA ? new Date(valA).getTime() : 0;
             valB = valB ? new Date(valB).getTime() : 0;
         } else if (typeof valA === 'string') {
@@ -240,7 +240,7 @@ function sortConsultationData() {
             valB = valB.toLowerCase();
         }
         
-        if (consultationSortDirection === 'asc') {
+        if (getState('ui.consultationSortDirection') === 'asc') {
             return valA > valB ? 1 : valA < valB ? -1 : 0;
         } else {
             return valA < valB ? 1 : valA > valB ? -1 : 0;
@@ -255,10 +255,10 @@ function renderConsultationTable() {
     
     // Mettre à jour le compteur
     const byZone = {};
-    ZONES_CONFIG.forEach(zone => {
-        byZone[zone.name] = consultationData.filter(l => l.zone === zone.name).length;
+    getState('data.zonesConfig').forEach(zone => {
+        byZone[zone.name] = AppState.ui.consultationData.filter(l => l.zone === zone.name).length;
     });
-    let message = `📊 ${consultationData.length} patient${consultationData.length > 1 ? 's' : ''}`
+    let message = `📊 ${AppState.ui.consultationData.length} patient${AppState.ui.consultationData.length > 1 ? 's' : ''}`
     message += `\t[ Par zone : `
     Object.entries(byZone).forEach(([zone, count]) => {
         message += ` • ${zone}: ${count}`;
@@ -266,7 +266,7 @@ function renderConsultationTable() {
     message += ` ]`;
     countEl.textContent = message;
     
-    if (consultationData.length === 0) {
+    if (AppState.ui.consultationData.length === 0) {
         tbody.innerHTML = `
             <tr>
                 <td colspan="6" style="text-align: center; padding: 40px; color: var(--text-secondary);">
@@ -278,7 +278,7 @@ function renderConsultationTable() {
     }
     
     // Générer les lignes
-    tbody.innerHTML = consultationData.map(locker => {
+    tbody.innerHTML = AppState.ui.consultationData.map(locker => {
         const name = anonymizeName(locker.name);
         const firstName = anonymizeFirstName(locker.firstName);
         const birthDate = locker.birthDate ? formatDate(locker.birthDate) : '—';
@@ -299,7 +299,7 @@ function renderConsultationTable() {
 
 // Exporter consultation en CSV.   TODO: à voir si on garde ou pas. Liste déroulante à adapter
 function exportConsultationCSV() {
-    if (consultationData.length === 0) {
+    if (AppState.ui.consultationData.length === 0) {
         alert('Aucune donnée à exporter');
         return;
     }
@@ -316,7 +316,7 @@ function exportConsultationCSV() {
     };
     
     const headers = ['Nom', 'Prenom', 'Date de naissance', 'N°IPP', 'N° Casier', 'Zone', 'Commentaire'];
-    const rows = consultationData.map(l => [
+    const rows = AppState.ui.consultationData.map(l => [
         l.name,
         l.firstName,
         l.birthDate || '',
@@ -345,7 +345,7 @@ function exportConsultationCSV() {
     URL.revokeObjectURL(url);
     document.body.removeChild(a);
     
-    showStatus(`✓ ${consultationData.length} patients exportés`, 'success');
+    showStatus(`✓ ${AppState.ui.consultationData.length} patients exportés`, 'success');
 }
 
 // Imprimer la table de consultation  TODO: à voir si on garde ou pas. Liste déroulante à adapter
@@ -425,7 +425,7 @@ function printConsultationTable() {
 <body>
     <h1>${title}</h1>
     <div class="info">
-        ${consultationData.length} patient${consultationData.length > 1 ? 's' : ''} - 
+        ${AppState.ui.consultationData.length} patient${AppState.ui.consultationData.length > 1 ? 's' : ''} - 
         Édité le ${new Date().toLocaleDateString('fr-FR')} à ${new Date().toLocaleTimeString('fr-FR')}
     </div>
     <table>
@@ -440,7 +440,7 @@ function printConsultationTable() {
             </tr>
         </thead>
         <tbody>
-            ${consultationData.map(locker => {
+            ${AppState.ui.consultationData.map(locker => {
                 const name = anonymizeName(locker.name);
                 const firstName = anonymizeFirstName(locker.firstName);
                 const birthDate = locker.birthDate ? formatDate(locker.birthDate) : '—';

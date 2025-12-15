@@ -15,6 +15,7 @@ function toggleDropdown(event) {
 
 // Fonction générique pour activer un marqueur (IDEL, Stup, Marque etc.)
 async function toggleMarker(lockerNumber, marker, currentValue) {
+    let DATA = getState('data.lockers');
     const locker = DATA.find(l => l.number === lockerNumber);
     if (!locker) {
         alert('Casier non trouvé');
@@ -98,7 +99,8 @@ async function toggleMarker(lockerNumber, marker, currentValue) {
         if (index !== -1) {
             DATA[index] = updatedLocker;
         }
-
+        setState('data.lockers', DATA);
+        
         // Rafraîchir l'affichage
         renderAllTables();
 

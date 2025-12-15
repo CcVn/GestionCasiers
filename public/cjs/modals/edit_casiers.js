@@ -1,12 +1,14 @@
 // ===================== MODAL CASIER ========================
 //import { acquireLockerLock, releaseLockerLock } from '../../services/locker-lock.js';
+EDITING_LOCKER_NUMBER = null;
+EDITING_LOCKER_VERSION = null;
 
 // Générer dynamiquement la liste des zones (sur la base de config.env)
 function populateZoneSelect() {
     const zoneSelect = document.getElementById('zone');
     if (!zoneSelect) return;
     
-    zoneSelect.innerHTML = ZONES_CONFIG.map(zone => 
+    zoneSelect.innerHTML = getState('data.zonesConfig').map(zone => 
         `<option value="${zone.name}">${zone.name}</option>`
     ).join('');
 }
@@ -14,7 +16,7 @@ function populateZoneSelect() {
 // Générer la liste déroulante des casiers (avec état libre/occupé) dans le modal
 async function populateLockerSelect(zone, selected = null) {
     const select = document.getElementById('lockerNumber');
-    const lockers = DATA.filter(l => l.zone === zone);
+    const lockers = getState('data.lockers').filter(l => l.zone === zone);
 
     // Récupérer la liste des casiers verrouillés
     let lockedLockers = new Set();
@@ -189,7 +191,7 @@ async function openModalEdit(lockerNumber) {
         // ============================================================
         // CHARGER LES DONNÉES DU CASIER
         // ============================================================
-        const locker = DATA.find(l => l.number === lockerNumber);
+        const locker = getState('data.lockers').find(l => l.number === lockerNumber);
         if (!locker) {
             await releaseLockerLock(lockerNumber);
             alert('Casier non trouvé');

@@ -33,7 +33,18 @@ const AppState = {
     editingLockerVersion: null,
     activeLocks: new Map()
   },
+  display: {
+    anonymization: {
+      maxAnonNameLength: 3,
+      maxAnonFirstNameLength: 2
+    },
+    maxLengths: {
+      maxNameLength: 20,
+      maxFirstNameLength: 15
+    }
+  },
   config: {
+    verbose: 1,
     ui: {
       animationDuration: 500,
       searchDebounceDelay: 400,
@@ -42,12 +53,6 @@ const AppState = {
     api: {
       retryAttempts: 3,
       timeout: 30000
-    },
-    display: {
-      anonymization: {
-        maxNameLength: 3,
-        maxFirstNameLength: 2
-      }
     }
   }
 };

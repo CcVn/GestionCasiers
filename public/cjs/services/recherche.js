@@ -3,26 +3,27 @@
 // Gestion de la recherche
 function searchLockers(query) {
     if (!query || query.trim() === '') {
-        SEARCH_RESULTS = [];
+        setState('ui.searchResults', []);
         hideMarkButton();
         renderAllTables(); // Recherche vide : afficher toutes les tables normalement
         return;
     }
     
     const searchTerm = query.toLowerCase().trim();
-    
+    const ZONES_CONFIG = getState('data.zonesConfig');
+
     // Recherche globale pour tous les résultats
-    const allResults = DATA.filter(l => {
+    const allResults = getState('data.lockers').filter(l => {
         const searchText = (l.name + ' ' + l.firstName + ' ' + l.code + ' ' + l.comment).toLowerCase();
         return searchText.includes(searchTerm);
     });
     
-    SEARCH_RESULTS = allResults;  // stocker les résultats
+    setState('ui.searchResults', allResults);  // stocker les résultats
 
     if (VERBCONSOLE>0) { console.log(`🔍 Recherche "${query}" : ${allResults.length} résultat(s)`); }
     
     // Afficher les boutons de marquage si résultats et mode admin
-    if (IS_AUTHENTICATED && allResults.length > 0) {
+    if (getState('auth.isAuthenticated') && allResults.length > 0) {
         showMarkButton();
     } else {
         hideMarkButton();
@@ -70,10 +71,12 @@ function clearSearch() {
         searchInput.value = '';
     }
     
-    SEARCH_RESULTS = [];
-    SEARCH_RESULTS_MARKED = false;
-    hideMarkButton();
+    setState('ui.searchResults', []); //SEARCH_RESULTS = [];
+    setState('ui.searchResultsMarked', false); //SEARCH_RESULTS_MARKED = false;
     
+    hideMarkButton();
+    const ZONES_CONFIG = getState('data.zonesConfig');
+
     // Restaurer les compteurs normaux
     ZONES_CONFIG.forEach(zone => {
         const counter = document.getElementById(`counter-${zone.name}`);

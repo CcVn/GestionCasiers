@@ -14,7 +14,7 @@ async function setupApp() {
         // ÉTAPE 1 : Charger la configuration des zones
         if (VERBCONSOLE>0) { console.log('1️⃣ Chargement configuration zones...'); }
         await loadZonesConfig();
-        if (VERBCONSOLE>0) { console.log('✓ Config zones chargée:', ZONES_CONFIG); }
+        if (VERBCONSOLE>0) { console.log('✓ Config zones chargée:', getState('data.zonesConfig')); }
         
         // ÉTAPE 1b : Charger le token CSRF
         if (VERBCONSOLE>0) { console.log('1️⃣b Chargement token CSRF...'); }
@@ -33,11 +33,12 @@ async function setupApp() {
 
         // ÉTAPE 3 : Initialiser les filtres
         if (VERBCONSOLE>0) { console.log('3️⃣ Initialisation filtres...'); }
-        CURRENT_FILTER = {};
-        ZONES_CONFIG.forEach(zone => {
+        let CURRENT_FILTER = {};
+        getState('data.zonesConfig').forEach(zone => {
             CURRENT_FILTER[zone.name] = 'all';
         });
         if (VERBCONSOLE>0) { console.log('✓ Filtres initialisés:', CURRENT_FILTER); }
+        setState('ui.currentFilter', CURRENT_FILTER);
         
         // ÉTAPE 4 : Event listeners
         if (VERBCONSOLE>0) { console.log('4️⃣ Event listeners...'); }
@@ -69,7 +70,7 @@ async function setupApp() {
             if (VERBCONSOLE>0) { console.log('Mode sauvegardé trouvé:', savedMode); }
             applyDarkMode(savedMode);
         } else {
-            applyDarkMode(DARK_MODE_SETTING);
+            applyDarkMode(getState('ui.darkMode'));
         }
         updateThemeIcon(); // Mettre à jour l'icône du toggle
 
@@ -79,7 +80,7 @@ async function setupApp() {
         updateAnonymizationStatus();
 
         // ÉTAPE 8 : Appliquer mode guest si nécessaire
-        if (IS_GUEST) {
+        if (getState('auth.isGuest')) {
             if (VERBCONSOLE>0) { console.log('7️⃣ Application mode guest...'); }
             applyGuestDefaults();
         }
@@ -98,7 +99,7 @@ async function setupApp() {
         }, 120000);
   
         // ÉTAPE 10 : Vérification expiration session (si authentifié)
-        if (IS_AUTHENTICATED || IS_GUEST) {
+        if (getState('auth.isAuthenticated') || getState('auth.isGuest')) {
             if (VERBCONSOLE>0) { console.log('9️⃣ Démarrage vérification expiration session...'); }
             intervals.sessionCheck = setInterval(checkSessionExpiration, 5 * 60 * 1000);  // Toutes les 5 minutes
         }
@@ -116,14 +117,15 @@ async function setupApp() {
 
 function applyGuestDefaults() {
     if (VERBCONSOLE>0) { console.log('👁️ Application mode guest...'); }
-    
+    let ZONES_CONFIG = getState('data.zonesConfig');
+
     if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
         console.warn('⚠️ ZONES_CONFIG non chargée');
         return;
     }
     
     // Désactiver les filtres et mettre sur "occupied"
-    CURRENT_FILTER = {};
+    let CURRENT_FILTER = {};
     ZONES_CONFIG.forEach(zone => {
         CURRENT_FILTER[zone.name] = 'occupied';
         
@@ -135,7 +137,10 @@ function applyGuestDefaults() {
             filterSelect.style.cursor = 'not-allowed';
         }
     });
-    
+    setState('data.zonesConfig', ZONES_CONFIG);
+    setState('ui.currentFilter', CURRENT_FILTER);
+
+   
     // Tri par nom
     document.querySelectorAll('select[onchange^="sortTable"]').forEach(select => {
         select.value = 'name';
@@ -152,6 +157,7 @@ function applyGuestDefaults() {
 
 function applyAdminDefaults() {
     if (VERBCONSOLE>0) { console.log('👁️ Application mode guest...'); }
+    let ZONES_CONFIG = getState('data.zonesConfig');
     
     if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
         console.warn('⚠️ ZONES_CONFIG non chargée');
@@ -159,7 +165,7 @@ function applyAdminDefaults() {
     }
     
     // Désactiver les filtres et mettre sur "occupied"
-    CURRENT_FILTER = {};
+    let CURRENT_FILTER = {};
     ZONES_CONFIG.forEach(zone => {
         CURRENT_FILTER[zone.name] = 'all';
         
@@ -171,7 +177,9 @@ function applyAdminDefaults() {
             filterSelect.style.cursor = 'pointer';
         }
     });
-    
+    setState('data.zonesConfig', ZONES_CONFIG);
+    setState('ui.currentFilter', CURRENT_FILTER);
+
     // Tri par nom
     document.querySelectorAll('select[onchange^="sortTable"]').forEach(select => {
         select.value = 'name';
@@ -187,7 +195,7 @@ function applyAdminDefaults() {
 }
 
 function isEditAllowed() {
-    if (!IS_AUTHENTICATED) {
+    if (!getState('auth.isAuthenticated')) {
         alert('Vous devez vous connecter pour modifier les données.');
         return false;
     }

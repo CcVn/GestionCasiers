@@ -79,14 +79,14 @@ function handleLogin(e) {
         await loadCsrfToken();
         
         if (data.role === 'admin') {
-            IS_AUTHENTICATED = true;
-            IS_GUEST = false;
-            USER_NAME = data.userName;
+            setState('auth.isAuthenticated', true); //IS_AUTHENTICATED = true;
+            setState('auth.isGuest', false); //IS_GUEST = false;
+            setState('auth.userName', data.userName); //USER_NAME = data.userName;
             showAdminElements();
         } else {
-            IS_AUTHENTICATED = false;
-            IS_GUEST = true;
-            USER_NAME = '';
+            setState('auth.isAuthenticated', false); //IS_AUTHENTICATED = false;
+            setState('auth.isGuest', true); //IS_GUEST = true;
+            setState('auth.userName', ''); //USER_NAME = '';
             hideAdminElements();
         }
         
@@ -96,7 +96,7 @@ function handleLogin(e) {
         ANONYMIZE_ENABLED = data.anonymize || false;
         applyDarkMode(data.darkMode || 'system');
         if (VERBCONSOLE>0) { console.log('Anonymisation activée:', ANONYMIZE_ENABLED);}
-        if (VERBCONSOLE>0) { console.log('Utilisateur:', USER_NAME); }
+        if (VERBCONSOLE>0) { console.log('Utilisateur:', getState('auth.userName') ); }
         
         showLoginPage(false);
         updateAuthStatus();
@@ -154,8 +154,8 @@ function loginAsGuest() {
     .then(async data => {
         await loadCsrfToken();
 
-        IS_AUTHENTICATED = false;
-        IS_GUEST = true;
+        setState('auth.isAuthenticated', false);
+        setState('auth.isGuest', true); //IS_GUEST = true;
         ANONYMIZE_ENABLED = data.anonymize || false;
         applyDarkMode(data.darkMode || 'system');
         if (VERBCONSOLE>0) { console.log('Anonymisation activée:', ANONYMIZE_ENABLED); }
@@ -207,8 +207,8 @@ function loginAsGuestAuto() {
     .then(async data => {
         await loadCsrfToken();
 
-        IS_AUTHENTICATED = false;
-        IS_GUEST = true;
+        setState('auth.isAuthenticated', false);
+        setState('auth.isGuest', true); //IS_GUEST = true;
         ANONYMIZE_ENABLED = data.anonymize || false;
         applyDarkMode(data.darkMode || 'system');
         if (VERBCONSOLE>0) { console.log('Anonymisation activée:', ANONYMIZE_ENABLED); }
@@ -251,11 +251,14 @@ async function logout() {
     }).catch(err => console.error('Erreur logout:', err));
     
     // Réinitialisation des filtres avec zones dynamiques
+    let ZONES_CONFIG = getState('data.zonesConfig');
+    
     if (ZONES_CONFIG && ZONES_CONFIG.length > 0) {
-        CURRENT_FILTER = {};
+        let CURRENT_FILTER = {};
         ZONES_CONFIG.forEach(zone => {
             CURRENT_FILTER[zone.name] = 'all';
         });
+        setState('ui.currentFilter', CURRENT_FILTER);
         
         // Réactivation des éléments SELECT du filtre
         ZONES_CONFIG.forEach(zone => {
@@ -271,8 +274,8 @@ async function logout() {
     
     showAdminElements(); // Réafficher tous les éléments admin
 
-    IS_AUTHENTICATED = false;
-    IS_GUEST = false;
+    setState('auth.isAuthenticated', false);
+    setState('auth.isGuest', true); //IS_GUEST = false;
     ANONYMIZE_ENABLED = false;
     
     cleanupIntervals();
@@ -294,7 +297,7 @@ function showLoginPage(show) {
         appContainer.style.display = show ? 'none' : 'block';
         
         if (!show) {
-            if (IS_GUEST) {
+            if (getState('auth.isGuest')) {
                 appContainer.classList.add('guest-mode');
             } else {
                 appContainer.classList.remove('guest-mode');
@@ -307,10 +310,10 @@ function showLoginPage(show) {
 function updateAuthStatus() {
     const status = document.getElementById('authStatus');
     if (status) {
-        if (IS_AUTHENTICATED) {
-            status.innerHTML = `🔓 Mode modification${USER_NAME ? ` (${USER_NAME})` : ''}`;
+        if (getState('auth.isAuthenticated')) {
+            status.innerHTML = `🔓 Mode modification${getState('auth.userName') ? ` (${getState('auth.userName')})` : ''}`;
             status.style.color = '#e65100';
-        } else if (IS_GUEST) {
+        } else if (getState('auth.isGuest')) {
             status.innerHTML = '👁️ Mode consultation';
             status.style.color = '#2e7d32';
         }

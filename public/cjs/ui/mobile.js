@@ -1,8 +1,9 @@
 // ============ UTILISATION SUR MOBILE =====================
 
 function detectMobile() {
-    IS_MOBILE = window.innerWidth <= 768;
+    let IS_MOBILE = window.innerWidth <= 768;
     if (VERBCONSOLE>0) { console.log('Mode mobile:', IS_MOBILE); }
+    setState('ui.isMobile', IS_MOBILE);
     return IS_MOBILE;
 }
 
@@ -30,6 +31,7 @@ function initSwipeSupport() {
     function handleSwipe() {
         const horizontalDistance = touchEndX - touchStartX;
         const verticalDistance = Math.abs(touchEndY - touchStartY);
+        const ZONES_CONFIG = getState('data.zonesConfig');
         
         // Ignorer si trop de mouvement vertical (scroll)
         if (verticalDistance > maxVerticalDistance) return;

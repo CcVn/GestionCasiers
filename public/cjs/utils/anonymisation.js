@@ -9,20 +9,29 @@ function toPascalCase(str) {
 // Anonymisation du nom de famille
 function anonymizeName(name, force = false, crypto = false) {
     if (!name) return name;
+    const maxAnonNameL = getState('display.anonymization.maxAnonNameLength');
+    const maxNameL = getState('display.anonymization.maxNameLength');
     if (crypto) {
         const hash = crypto.createHash('md5').update(name).digest('hex');
         return `${name.charAt(0)}***${hash.substring(0, (ANONYMIZE_ENABLED || force) ? 3 : 20)}`; // "D***a4f"
     } else {
-        const maxLength = (ANONYMIZE_ENABLED || force) ? (NB_MAX_ANON_NOM || 3) : (NB_MAX_CAR_NOM || 20);
+        const maxLength = (ANONYMIZE_ENABLED || force) ? (maxAnonNameL || 3) : (maxNameL || 20);
         return name.substring(0, maxLength).toUpperCase();
     }
 }
 
 // Anonymisation du prénom
-function anonymizeFirstName(firstName, force = false) {
+function anonymizeFirstName(firstName, force = false, crypto = false) {
     if (!firstName) return firstName;
-    const maxLength = (ANONYMIZE_ENABLED || force) ? (NB_MAX_ANON_PRENOM || 2) : (NB_MAX_CAR_PRENOM || 15);
-    return toPascalCase(firstName.substring(0, maxLength));
+    const maxAnonFirstL = getState('display.anonymization.maxAnonFirstNameLength');
+    const maxFirstNameL = getState('display.anonymization.maxFirstNameLength');
+    if (crypto) {
+        const hash = crypto.createHash('md5').update(firstName).digest('hex');
+        return `${firstName.charAt(0)}***${hash.substring(0, (ANONYMIZE_ENABLED || force) ? 2 : 15)}`;
+    } else {
+        const maxLength = (ANONYMIZE_ENABLED || force) ? (maxAnonFirstL || 2) : (maxFirstNameL || 15);
+        return toPascalCase(firstName.substring(0, maxLength));
+    }
 }
 
 // ================ MODAL CONFIG ANONYMISATION ================
@@ -93,7 +102,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 
                 // Mettre à jour l'état local
-                ANONYMIZE_ENABLED = IS_GUEST ? anonymizeGuest : anonymizeAdmin;
+                ANONYMIZE_ENABLED = getState('auth.isGuest') ? anonymizeGuest : anonymizeAdmin;
                 
                 // Afficher le message de succès
                 statusEl.className = 'status-message status-success';
@@ -130,8 +139,8 @@ function updateAnonymizationStatus(icone = true) {
     const statusEl = document.getElementById('anonymizationStatus');
     if (!statusEl) return;
     
-    const isGuest = IS_GUEST; //getState('IS_GUEST');  // utiliser getState('IS_GUEST') quand ce sera implémenté
-    const isAuth = IS_AUTHENTICATED; // getState('IS_AUTHENTICATED');
+    const isGuest = getState('auth.isGuest');
+    const isAuth = getState('auth.isAuthenticated');
     const isEnabled = ANONYMIZE_ENABLED; //getState('ANONYMIZE_ENABLED');
     
     // Retirer les classes existantes

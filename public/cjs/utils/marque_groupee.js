@@ -5,13 +5,13 @@
 async function toggleMarkSearchResults() {
     if (!isEditAllowed()) return;
     
-    if (SEARCH_RESULTS.length === 0) {
+    if (getState('ui.searchResults').length === 0) {
         alert('Aucun résultat de recherche');
         return;
     }
     
-    const lockerNumbers = SEARCH_RESULTS.map(l => l.number);
-    const willMark = !SEARCH_RESULTS_MARKED;
+    const lockerNumbers = getState('ui.searchResults').map(l => l.number);
+    const willMark = !getState('ui.searchResultsMarked');
     
     const action = willMark ? 'marquer' : 'démarquer';
     const icon = willMark ? '🔖' : '🗑️';
@@ -51,7 +51,7 @@ async function toggleMarkSearchResults() {
         showStatus(`${successIcon} ${data.updated} casier${data.updated > 1 ? 's' : ''} ${actionText}${data.updated > 1 ? 's' : ''}`, 'success');
         
         // Mettre à jour l'état
-        SEARCH_RESULTS_MARKED = willMark;
+        setState('ui.searchResultsMarked', willMark); //SEARCH_RESULTS_MARKED = willMark;
         
         // Mettre à jour l'apparence du bouton
         if (btn) {
@@ -89,7 +89,7 @@ async function clearAllMarks() {
     if (!isEditAllowed()) return;
     
     // Compter les marques actuelles
-    const markedCount = DATA.filter(l => l.marque).length;
+    const markedCount = getState('data.lockers').filter(l => l.marque).length;
     
     if (markedCount === 0) {
         alert('✓ Aucun casier marqué actuellement');
@@ -144,21 +144,21 @@ async function clearAllMarks() {
 }
 
 function checkIfResultsMarked() {
-    if (SEARCH_RESULTS.length === 0) return;
+    if (getState('ui.searchResults').length === 0) return;
     
     // Vérifier si tous les résultats sont marqués
-    const allMarked = SEARCH_RESULTS.every(l => l.marque);
+    const allMarked = getState('ui.searchResults').every(l => l.marque);
     
     const btn = document.getElementById('btnToggleMarkResults');
     if (btn) {
         if (allMarked) {
             btn.classList.add('active');
             btn.title = 'Démarquer les casiers trouvés';
-            SEARCH_RESULTS_MARKED = true;
+            setState('ui.searchResultsMarked', true); //SEARCH_RESULTS_MARKED = true;
         } else {
             btn.classList.remove('active');
             btn.title = 'Marquer les casiers trouvés';
-            SEARCH_RESULTS_MARKED = false;
+            setState('ui.searchResultsMarked', false); //SEARCH_RESULTS_MARKED = false;
         }
     }
 }
@@ -178,7 +178,7 @@ function hideMarkButton() {
         btn.style.display = 'none';
         btn.classList.remove('active');
     }
-    SEARCH_RESULTS_MARKED = false;
+    setState('ui.searchResultsMarked', false); //SEARCH_RESULTS_MARKED = false;
 }
 
 /*// A SUPPRIMER?

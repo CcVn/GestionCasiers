@@ -1,7 +1,8 @@
 // ============ MODAL HOSPITALISATION ==================
+let CURRENT_LOCKER_FOR_HOSP = null;
 
 function openHospitalisationModal(lockerNumber) {
-    const locker = DATA.find(l => l.number === lockerNumber);
+    const locker = getState('data.lockers').find(l => l.number === lockerNumber);
     
     if (!locker) {
         alert('Casier non trouvé');
@@ -96,10 +97,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 
                 // Mettre à jour DATA
+                DATA = getState('data.lockers');
                 const index = DATA.findIndex(l => l.number === CURRENT_LOCKER_FOR_HOSP.number);
                 if (index !== -1) {
                     DATA[index] = updatedLocker;
                 }
+                setState('data.lockers', DATA);
 
                 // Message de succès (pas très utile car fenêtre fermé immédiatement)
                 const icon = updatedLocker.hosp ? '🏥' : '✓';
@@ -128,7 +131,7 @@ document.addEventListener('DOMContentLoaded', function() {
 // Affichage listing hospi avec dates : à relooker
 function showHospitalisationList() {
     // Filtrer les casiers occupés avec hosp = 1
-    const hospLockers = DATA.filter(l => l.occupied && l.hosp);
+    const hospLockers = getState('data.lockers').filter(l => l.occupied && l.hosp);
     
     if (hospLockers.length === 0) {
         alert('✓ Aucun casier avec hospitalisation');

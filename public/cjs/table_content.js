@@ -75,7 +75,7 @@ function generateTableRow(locker, showZone = false) {
     };
     
     //-- MODE GUEST
-    if (IS_GUEST) {
+    if (getState('auth.isGuest')) {
         // Icônes limitées en mode guest (pas de marque ni stup)
         const hospIcon = locker.hosp ? '🚑' : '';
         const idelIcon = locker.idel ? 'ℹ️' : '';
@@ -177,9 +177,10 @@ function generateTableRow(locker, showZone = false) {
 // --------  Créer la table pour chaque zone ------------
 function renderTable(zone) {
     const tbody = document.getElementById(`tbody-${zone}`);
-    let lockers = DATA.filter(l => l.zone === zone);
-    
+    let lockers = getState('data.lockers').filter(l => l.zone === zone);
+
     // Appliquer le filtre selon la valeur du select
+    let CURRENT_FILTER = getState('ui.currentFilter');
     const filter = CURRENT_FILTER[zone] || 'all';
     if (filter === 'occupied') {
         lockers = lockers.filter(l => l.occupied);
@@ -221,7 +222,7 @@ function renderTable(zone) {
         });
     }
         
-    if (IS_GUEST) {
+    if (getState('auth.isGuest')) {
         lockers.sort((a, b) => {
             const nameA = (a.name || '').toLowerCase();
             const nameB = (b.name || '').toLowerCase();
@@ -249,7 +250,7 @@ function renderAllTables() {
         searchLockers(searchQuery);
     } else {
         // Sinon, affichage normal
-        ZONES_CONFIG.forEach(zone => {
+        getState('data.zonesConfig').forEach(zone => {
             renderTable(zone.name);
         });
     }
@@ -261,7 +262,7 @@ function renderSearchResults(zone, results, searchTerm) {
     if (!tbody) return;
     
     if (results.length === 0) {
-        const colspan = IS_GUEST ? (zone === 'SEARCH' ? '6' : '5') : (zone === 'SEARCH' ? '9' : '8');
+        const colspan = getState('auth.isGuest') ? (zone === 'SEARCH' ? '6' : '5') : (zone === 'SEARCH' ? '9' : '8');
         tbody.innerHTML = `<tr><td colspan="${colspan}" style="text-align: center; padding: 30px; color: var(--text-tertiary);">
         Aucun résultat</td></tr>`;
         return;
@@ -307,8 +308,10 @@ function renderSearchResults(zone, results, searchTerm) {
 
 // ---- FILTRE de la table : avec gestion du filtre "duplicates" ----
 function filterTable(zone, value) {
+    let CURRENT_FILTER = getState('ui.currentFilter');
     CURRENT_FILTER[zone] = value;
-    
+    setState('ui.currentFilter', CURRENT_FILTER);
+
     // Si filtre "duplicates", on doit détecter d'abord
     if (value === 'duplicates') {
         const duplicateInfo = detectDuplicates();
@@ -361,7 +364,7 @@ function printTable() {
 // ============ NAVIGATION ============
 
 function switchTab(zone) {
-    CURRENT_ZONE = zone;
+    setState('ui.currentZone', zone); //CURRENT_ZONE = zone;
     document.querySelectorAll('.tab-button').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.content-section').forEach(s => s.classList.remove('active'));
     

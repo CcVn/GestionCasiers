@@ -6,7 +6,7 @@ function generateTabs() {
     if (!tabsContainer) return;
 
     // Générer les onglets de zones
-    let tabsHTML = ZONES_CONFIG.map((zone, index) => `
+    let tabsHTML = getState('data.zonesConfig').map((zone, index) => `
         <button class="tab-button ${index === 0 ? 'active' : ''}" data-zone="${zone.name}">
             Zone <br class="mobile-only">${zone.name}
         </button>
@@ -82,7 +82,7 @@ function generateContentSections() {
     
     //---- Sections/onglets pour chaque zone ------------------
 
-    ZONES_CONFIG.forEach((zone, index) => {
+    getState('data.zonesConfig').forEach((zone, index) => {
         const section = document.createElement('div');
         section.id = `content-${zone.name}`;
         section.className = `content-section ${index === 0 ? 'active' : ''}`;
@@ -504,18 +504,23 @@ function generateContentSections() {
     container.insertBefore(helpSection, footerElement);
 
     // Initialiser les filtres par défaut
-    CURRENT_FILTER = {};
-    ZONES_CONFIG.forEach(zone => {
+    //setState('ui.currentFilter', {});
+    let CURRENT_FILTER = {};
+    getState('data.zonesConfig').forEach(zone => {
         CURRENT_FILTER[zone.name] = 'all';
     });
+    setState('ui.currentFilter', CURRENT_FILTER);
 }
 
 // --- Suivi occupation casiers ---
 function updateCounters() {
+    DATA = getState('data.lockers');
     if (!DATA || DATA.length === 0) {
         if (VERBCONSOLE>0) { console.log('⚠️ Pas de données pour les compteurs'); }
         return;
     }
+    
+    let ZONES_CONFIG = getState('data.zonesConfig');
     if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
         if (VERBCONSOLE>0) { console.log('⚠️ ZONES_CONFIG non chargée'); }
         return;
@@ -556,9 +561,9 @@ function updateCounters() {
 }
 
 // @TODO DEPRECATED? plus utilisée pour l'instant?
-function updateImportExportButtons() {
+/*function updateImportExportButtons() {
     const importExportButtons = document.querySelectorAll('.search-bar button');
-    if (VERBCONSOLE>0) { console.log('Mise à jour des boutons header, IS_GUEST:', IS_GUEST); }
+    if (VERBCONSOLE>0) { console.log('Mise à jour des boutons header, isGuest:', getState('auth.isGuest')); }
     
     importExportButtons.forEach(btn => {
         const text = btn.textContent.toLowerCase();
@@ -566,7 +571,7 @@ function updateImportExportButtons() {
         
         if (text.includes('import') || text.includes('backup')|| 
             text.includes('json') || text.includes('csv') ) {
-            if (IS_GUEST) {
+            if (getState('auth.isGuest')) {
                 btn.disabled = true;
                 btn.style.opacity = '0.4';
                 btn.style.cursor = 'not-allowed';
@@ -590,7 +595,7 @@ function updateImportExportButtons() {
     newLockerButtons.forEach(btn => {
         const text = btn.textContent.toLowerCase();
         if (text.includes('attribuer') || text.includes('imprimer') ) {
-            if (IS_GUEST) {
+            if (getState('auth.isGuest')) {
                 btn.disabled = true;
                 btn.style.opacity = '0.4';
                 btn.style.cursor = 'not-allowed';
@@ -607,10 +612,10 @@ function updateImportExportButtons() {
             }
         }
     });
-}
+}*/
 
 // Rendre les fonctions globales
 window.generateTabs = generateTabs;
 window.generateContentSections = generateContentSections;
-window.updateImportExportButtons = updateImportExportButtons;
+/*window.updateImportExportButtons = updateImportExportButtons;*/
 window.updateCounters = updateCounters;

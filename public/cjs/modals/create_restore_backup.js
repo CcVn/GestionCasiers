@@ -18,7 +18,7 @@ function createBackup() {
         credentials: 'include',
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRF-Token': CSRF_TOKEN
+            'X-CSRF-Token': getState('auth.csrfToken')
         }
     })
     .then(res => {
@@ -305,7 +305,7 @@ async function confirmRestore() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-Token': CSRF_TOKEN
+                'X-CSRF-Token': getState('auth.csrfToken')
             },
             credentials: 'include',
             body: JSON.stringify(bodyData)

@@ -4,7 +4,7 @@
 
 async function toggleMarkSearchResults() {
     if (!isEditAllowed()) return;
-    
+
     if (getState('ui.searchResults').length === 0) {
         alert('Aucun résultat de recherche');
         return;
@@ -37,7 +37,7 @@ async function toggleMarkSearchResults() {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-Token': CSRF_TOKEN
+                'X-CSRF-Token': getState('auth.csrfToken')
             },
             credentials: 'include',
             body: JSON.stringify({
@@ -50,6 +50,7 @@ async function toggleMarkSearchResults() {
         const actionText = willMark ? 'marqué' : 'démarqué';
         showStatus(`${successIcon} ${data.updated} casier${data.updated > 1 ? 's' : ''} ${actionText}${data.updated > 1 ? 's' : ''}`, 'success');
         
+        invalidateDetectionCache();
         // Mettre à jour l'état
         setState('ui.searchResultsMarked', willMark); //SEARCH_RESULTS_MARKED = willMark;
         
@@ -121,7 +122,7 @@ async function clearAllMarks() {
         const data = await fetchJSON(`${API_URL}/lockers/clear-marks`, {
             method: 'DELETE',
             headers: {
-                'X-CSRF-Token': CSRF_TOKEN
+                'X-CSRF-Token': getState('auth.csrfToken')
             },
             credentials: 'include'
         });

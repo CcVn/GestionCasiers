@@ -35,11 +35,12 @@ async function setupLoginPage() {
     }
 }
 
+// Login admin / superuser
 // Ne pas implémenter fetchJSON : utilise la gestion d'erreur personnalisée pour le CSRF
 function handleLogin(e) {
     e.preventDefault();
     // Vérifier que le token CSRF est chargé
-    if (!CSRF_TOKEN) {
+    if (!getState('auth.csrfToken')) {
         console.error('❌ Token CSRF non disponible');
         alert('Erreur de sécurité. Veuillez recharger la page.');
         return;
@@ -60,7 +61,7 @@ function handleLogin(e) {
         credentials: 'include',  // IMPORTANT : envoie et reçoit les cookies
         headers: { 
             'Content-Type': 'application/json',
-            'X-CSRF-Token': CSRF_TOKEN
+            'X-CSRF-Token': getState('auth.csrfToken')
         },
         body: JSON.stringify({ password: password, userName: userName })
     })
@@ -73,29 +74,28 @@ function handleLogin(e) {
         }
         return res.json();
     })
-    //.then(data => {
     .then(async data => {
         // Recharger le token CSRF après connexion
         await loadCsrfToken();
         
         if (data.role === 'admin') {
-            setState('auth.isAuthenticated', true); //IS_AUTHENTICATED = true;
-            setState('auth.isGuest', false); //IS_GUEST = false;
-            setState('auth.userName', data.userName); //USER_NAME = data.userName;
-            showAdminElements();
+            setState('auth.isAuthenticated', true);
+            setState('auth.isGuest', false);
+            setState('auth.userName', data.userName);
+            //showAdminElements();
         } else {
-            setState('auth.isAuthenticated', false); //IS_AUTHENTICATED = false;
-            setState('auth.isGuest', true); //IS_GUEST = true;
-            setState('auth.userName', ''); //USER_NAME = '';
-            hideAdminElements();
+            setState('auth.isAuthenticated', false);
+            setState('auth.isGuest', true);
+            setState('auth.userName', '');
+            //hideAdminElements();
         }
         
         // Forcer un vrai rechargement à la reconnexion : recharge sans cache
         //if (data.authenticated) { window.location.reload(true); }
 
-        ANONYMIZE_ENABLED = data.anonymize || false;
+        setState('ui.anonymizeEnabled', data.anonymize || false);
         applyDarkMode(data.darkMode || 'system');
-        if (VERBCONSOLE>0) { console.log('Anonymisation activée:', ANONYMIZE_ENABLED);}
+        if (VERBCONSOLE>0) { console.log('Anonymisation activée:', getState('ui.anonymizeEnabled') );}
         if (VERBCONSOLE>0) { console.log('Utilisateur:', getState('auth.userName') ); }
         
         showLoginPage(false);
@@ -123,7 +123,7 @@ function handleLogin(e) {
 // Ne pas implémenter fetchJSON : Gestion spécifique des erreurs de connexion
 function loginAsGuest() {
     // Vérifier que le token CSRF est chargé
-    if (!CSRF_TOKEN) {
+    if (!getState('auth.csrfToken')) {
         console.error('❌ Token CSRF non disponible');
         alert('Erreur de sécurité. Veuillez recharger la page.');
         return;
@@ -139,7 +139,7 @@ function loginAsGuest() {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
-            'X-CSRF-Token': CSRF_TOKEN
+            'X-CSRF-Token': getState('auth.csrfToken')
         },
         credentials: 'include',  // IMPORTANT
         body: JSON.stringify({ password: '' })
@@ -155,12 +155,12 @@ function loginAsGuest() {
         await loadCsrfToken();
 
         setState('auth.isAuthenticated', false);
-        setState('auth.isGuest', true); //IS_GUEST = true;
-        ANONYMIZE_ENABLED = data.anonymize || false;
+        setState('auth.isGuest', true);
+        setState('ui.anonymizeEnabled', data.anonymize || false);
         applyDarkMode(data.darkMode || 'system');
-        if (VERBCONSOLE>0) { console.log('Anonymisation activée:', ANONYMIZE_ENABLED); }
+        if (VERBCONSOLE>0) { console.log('Anonymisation activée:', getState('ui.anonymizeEnabled') ); }
 
-        hideAdminElements();
+        //hideAdminElements();
         showLoginPage(false);
         updateAuthStatus();
         updateAnonymizationStatus();
@@ -178,11 +178,11 @@ function loginAsGuest() {
 }
 
 // Utilisation : URL à mettre dans le QR code : http://adresseIP:5000/?guest=true
-// Idem, ne pas utiliser fetchJSON
+// Ne pas implémenter fetchJSON : Gestion spécifique des erreurs de connexion
 function loginAsGuestAuto() {
     if (VERBCONSOLE>0) { console.log('Connexion automatique en mode guest...'); }
     // Vérifier que le token CSRF est chargé
-    if (!CSRF_TOKEN) {
+    if (!getState('auth.csrfToken')) {
         console.error('❌ Token CSRF non disponible');
         alert('Erreur de sécurité. Veuillez recharger la page.');
         return;
@@ -192,7 +192,7 @@ function loginAsGuestAuto() {
         method: 'POST',
         headers: { 
             'Content-Type': 'application/json',
-            'X-CSRF-Token': CSRF_TOKEN
+            'X-CSRF-Token': getState('auth.csrfToken')
         },
         credentials: 'include',
         body: JSON.stringify({ password: '' })
@@ -208,12 +208,12 @@ function loginAsGuestAuto() {
         await loadCsrfToken();
 
         setState('auth.isAuthenticated', false);
-        setState('auth.isGuest', true); //IS_GUEST = true;
-        ANONYMIZE_ENABLED = data.anonymize || false;
+        setState('auth.isGuest', true);
+        setState('ui.anonymizeEnabled', data.anonymize || false);
         applyDarkMode(data.darkMode || 'system');
-        if (VERBCONSOLE>0) { console.log('Anonymisation activée:', ANONYMIZE_ENABLED); }
+        if (VERBCONSOLE>0) { console.log('Anonymisation activée:', getState('ui.anonymizeEnabled') ); }
 
-        hideAdminElements();
+        //hideAdminElements();
         showLoginPage(false);
         updateAuthStatus();
         updateAnonymizationStatus();
@@ -246,7 +246,7 @@ async function logout() {
         credentials: 'include',  // IMPORTANT
         headers: {
             'Content-Type': 'application/json',
-            'X-CSRF-Token': CSRF_TOKEN  
+            'X-CSRF-Token': getState('auth.csrfToken')  
         }
     }).catch(err => console.error('Erreur logout:', err));
     
@@ -276,8 +276,7 @@ async function logout() {
 
     setState('auth.isAuthenticated', false);
     setState('auth.isGuest', true); //IS_GUEST = false;
-    ANONYMIZE_ENABLED = false;
-    
+    setState('ui.anonymizeEnabled', false);
     cleanupIntervals();
 
     document.body.classList.remove('dark-mode');
@@ -330,11 +329,11 @@ async function loadCsrfToken() {
             credentials: 'include'
         });
         
-        CSRF_TOKEN = data.csrfToken;
+        setState('auth.csrfToken', data.csrfToken);
         if (VERBCONSOLE>0) { console.log('✓ Token CSRF chargé'); }
     } catch (err) {
         console.error('❌ Erreur chargement token CSRF:', err);
-        CSRF_TOKEN = null;
+        setState('auth.csrfToken', null);
     }
 }
 

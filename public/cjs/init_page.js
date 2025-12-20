@@ -11,27 +11,27 @@ async function setupApp() {
     if (VERBCONSOLE>0) { console.log('API_URL actuelle:', API_URL); }
     
     try {
-        // ÉTAPE 1 : Charger la configuration des zones
+        // -- ÉTAPE 1 : Charger la configuration des zones
         if (VERBCONSOLE>0) { console.log('1️⃣ Chargement configuration zones...'); }
         await loadZonesConfig();
         if (VERBCONSOLE>0) { console.log('✓ Config zones chargée:', getState('data.zonesConfig')); }
         
-        // ÉTAPE 1b : Charger le token CSRF
+        // -- ÉTAPE 1b : Charger le token CSRF
         if (VERBCONSOLE>0) { console.log('1️⃣b Chargement token CSRF...'); }
         await loadCsrfToken();
 
-        // ÉTAPE 2 : Générer l'interface
+        // -- ÉTAPE 2 : Générer l'interface
         if (VERBCONSOLE>0) { console.log('2️⃣ Génération interface...'); }
         generateTabs();
         generateContentSections();
         if (VERBCONSOLE>0) { console.log('✓ Interface générée'); }
 
-        // ÉTAPE 2b : Initialiser le support swipe tactile
+        // -- ÉTAPE 2b : Initialiser le support swipe tactile
         //if (VERBCONSOLE>0) { console.log('2️⃣b Initialisation swipe tactile...'); }
         initSwipeSupport();
         if (VERBCONSOLE>0) { console.log('✓ Swipe tactile activé'); }
 
-        // ÉTAPE 3 : Initialiser les filtres
+        // -- ÉTAPE 3 : Initialiser les filtres
         if (VERBCONSOLE>0) { console.log('3️⃣ Initialisation filtres...'); }
         let CURRENT_FILTER = {};
         getState('data.zonesConfig').forEach(zone => {
@@ -150,13 +150,13 @@ function applyGuestDefaults() {
     updateAnonymizationStatus();
 
     // Masquer les éléments admin
-    hideAdminElements();
+    //hideAdminElements();
     
     if (VERBCONSOLE>0) { console.log('✓ Mode guest appliqué'); }
 }
 
 function applyAdminDefaults() {
-    if (VERBCONSOLE>0) { console.log('👁️ Application mode guest...'); }
+    if (VERBCONSOLE>0) { console.log('👁️ Application mode superuser...'); }
     let ZONES_CONFIG = getState('data.zonesConfig');
     
     if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
@@ -298,7 +298,7 @@ function showAdminElements() {
     if (VERBCONSOLE>0) { console.log('✓ Éléments admin réaffichés'); }
 }
 
-// ============ SERVEUR ============
+// ============ STATUT SERVEUR ============
 async function checkServerStatus() {
 //Peut rester en fetch() - Vérifie juste la connectivité, pas besoin de retry
     const statusEl = document.getElementById('serverStatus');

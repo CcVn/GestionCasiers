@@ -141,29 +141,54 @@ async function fetchWithRetry(url, options = {}, retryConfig = {}) {
     throw new Error('Nombre maximum de tentatives atteint');
 }
 
+class APIError extends Error {
+  constructor(message, status, data) {
+    super(message);
+    this.name = 'APIError';
+    this.status = status;
+    this.data = data;
+    this.isRetryable = [500, 502, 503, 504, 408, 429].includes(status);
+  }
+}
+
 // --- Helper pour les requêtes JSON (parse automatique)
 async function fetchJSON(url, options = {}, retryConfig = {}) {
-    const res = await fetchWithRetry(url, options, retryConfig);
+  try {
+    const res = await fetchWithRetry(url, options);
     
-    // Gérer les erreurs CSRF
-    if (res.status === 403) {
-        handleCsrfError(res);
-        throw new Error('Erreur CSRF');
-    }
-    
-    // Vérifier le statut avant de parser
     if (!res.ok) {
-        handleCsrfError(res);
-        let errorData = {};
-        try {
-            errorData = await res.json();
-        } catch {
-            // Si le JSON est invalide, utiliser le status
-        }
-        throw new Error(errorData.error || `Erreur HTTP ${res.status}`);
+      const errorData = await res.json().catch(() => ({}));
+      
+      // Erreurs auth → redirection auto
+      if (res.status === 401) {
+        await handleSessionExpired();
+        throw new APIError('Session expirée', 401, errorData);
+      }
+      
+      if (res.status === 403) {
+        await handleCsrfError(res);
+        throw new APIError('Token CSRF invalide', 403, errorData);
+      }
+      
+      throw new APIError(
+        errorData.error || `Erreur HTTP ${res.status}`,
+        res.status,
+        errorData
+      );
     }
     
     return res.json();
+    
+  } catch (err) {
+    // Logger avec contexte
+    console.error(`[API] ${options.method || 'GET'} ${url}`, {
+      error: err.message,
+      status: err.status,
+      retryable: err.isRetryable
+    });
+    
+    throw err;
+  }
 }
 
 // Gestionnaire global d'erreurs CSRF
@@ -193,8 +218,13 @@ async function handleSessionExpired() {
   setTimeout(() => logout(), 2000);
 }
 
+/*function getCSRFToken() {
+  return getState('auth.csrfToken');
+}*/
+
 // Rendre les fonctions globales
 window.fetchWithRetry = fetchWithRetry;
 window.fetchJSON = fetchJSON;
 window.handleCsrfError = handleCsrfError;
 window.handleSessionExpired = handleSessionExpired;
+//window.getCSRFToken = getCSRFToken;

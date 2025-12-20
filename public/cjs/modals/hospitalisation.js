@@ -91,7 +91,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     credentials: 'include',
                     headers: {
                         'Content-Type': 'application/json',
-                        'X-CSRF-Token': CSRF_TOKEN
+                        'X-CSRF-Token': getState('auth.csrfToken')
                     },
                     body: JSON.stringify({ hosp, hospDate })
                 });

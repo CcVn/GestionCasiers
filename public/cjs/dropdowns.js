@@ -90,7 +90,7 @@ async function toggleMarker(lockerNumber, marker, currentValue) {
             credentials: 'include',
             headers: {
                 'Content-Type': 'application/json',
-                'X-CSRF-Token': CSRF_TOKEN
+                'X-CSRF-Token': getState('auth.csrfToken')
             }
         });
         
@@ -100,6 +100,7 @@ async function toggleMarker(lockerNumber, marker, currentValue) {
             DATA[index] = updatedLocker;
         }
         setState('data.lockers', DATA);
+        invalidateDetectionCache();
         
         // Rafraîchir l'affichage
         renderAllTables();

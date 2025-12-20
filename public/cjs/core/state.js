@@ -1,12 +1,12 @@
 // ============ GESTION D'ÉTAT CENTRALISÉE ============
 
-// cjs/core/state.js
-// Gestion d'état centralisée  --> store centralisé
+// cjs/core/state.js : Gestion d'état centralisée  --> store centralisé
 
 const AppState = {
   data: {
     lockers: [],
-    zonesConfig: []
+    zonesConfig: [],
+    version: 0
   },
   auth: {
     isAuthenticated: false,
@@ -51,11 +51,25 @@ const AppState = {
       lockRenewInterval: 2 * 60 * 1000
     },
     api: {
+      baseURL: window.location.hostname === 'localhost' 
+      ? 'http://localhost:5000/api' 
+      : '/api',
       retryAttempts: 3,
       timeout: 30000
     }
   }
 };
+
+/*const AppConfig = {
+  get API_URL() {
+    return window.location.hostname === 'localhost' 
+      ? 'http://localhost:5000/api' 
+      : '/api';
+  },
+  get VERBCONSOLE() {
+    return 0;
+  }
+};*/
 
 // ============ SYSTÈME DE WATCHERS (OBSERVATEURS) ============
 
@@ -259,6 +273,7 @@ function debugWatchers(path) {
 
 // Rendre les fonctions globales
 window.AppState = AppState;
+//window.AppConfig = AppConfig;
 window.getState = getState;
 window.setState = setState;
 window.resetState = resetState;

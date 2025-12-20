@@ -508,7 +508,7 @@ function releaseLocker(lockerNumber) {
         method: 'DELETE',
         credentials: 'include',
         headers: {
-            'X-CSRF-Token': CSRF_TOKEN
+            'X-CSRF-Token': getState('auth.csrfToken')
         }
     })
     .then(res => {
@@ -516,6 +516,7 @@ function releaseLocker(lockerNumber) {
             handleCsrfError(res);
             throw new Error('Erreur ' + res.status);
         }
+        invalidateDetectionCache();
         loadData();
         showStatus('Casier libéré', 'success');
     })
@@ -552,7 +553,7 @@ async function saveLocker(lockerNumber, zone, recoverable, comment, stup, idel, 
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
-                'X-CSRF-Token': CSRF_TOKEN
+                'X-CSRF-Token': getState('auth.csrfToken')
             },
             credentials: 'include',
             body: JSON.stringify(bodyData)
@@ -562,6 +563,7 @@ async function saveLocker(lockerNumber, zone, recoverable, comment, stup, idel, 
             timeout: 10000
         });
         
+        invalidateDetectionCache(); 
         // data contient déjà les données parsées
         return data;
         
@@ -580,7 +582,7 @@ async function releaseLockerSilent(lockerNumber, reason = 'TRANSFERT') {
         method: 'DELETE',
         credentials: 'include',
         headers: {
-            'X-CSRF-Token': CSRF_TOKEN
+            'X-CSRF-Token': getState('auth.csrfToken')
         }
     });
     return data;

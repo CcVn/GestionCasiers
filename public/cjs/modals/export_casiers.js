@@ -87,7 +87,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
-                        'X-CSRF-Token': CSRF_TOKEN
+                        'X-CSRF-Token': getState('auth.csrfToken')
                     },
                     credentials: 'include',
                     body: JSON.stringify({

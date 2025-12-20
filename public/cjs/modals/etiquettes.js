@@ -47,11 +47,11 @@ function showLabelPrintDialog() {
     // Réinitialiser
     document.getElementById('labelFormat').value = '3x9';
     document.getElementById('labelSelection').value = 'all';
-    document.getElementById('labelMarkerFilter').value = 'none'; // NOUVEAU
+    document.getElementById('labelMarkerFilter').value = 'none';
     document.getElementById('labelRepetition').value = '1';
     document.getElementById('zoneSelector').style.display = 'none';
     document.getElementById('rangeSelector').style.display = 'none';
-    document.getElementById('labelAnonymize').checked = ANONYMIZE_ENABLED;
+    document.getElementById('labelAnonymize').checked = getState('ui.anonymizeEnabled'); 
 
     updateLabelPreview();
     modal.classList.add('active');
@@ -194,11 +194,11 @@ function openLabelPrintWindow() {
 // Générer la page d'étiquettes au format HTML
 function generateLabelHTML(lockers, format, anonymize) {
 
-    if (VERBCONSOLE==1) {
+    if (VERBCONSOLE>1) {
         console.log('🏷️ generateLabelHTML appelée avec:');
         console.log('  - Nombre de casiers:', lockers.length);
         console.log('  - Anonymisation:', anonymize);
-        console.log('  - ANONYMIZE_ENABLED (global):', ANONYMIZE_ENABLED);
+        console.log('  - ui.anonymizeEnabled (global):', getState('ui.anonymizeEnabled') );
     }
 
     const [cols, rows] = format === '5x13' ? [5, 13] : [3, 9];
@@ -209,8 +209,8 @@ function generateLabelHTML(lockers, format, anonymize) {
     const pageHeight = 297; // mm
     const marginTop = format === '5x13' ? 11 : 15; // physiquement 10 et 15 mm
     const marginBottom = format === '5x13' ? 10 : 15; // physiquement 10 et 15 mm
-    const marginLeft = format === '5x13' ? 6 : 6; // physiquement 5 et 6 mm
-    const marginRight = format === '5x13' ? 5 : 6; // physiquement 5 et 6 mm
+    const marginLeft = format === '5x13' ? 6 : 7; // physiquement 5 et 6 mm
+    const marginRight = format === '5x13' ? 6 : 7; // physiquement 5 et 6 mm
     
     const usableWidth = pageWidth - marginLeft - marginRight;
     const usableHeight = pageHeight - marginTop - marginBottom;
@@ -277,7 +277,7 @@ function generateLabelHTML(lockers, format, anonymize) {
         }
         
         .label {
-            border: 1px solid transparent;
+            border: 1px solid rgba(0, 0, 0, 0);
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -369,8 +369,6 @@ function generateLabelHTML(lockers, format, anonymize) {
 
                 const isHomonym = homonymNumbers.has(locker.number);
                 const homonymStyle = isHomonym ? 'text-decoration: underline wavy #9333ea;' : '';
-
-                // NOUVEAU : Icônes pour IDEL et Frigo
                 const idelIcon = locker.idel ? '<span style="font-size: 10pt; margin-left: 2mm;">ℹ️</span>' : '';
                 const frigoIcon = locker.frigo ? '<span style="font-size: 10pt; margin-left: 2mm;">❄️</span>' : '';
                 const markers = idelIcon + frigoIcon;

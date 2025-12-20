@@ -1,29 +1,46 @@
 //======== FONCTIONS UTILITAIRES DOUBLONS & HOMONYMES ===============
 
-// Optimisation avec cache 
-let cachedDuplicates = null;
-let cachedHomonyms = null;
-let lastDataHash = null;
+// Cache global avec métadonnées
+const detectionCache = {
+  duplicates: null,
+  homonyms: null,
+  dataVersion: 0,
+  lastUpdate: 0,
+  lockerCount: 0
+};
 
-function getDataHash() {
-  return getState('data.lockers').map(l => l.number + l.code + l.name).join(',');
+// Hash léger basé sur la taille et version
+function needsRefresh() {
+  const lockers = getState('data.lockers');
+  const currentCount = lockers.length;
+  
+  return (
+    detectionCache.lockerCount !== currentCount ||
+    Date.now() - detectionCache.lastUpdate > 60000 // TTL 1 minute
+  );
 }
 
 // Fonction de détection des doublons
-function detectDuplicates(useCache = true) {
-    const currentHash = getDataHash();
-
-    if (useCache && cachedDuplicates && lastDataHash === currentHash) {
-        return cachedDuplicates;
+function detectDuplicates(forceRefresh = false) {
+    // Vérifier le cache
+    if (!forceRefresh && detectionCache.duplicates && !needsRefresh()) {
+        if (VERBCONSOLE > 1) {
+            console.log('🎯 Cache duplicates utilisé');
+        }
+        return detectionCache.duplicates;
+    }
+    
+    if (VERBCONSOLE > 1) {
+        console.log('🔄 Recalcul des duplicates...');
     }
 
     const duplicates = new Set();
     const seen = {
-        byIPP: {},           // { IPP: [numbers...] }
-        byIdentity: {}       // { "NOM|PRENOM|DDN": [numbers...] }
+        byIPP: {},
+        byIdentity: {}
     };
     
-    // Parcourir tous les casiers occupés
+    // Parcours optimisé
     getState('data.lockers').filter(l => l.occupied).forEach(locker => {
         const ipp = locker.code?.trim();
         const identity = `${locker.name}|${locker.firstName}|${locker.birthDate}`.toUpperCase();
@@ -36,12 +53,11 @@ function detectDuplicates(useCache = true) {
             seen.byIPP[ipp].push(locker.number);
             
             if (seen.byIPP[ipp].length > 1) {
-                // Marquer tous les casiers avec cet IPP comme doublons
                 seen.byIPP[ipp].forEach(num => duplicates.add(num));
             }
         }
         
-        // Détection par identité (nom + prénom + DDN)
+        // Détection par identité
         if (locker.name && locker.firstName && locker.birthDate) {
             if (!seen.byIdentity[identity]) {
                 seen.byIdentity[identity] = [];
@@ -49,43 +65,59 @@ function detectDuplicates(useCache = true) {
             seen.byIdentity[identity].push(locker.number);
             
             if (seen.byIdentity[identity].length > 1) {
-                // Marquer tous les casiers avec cette identité comme doublons
                 seen.byIdentity[identity].forEach(num => duplicates.add(num));
             }
         }
     });
     
-    if (VERBCONSOLE>1) { 
-        console.log('🔍 Doublons détectés:', duplicates.size);
-        console.log('  Par IPP:', Object.entries(seen.byIPP).filter(([k,v]) => v.length > 1));
-        console.log('  Par identité:', Object.entries(seen.byIdentity).filter(([k,v]) => v.length > 1));
-    }
-    
-    // Mise en cache
-    //cachedDuplicates = result;
-    //lastDataHash = currentHash;
-    //return result;
-
-    return {
+    // STRUCTURE IDENTIQUE À L'ORIGINAL
+    const result = {
         duplicates: duplicates,
         byIPP: seen.byIPP,
         byIdentity: seen.byIdentity
     };
+    
+    // MISE EN CACHE
+    detectionCache.duplicates = result;
+    detectionCache.lockerCount = getState('data.lockers').length;
+    detectionCache.lastUpdate = Date.now();
+    
+    if (VERBCONSOLE > 1) {
+        console.log(`🔍 ${duplicates.size} doublon(s) détecté(s)`);
+    }
+    
+    return result;
 }
 
-// Invalider le cache lors des modifications
+// Invalider le cache
 function invalidateDetectionCache() {
-  cachedDuplicates = null;
-  cachedHomonyms = null;
-  lastDataHash = null;
+    detectionCache.duplicates = null;
+    detectionCache.homonyms = null;
+    detectionCache.lastUpdate = 0;
+    
+    if (VERBCONSOLE > 1) {
+        console.log('🗑️ Cache duplicates/homonymes invalidé');
+    }
 }
 
 // Fonction de détection des homonymes
-function detectHomonyms() {
+function detectHomonyms(forceRefresh = false) {
+    // Vérifier le cache
+    if (!forceRefresh && detectionCache.homonyms && !needsRefresh()) {
+        if (VERBCONSOLE > 1) {
+            console.log('🎯 Cache homonymes utilisé');
+        }
+        return detectionCache.homonyms;
+    }
+    
+    if (VERBCONSOLE > 1) {
+        console.log('🔄 Recalcul des homonymes...');
+    }
+    
     const homonyms = new Set();
     const seen = {
-        byFullName: {},      // { "NOM|PRENOM": [numbers...] }
-        byLastName: {}       // { "NOM": [numbers...] }
+        byFullName: {},
+        byLastName: {}
     };
     
     // Parcourir tous les casiers occupés
@@ -93,7 +125,7 @@ function detectHomonyms() {
         const fullName = `${locker.name}|${locker.firstName}`.toUpperCase();
         const lastName = locker.name.toUpperCase();
         
-        // Détection par nom + prénom (mais avec IPP et DDN différents)
+         // Détection par nom + prénom
         if (locker.name && locker.firstName) {
             if (!seen.byFullName[fullName]) {
                 seen.byFullName[fullName] = [];
@@ -122,20 +154,18 @@ function detectHomonyms() {
     // Identifier les homonymes par nom+prénom (avec IPP/DDN différents)
     Object.entries(seen.byFullName).forEach(([fullName, lockers]) => {
         if (lockers.length > 1) {
-            // Vérifier que ce sont bien des personnes différentes
             const uniquePersons = new Set();
             lockers.forEach(l => {
                 uniquePersons.add(`${l.ipp}|${l.birthDate}`);
             });
             
-            // Si au moins 2 personnes différentes avec même nom+prénom
             if (uniquePersons.size > 1) {
                 lockers.forEach(l => homonyms.add(l.number));
             }
         }
     });
     
-    // Identifier les homonymes par nom seul (au moins 2 prénoms différents)
+    // Identifier les homonymes par nom seul
     Object.entries(seen.byLastName).forEach(([lastName, lockers]) => {
         if (lockers.length > 1) {
             const uniqueFirstNames = new Set();
@@ -143,32 +173,28 @@ function detectHomonyms() {
                 if (l.firstName) uniqueFirstNames.add(l.firstName.toUpperCase());
             });
             
-            // Si au moins 2 prénoms différents avec même nom
             if (uniqueFirstNames.size > 1) {
                 lockers.forEach(l => homonyms.add(l.number));
             }
         }
     });
     
-    if (VERBCONSOLE>1) { 
-        console.log('👥 Homonymes détectés:', homonyms.size);
-        console.log('  Par nom+prénom:', Object.entries(seen.byFullName).filter(([k,v]) => {
-                if (v.length <= 1) return false;
-                const uniquePersons = new Set(v.map(l => `${l.ipp}|${l.birthDate}`));
-                return uniquePersons.size > 1;
-            }).length);
-            console.log('  Par nom seul:', Object.entries(seen.byLastName).filter(([k,v]) => {
-                if (v.length <= 1) return false;
-                const uniqueFirstNames = new Set(v.map(l => l.firstName?.toUpperCase()));
-                return uniqueFirstNames.size > 1;
-            }).length);
+    const result = {
+        homonyms: homonyms,           // Set de numéros
+        byFullName: seen.byFullName,  // Map de arrays d'objects
+        byLastName: seen.byLastName   // Map de arrays d'objects
+    };
+    
+    // MISE EN CACHE
+    detectionCache.homonyms = result;
+    detectionCache.lockerCount = getState('data.lockers').length;
+    detectionCache.lastUpdate = Date.now();
+    
+    if (VERBCONSOLE > 1) {
+        console.log(`👥 ${homonyms.size} homonyme(s) détecté(s)`);
     }
     
-    return {
-        homonyms: homonyms,
-        byFullName: seen.byFullName,
-        byLastName: seen.byLastName
-    };
+    return result;
 }
 
 // --- Affichage basique duplicates
@@ -257,8 +283,14 @@ function showHomonymsPanel() {
 }
 
 
+// Invalider automatiquement le cache lors des modifications
+watch('data.lockers', () => {
+    invalidateDetectionCache();
+});
+
 // Rendre les fonctions globales
 window.detectDuplicates = detectDuplicates;
 window.detectHomonyms = detectHomonyms;
 window.showDuplicatesPanel = showDuplicatesPanel;
 window.showHomonymsPanel = showHomonymsPanel;
+window.invalidateDetectionCache = invalidateDetectionCache;

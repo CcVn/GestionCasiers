@@ -1,173 +1,29 @@
 // ============ APP.JS - GESTION GLOBALE DE L'APPLICATION ============
 
 // Import du système de state centralisé
-//import { getState, setState } from './cjs/core/state.js';
+//import { getState, setState, watch } from './cjs/core/state.js';
 
-// ============ CONFIGURATION ============
+// ============ VARIABLES GLOBALES RÉELLES (non migrées vers state) ============
+// Ces variables restent globales car elles sont des constantes ou peu critiques
 const API_URL = window.location.hostname === 'localhost' 
   ? 'http://localhost:5000/api' 
   : '/api';
 
-const VERBCONSOLE = 1; // 0=rien, 1=logs importants, 2=tous les logs
+let VERBCONSOLE = 0; // 0=rien, 1=logs importants, 2=tous les logs
+
+window.API_URL = API_URL;
+window.VERBCONSOLE = VERBCONSOLE;
 
 // ============ COMPATIBILITÉ : VARIABLES GLOBALES → STATE ============
 // Ces getters/setters permettent au code existant de continuer à fonctionner
 // en utilisant les variables globales, mais en lisant/écrivant dans le state
 
-// --- DATA ET CONFIGURATION ---
-/*Object.defineProperty(window, 'DATA', {
-  get: () => getState('data.lockers'),
-  set: (value) => setState('data.lockers', value),
-  configurable: true
-});*/
-
-/*Object.defineProperty(window, 'ZONES_CONFIG', {
-  get: () => getState('data.zonesConfig'),
-  set: (value) => setState('data.zonesConfig', value),
-  configurable: true
-});*/
-
 // --- AUTHENTIFICATION ---
-Object.defineProperty(window, 'CSRF_TOKEN', {
+/*Object.defineProperty(window, 'CSRF_TOKEN', {
   get: () => getState('auth.csrfToken'),
   set: (value) => setState('auth.csrfToken', value),
   configurable: true
-});
-
-/*Object.defineProperty(window, 'IS_AUTHENTICATED', {
-  get: () => getState('auth.isAuthenticated'),
-  set: (value) => setState('auth.isAuthenticated', value),
-  configurable: true
 });*/
-
-/*Object.defineProperty(window, 'IS_GUEST', {
-  get: () => getState('auth.isGuest'),
-  set: (value) => setState('auth.isGuest', value),
-  configurable: true
-});*/
-
-/*Object.defineProperty(window, 'USER_NAME', {
-  get: () => getState('auth.userName'),
-  set: (value) => setState('auth.userName', value),
-  configurable: true
-});*/
-
-// --- UI STATE ---
-/*Object.defineProperty(window, 'CURRENT_ZONE', {
-  get: () => getState('ui.currentZone'),
-  set: (value) => setState('ui.currentZone', value),
-  configurable: true
-});*/
-
-/*Object.defineProperty(window, 'CURRENT_FILTER', {
-  get: () => getState('ui.currentFilter'),
-  set: (value) => setState('ui.currentFilter', value),
-  configurable: true
-});*/
-
-/*Object.defineProperty(window, 'SEARCH_RESULTS', {
-  get: () => getState('ui.searchResults'),
-  set: (value) => setState('ui.searchResults', value),
-  configurable: true
-});*/
-
-/*Object.defineProperty(window, 'SEARCH_RESULTS_MARKED', {
-  get: () => getState('ui.searchResultsMarked'),
-  set: (value) => setState('ui.searchResultsMarked', value),
-  configurable: true
-});*/
-
-/*Object.defineProperty(window, 'DARK_MODE_SETTING', {
-  get: () => getState('ui.darkMode'),
-  set: (value) => setState('ui.darkMode', value),
-  configurable: true
-});*/
-
-/*Object.defineProperty(window, 'IS_MOBILE', {
-  get: () => getState('ui.isMobile'),
-  set: (value) => setState('ui.isMobile', value),
-  configurable: true
-});*/
-
-// --- LOCKS (ÉDITION DE CASIERS) ---
-/*Object.defineProperty(window, 'EDITING_LOCKER_NUMBER', {
-  get: () => getState('locks.editingLockerNumber'),
-  set: (value) => setState('locks.editingLockerNumber', value),
-  configurable: true
-});*/
-
-/*Object.defineProperty(window, 'EDITING_LOCKER_VERSION', {
-  get: () => getState('locks.editingLockerVersion'),
-  set: (value) => setState('locks.editingLockerVersion', value),
-  configurable: true
-});
-*/
-// --- MODALES TEMPORAIRES ---
-/*Object.defineProperty(window, 'CURRENT_LOCKER_FOR_HOSP', {
-  get: () => getState('ui.currentLockerForHosp'),
-  set: (value) => setState('ui.currentLockerForHosp', value),
-  configurable: true
-});*/
-
-/*Object.defineProperty(window, 'CURRENT_LOCKER_FOR_PRINT', {
-  get: () => getState('ui.currentLockerForPrint'),
-  set: (value) => setState('ui.currentLockerForPrint', value),
-  configurable: true
-});*/
-
-// --- CONSULTATION (MODAL MULTI-ZONES) ---
-/*Object.defineProperty(window, 'consultationData', {
-  get: () => getState('ui.consultationData'),
-  set: (value) => setState('ui.consultationData', value),
-  configurable: true
-});*/
-
-/*Object.defineProperty(window, 'consultationSortColumn', {
-  get: () => getState('ui.consultationSortColumn'),
-  set: (value) => setState('ui.consultationSortColumn', value),
-  configurable: true
-});*/
-
-/*Object.defineProperty(window, 'consultationSortDirection', {
-  get: () => getState('ui.consultationSortDirection'),
-  set: (value) => setState('ui.consultationSortDirection', value),
-  configurable: true
-});*/
-
-// --- ANONYMISATION ---
-Object.defineProperty(window, 'ANONYMIZE_ENABLED', {
-  get: () => getState('ui.anonymizeEnabled'),
-  set: (value) => setState('ui.anonymizeEnabled', value),
-  configurable: true
-});
-
-/*Object.defineProperty(window, 'NB_MAX_ANON_NOM', {
-  get: () => getState('display.anonymization.maxAnonNameLength'),
-  set: (value) => setState('display.anonymization.maxAnonNameLength', value),
-  configurable: true
-});
-Object.defineProperty(window, 'NB_MAX_ANON_PRENOM', {
-  get: () => getState('display.anonymization.maxAnonFirstNameLength'),
-  set: (value) => setState('display.anonymization.maxAnonFirstNameLength', value),
-  configurable: true
-});
-Object.defineProperty(window, 'NB_MAX_CAR_NOM', {
-  get: () => getState('display.anonymization.maxNameLength'),
-  set: (value) => setState('display.anonymization.maxNameLength', value),
-  configurable: true
-});
-Object.defineProperty(window, 'NB_MAX_CAR_PRENOM', {
-  get: () => getState('display.anonymization.maxFirstNameLength'),
-  set: (value) => setState('display.anonymization.maxFirstNameLength', value),
-  configurable: true
-});*/
-
-// ============ VARIABLES GLOBALES RÉELLES (non migrées vers state) ============
-// Ces variables restent globales car elles sont des constantes ou peu critiques
-
-window.API_URL = API_URL;
-window.VERBCONSOLE = VERBCONSOLE;
-
 
 // ============ INITIALISATION AU CHARGEMENT DE LA PAGE ============
 
@@ -218,6 +74,7 @@ function sanitizeName(name) {
   return cleanName;
 }
 
+// --- Chargement de la configuration des zones
 async function loadZonesConfig() {
   try {
     const data = await fetchJSON(`${API_URL}/config/zones`, {
@@ -244,6 +101,7 @@ async function loadZonesConfig() {
   }
 }
 
+// --- Chargement des données casiers
 async function loadData() {
   try {
     const data = await fetchJSON(`${API_URL}/lockers`, {
@@ -308,8 +166,6 @@ function updateCounters() {
   });
 }
 
-//import { getState, setState, watch } from './cjs/core/state.js';
-
 // ============ WATCHERS AUTOMATIQUES ============
 
 // Re-render quand les données changent
@@ -319,14 +175,14 @@ watch('data.lockers', () => {
 });
 
 // Mettre à jour l'UI quand l'auth change
-watch('auth', (auth) => {
+/*watch('auth', (auth) => {
   updateAuthStatus();
   if (auth.isGuest) {
     applyGuestDefaults();
   } else if (auth.isAuthenticated) {
     applyAdminDefaults();
   }
-});
+});*/
 
 // Appliquer le dark mode automatiquement
 //watch('ui.darkMode', (mode) => {
@@ -351,6 +207,6 @@ window.updateCounters = updateCounters;
 window.getState = getState;
 window.setState = setState;
 
-if (VERBCONSOLE > 0) {
+if (VERBCONSOLE > 1) {
   console.log('📦 State management activé - utilisez getState() et setState() pour le debug');
 }

@@ -11,13 +11,12 @@ const RENEW_INTERVAL = 2 * 60 * 1000; // Renouveler toutes les 2 minutes
 async function acquireLockerLock(lockerNumber) {
     try {
         //const API_URL = getState('API_URL');
-        //const CSRF_TOKEN = getState('CSRF_TOKEN');
         
         const result = await fetchJSON(`${API_URL}/lockers/${lockerNumber}/lock`, {
             method: 'POST',
             credentials: 'include',
             headers: {
-                'X-CSRF-Token': CSRF_TOKEN
+                'X-CSRF-Token': getState('auth.csrfToken')
             }
         });
         
@@ -43,7 +42,6 @@ async function acquireLockerLock(lockerNumber) {
 async function releaseLockerLock(lockerNumber) {
     try {
         //const API_URL = getState('API_URL');
-        //const CSRF_TOKEN = getState('CSRF_TOKEN');
         
         // Arrêter le heartbeat
         stopLockHeartbeat(lockerNumber);
@@ -52,7 +50,7 @@ async function releaseLockerLock(lockerNumber) {
             method: 'DELETE',
             credentials: 'include',
             headers: {
-                'X-CSRF-Token': CSRF_TOKEN
+                'X-CSRF-Token': getState('auth.csrfToken')
             }
         });
         
@@ -71,13 +69,12 @@ function startLockHeartbeat(lockerNumber) {
     const intervalId = setInterval(async () => {
         try {
             //const API_URL = getState('API_URL');
-            //const CSRF_TOKEN = getState('CSRF_TOKEN');
             
             await fetchJSON(`${API_URL}/lockers/${lockerNumber}/lock/renew`, {
                 method: 'POST',
                 credentials: 'include',
                 headers: {
-                    'X-CSRF-Token': CSRF_TOKEN
+                    'X-CSRF-Token': getState('auth.csrfToken')
                 }
             });
             

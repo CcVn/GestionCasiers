@@ -7,29 +7,33 @@ function toPascalCase(str) {
 }
 
 // Anonymisation du nom de famille
-function anonymizeName(name, force = false, crypto = false) {
-    if (!name) return name;
+function anonymizeName(name, forceAnonymize = false, crypto = false) {
+    if (!name) return '';
     const maxAnonNameL = getState('display.anonymization.maxAnonNameLength');
     const maxNameL = getState('display.anonymization.maxNameLength');
+    const shouldAnonymize = forceAnonymize || getState('ui.anonymizeEnabled');
+    const maxLength = shouldAnonymize ? (maxAnonNameL || 3) : (maxNameL || 20);
+
     if (crypto) {
         const hash = crypto.createHash('md5').update(name).digest('hex');
-        return `${name.charAt(0)}***${hash.substring(0, (ANONYMIZE_ENABLED || force) ? 3 : 20)}`; // "D***a4f"
+        return `${name.charAt(0)}***${hash.substring(0, maxLength)}`; // "D***a4f"
     } else {
-        const maxLength = (ANONYMIZE_ENABLED || force) ? (maxAnonNameL || 3) : (maxNameL || 20);
         return name.substring(0, maxLength).toUpperCase();
     }
 }
 
 // Anonymisation du prénom
-function anonymizeFirstName(firstName, force = false, crypto = false) {
+function anonymizeFirstName(firstName, forceAnonymize = false, crypto = false) {
     if (!firstName) return firstName;
     const maxAnonFirstL = getState('display.anonymization.maxAnonFirstNameLength');
     const maxFirstNameL = getState('display.anonymization.maxFirstNameLength');
+    const shouldAnonymize = forceAnonymize || getState('ui.anonymizeEnabled');
+    const maxLength = shouldAnonymize ? (maxAnonFirstL || 2) : (maxFirstNameL || 15);
+
     if (crypto) {
         const hash = crypto.createHash('md5').update(firstName).digest('hex');
-        return `${firstName.charAt(0)}***${hash.substring(0, (ANONYMIZE_ENABLED || force) ? 2 : 15)}`;
+        return `${firstName.charAt(0)}***${hash.substring(0, maxLength)}`;
     } else {
-        const maxLength = (ANONYMIZE_ENABLED || force) ? (maxAnonFirstL || 2) : (maxFirstNameL || 15);
         return toPascalCase(firstName.substring(0, maxLength));
     }
 }
@@ -92,7 +96,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     method: 'POST',
                     headers: { 
                         'Content-Type': 'application/json',
-                        'X-CSRF-Token': CSRF_TOKEN
+                        'X-CSRF-Token': getState('auth.csrfToken')
                     },
                     credentials: 'include',
                     body: JSON.stringify({
@@ -102,7 +106,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 });
                 
                 // Mettre à jour l'état local
-                ANONYMIZE_ENABLED = getState('auth.isGuest') ? anonymizeGuest : anonymizeAdmin;
+                setState('ui.anonymizeEnabled', getState('auth.isGuest') ? anonymizeGuest : anonymizeAdmin);
                 
                 // Afficher le message de succès
                 statusEl.className = 'status-message status-success';
@@ -141,7 +145,7 @@ function updateAnonymizationStatus(icone = true) {
     
     const isGuest = getState('auth.isGuest');
     const isAuth = getState('auth.isAuthenticated');
-    const isEnabled = ANONYMIZE_ENABLED; //getState('ANONYMIZE_ENABLED');
+    const isEnabled = getState('ui.anonymizeEnabled');
     
     // Retirer les classes existantes
     statusEl.classList.remove('active', 'inactive');

@@ -461,7 +461,7 @@ async function performLockersImport(content, filename) {
             method: 'POST',
             headers: { 
                 'Content-Type': 'application/json',
-                'X-CSRF-Token': CSRF_TOKEN
+                'X-CSRF-Token': getState('auth.csrfToken')
             },
             credentials: 'include',
             body: JSON.stringify({ 
@@ -503,6 +503,7 @@ async function performLockersImport(content, filename) {
         message += `\nTotal des lignes traitées : ${result.total}`;
         
         alert(message);
+        invalidateDetectionCache();
         loadData();
         closeLockersImportOptions();
         
@@ -551,7 +552,7 @@ async function clearLockersDatabase() {
             method: 'DELETE',
             credentials: 'include',
             headers: { 
-                'X-CSRF-Token': CSRF_TOKEN
+                'X-CSRF-Token': getState('auth.csrfToken')
             }
         }, {
             retries: 3,

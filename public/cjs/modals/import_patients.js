@@ -147,7 +147,7 @@ async function handleClientFileSelected(e) {
             credentials: 'include',
             headers: { 
                 'Content-Type': 'application/json',
-                'X-CSRF-Token': CSRF_TOKEN
+                'X-CSRF-Token': getState('auth.csrfToken')
             },
             body: JSON.stringify({ 
                 rawContent: text,
@@ -249,7 +249,7 @@ async function clearClientsDatabase() {
         const data = await fetchJSON(`${API_URL}/clients/clear`, {
             method: 'DELETE',
             headers: {
-                'X-CSRF-Token': CSRF_TOKEN
+                'X-CSRF-Token': getState('auth.csrfToken')
             },
             credentials: 'include'
         });

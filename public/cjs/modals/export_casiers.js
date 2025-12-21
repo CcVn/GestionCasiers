@@ -105,7 +105,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 showStatus(`✓ ${data.recordCount} casier${data.recordCount > 1 ? 's' : ''} exporté${data.recordCount > 1 ? 's' : ''}`, 'success');
                 
             } catch (err) {
-                console.error('Erreur export:', err);
+                Logger.error('Erreur export:', err);
                 alert('❌ Erreur lors de l\'export : ' + err.message);
             } finally {
                 // RESET STATE

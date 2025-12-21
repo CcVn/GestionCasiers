@@ -63,7 +63,7 @@ async function showAnonymizationConfig() {
         modal.classList.add('active');
         
     } catch (err) {
-        console.error('Erreur chargement config anonymisation:', err);
+        Logger.error('Erreur chargement config anonymisation:', err);
         alert('Erreur lors du chargement de la configuration');
     }
 }
@@ -122,7 +122,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 }, 1000);
                 
             } catch (err) {
-                console.error('Erreur sauvegarde config:', err);
+                Logger.error('Erreur sauvegarde config:', err);
                 statusEl.className = 'status-message status-error';
                 statusEl.textContent = '✗ Erreur : ' + err.message;
             } finally {
@@ -183,3 +183,8 @@ window.toPascalCase = toPascalCase;
 window.showAnonymizationConfig = showAnonymizationConfig;
 window.closeAnonymizationConfig = closeAnonymizationConfig;
 window.updateAnonymizationStatus = updateAnonymizationStatus;
+
+// Export pour modules (si migration ES6 future)
+if (typeof module !== 'undefined' && module.exports) {
+  //module.exports = Logger;
+}

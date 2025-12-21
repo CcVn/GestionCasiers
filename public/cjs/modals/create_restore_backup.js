@@ -33,7 +33,7 @@ function createBackup() {
     })
     .catch(err => {
         alert('Erreur lors du backup : ' + err.message);
-        console.error('Erreur backup:', err);
+        Logger.error('Erreur backup:', err);
     })
     .finally(() => {
         // RESET STATE
@@ -66,7 +66,7 @@ async function showRestorePanel() {
         renderRestorePanel(data.backups);
         
     } catch (err) {
-        console.error('Erreur chargement backups:', err);
+        Logger.error('Erreur chargement backups:', err);
         content.innerHTML = `
             <div style="display: flex; flex-direction: column; align-items: center; padding: 60px;">
                 <div class="spinner"></div>
@@ -332,7 +332,7 @@ async function confirmRestore() {
         }, 3000);
         
     } catch (err) {
-        console.error('Erreur restauration:', err);
+        Logger.error('Erreur restauration:', err);
         content.innerHTML = `
             <div style="text-align: center; padding: 60px;">
                 <div style="font-size: 64px; margin-bottom: 20px;">❌</div>
@@ -372,7 +372,7 @@ async function showBackupInfo() {
         alert(message);
 
     } catch (err) {
-        console.error('Erreur récupération config backup:', err);
+        Logger.error('Erreur récupération config backup:', err);
     }
 }
 

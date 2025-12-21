@@ -74,7 +74,7 @@ async function toggleMarker(lockerNumber, marker, currentValue) {
 
     const config = markerConfig[marker];
     if (!config) {
-        console.error('Marqueur invalide:', marker);
+        Logger.error('Marqueur invalide:', marker);
         return;
     }
 
@@ -113,7 +113,7 @@ async function toggleMarker(lockerNumber, marker, currentValue) {
         showStatus(message, 'success');
 
     } catch (err) {
-        console.error(`Erreur toggle ${config.label}:`, err);
+        Logger.error(`Erreur toggle ${config.label}:`, err);
         showStatus('Erreur: ' + err.message, 'error');
     }
 }

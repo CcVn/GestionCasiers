@@ -15,7 +15,7 @@ async function showConnectionStats() {
         renderConnectionStats(data);
         
     } catch (err) {
-        console.error('Erreur chargement stats connexions:', err);
+        Logger.error('Erreur chargement stats connexions:', err);
         content.innerHTML = `
             <div style="display: flex; flex-direction: column; align-items: center; padding: 60px;">
                 <div class="spinner"></div>

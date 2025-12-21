@@ -30,7 +30,7 @@ async function populateLockerSelect(zone, selected = null) {
             lockedLockers = new Set(response.locks.map(l => l.locker_number));
         }
     } catch (err) {
-        console.warn('Impossible de récupérer les locks actifs:', err);
+        Logger.warn('Impossible de récupérer les locks actifs:', err);
     }
     
     select.innerHTML = lockers.map(locker => {
@@ -149,7 +149,7 @@ async function openModal(zone) {
             this.style.backgroundColor = '#d1fae5';
 
         } catch (err) {
-            console.error('Erreur verrouillage casier:', err);
+            Logger.error('Erreur verrouillage casier:', err);
             
             showStatus('❌ Erreur lors du verrouillage', 'error');
             
@@ -233,7 +233,7 @@ async function openModalEdit(lockerNumber) {
         enableRealtimeValidation(); // Activer validation temps réel
 
     } catch (err) {
-        console.error('Erreur ouverture modal:', err);
+        Logger.error('Erreur ouverture modal:', err);
         
         if (err.message.includes('en cours d\'édition')) {
             alert(`⚠️ ${err.message}\n\nCe casier est actuellement modifié par un autre utilisateur. Veuillez réessayer dans quelques minutes.`);
@@ -403,7 +403,7 @@ async function handleFormSubmit(e) {
                     loadData();
                     showStatus(`✓ ${patientName} déplacé de ${oldNumber} vers ${newLockerNumber}`, 'success');
                 } catch (err) {
-                    console.error('Erreur déplacement:', err);
+                    Logger.error('Erreur déplacement:', err);
                     showStatus('Erreur lors du déplacement: ' + err.message, 'error');
                     
                     // Nettoyer en cas d'erreur
@@ -488,7 +488,7 @@ async function handleFormSubmit(e) {
             }
         }
     } catch (err) {
-        console.error('Erreur générale handleFormSubmit:', err);
+        Logger.error('Erreur générale handleFormSubmit:', err);
         showStatus('Erreur: ' + err.message, 'error');
     } finally {
         // RESET STATE (même en cas d'erreur)

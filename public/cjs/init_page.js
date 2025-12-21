@@ -7,42 +7,41 @@ const intervals = {
 };
 
 async function setupApp() {
-    if (VERBCONSOLE>0) { console.log('🚀 Setup de l\'application...'); }
-    if (VERBCONSOLE>0) { console.log('API_URL actuelle:', API_URL); }
+    Logger.group('🚀 Setup de l\'application...');
+    Logger.info('API_URL actuelle:', API_URL);
     
     try {
         // -- ÉTAPE 1 : Charger la configuration des zones
-        if (VERBCONSOLE>0) { console.log('1️⃣ Chargement configuration zones...'); }
+        Logger.info('1️⃣ Chargement configuration zones...');
         await loadZonesConfig();
-        if (VERBCONSOLE>0) { console.log('✓ Config zones chargée:', getState('data.zonesConfig')); }
+        Logger.debug('✓ Config zones chargée:', getState('data.zonesConfig'));
         
         // -- ÉTAPE 1b : Charger le token CSRF
-        if (VERBCONSOLE>0) { console.log('1️⃣b Chargement token CSRF...'); }
+        Logger.info('1️⃣b Chargement token CSRF...');
         await loadCsrfToken();
 
         // -- ÉTAPE 2 : Générer l'interface
-        if (VERBCONSOLE>0) { console.log('2️⃣ Génération interface...'); }
+        Logger.info('2️⃣ Génération interface...');
         generateTabs();
         generateContentSections();
-        if (VERBCONSOLE>0) { console.log('✓ Interface générée'); }
+        Logger.info('✓ Interface générée');
 
         // -- ÉTAPE 2b : Initialiser le support swipe tactile
-        //if (VERBCONSOLE>0) { console.log('2️⃣b Initialisation swipe tactile...'); }
+        //Logger.info('2️⃣b Initialisation swipe tactile...');
         initSwipeSupport();
-        if (VERBCONSOLE>0) { console.log('✓ Swipe tactile activé'); }
+        Logger.info('✓ Swipe tactile activé');
 
         // -- ÉTAPE 3 : Initialiser les filtres
-        if (VERBCONSOLE>0) { console.log('3️⃣ Initialisation filtres...'); }
+        Logger.info('3️⃣ Initialisation filtres...');
         let CURRENT_FILTER = {};
         getState('data.zonesConfig').forEach(zone => {
             CURRENT_FILTER[zone.name] = 'all';
         });
-        if (VERBCONSOLE>0) { console.log('✓ Filtres initialisés:', CURRENT_FILTER); }
+        Logger.info('✓ Filtres initialisés:', CURRENT_FILTER);
         setState('ui.currentFilter', CURRENT_FILTER);
         
         // ÉTAPE 4 : Event listeners
-        if (VERBCONSOLE>0) { console.log('4️⃣ Event listeners...'); }
-        
+        Logger.info('4️⃣ Event listeners...');
         const searchInput = document.getElementById('globalSearch');
         if (searchInput) {
             searchInput.addEventListener('input', function(e) {
@@ -53,21 +52,21 @@ async function setupApp() {
         if (form) {
             form.addEventListener('submit', handleFormSubmit);
         }
-        if (VERBCONSOLE>0) { console.log('✓ Event listeners installés'); }
+        Logger.info('✓ Event listeners installés');
         
         // ÉTAPE 5 : Charger les données
-        if (VERBCONSOLE>0) { console.log('5️⃣ Chargement données...'); }
+        Logger.info('5️⃣ Chargement données...');
         loadData();
         
         // ÉTAPE 6 : Vérifier serveur
-        if (VERBCONSOLE>0) { console.log('6️⃣ Vérification serveur...'); }
+        Logger.info('6️⃣ Vérification serveur...');
         checkServerStatus();
         
         // ÉTAPE 7 : Appliquer mode dark sauvegardé
-        if (VERBCONSOLE>0) { console.log('7️⃣ Application préférences dark mode...'); }
+        Logger.info('7️⃣ Application préférences dark mode...');
         const savedMode = localStorage.getItem('darkMode');
         if (savedMode) {
-            if (VERBCONSOLE>0) { console.log('Mode sauvegardé trouvé:', savedMode); }
+            Logger.info('Mode sauvegardé trouvé:', savedMode);
             applyDarkMode(savedMode);
         } else {
             applyDarkMode(getState('ui.darkMode'));
@@ -75,52 +74,53 @@ async function setupApp() {
         updateThemeIcon(); // Mettre à jour l'icône du toggle
 
         // ÉTAPE 7b : Charger statut import et anonymisation
-        if (VERBCONSOLE>0) { console.log('7️⃣b Chargement statut import...'); }
+        Logger.info('7️⃣b Chargement statut import...');
         updateImportStatus();
         updateAnonymizationStatus();
 
-        // ÉTAPE 8 : Appliquer mode guest si nécessaire
+        // ÉTAPE 7c : Appliquer mode guest si nécessaire
         if (getState('auth.isGuest')) {
-            if (VERBCONSOLE>0) { console.log('7️⃣ Application mode guest...'); }
+            Logger.info('7️⃣ Application mode guest...');
             applyGuestDefaults();
         }
 
-        // ÉTAPE 9 : Rafraîchissement automatique
-        if (VERBCONSOLE>0) { console.log('8️⃣ Démarrage rafraîchissement auto...'); }
+        // ÉTAPE 8 : Rafraîchissement automatique
+        Logger.info('8️⃣ Démarrage rafraîchissement auto...');
         // Nettoyer les anciens intervals avant d'en créer de nouveaux
         Object.values(intervals).forEach(id => id && clearInterval(id));
  
         // Créer les nouveaux intervals
         intervals.autoRefresh = setInterval(() => {
-                if (VERBCONSOLE>0) { console.log('⟳ Rafraîchissement automatique...'); }
+            Logger.info('⟳ Rafraîchissement automatique...');
             loadData();
             checkServerStatus();
             updateImportStatus();
         }, 120000);
   
-        // ÉTAPE 10 : Vérification expiration session (si authentifié)
+        // ÉTAPE 9 : Vérification expiration session (si authentifié)
         if (getState('auth.isAuthenticated') || getState('auth.isGuest')) {
-            if (VERBCONSOLE>0) { console.log('9️⃣ Démarrage vérification expiration session...'); }
+            Logger.info('9️⃣ Démarrage vérification expiration session...');
             intervals.sessionCheck = setInterval(checkSessionExpiration, 5 * 60 * 1000);  // Toutes les 5 minutes
         }
 
-        // Étape 11 : Masquer le bouton de marquage
+        // Étape 10 : Masquer le bouton de marquage
         hideMarkButton();
         
-        if (VERBCONSOLE>0) { console.log('✅ Application initialisée avec succès'); }
+        Logger.info('✅ Application initialisée avec succès');
+        Logger.groupEnd();
         
     } catch (err) {
-        console.error('❌ Erreur lors du setup:', err);
+        Logger.error('❌ Erreur lors du setup:', err);
         alert('Erreur lors de l\'initialisation de l\'application: ' + err.message);
     }
 }
 
 function applyGuestDefaults() {
-    if (VERBCONSOLE>0) { console.log('👁️ Application mode guest...'); }
+    Logger.info('👁️ Application mode guest...');
     let ZONES_CONFIG = getState('data.zonesConfig');
 
     if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
-        console.warn('⚠️ ZONES_CONFIG non chargée');
+        Logger.warn('⚠️ ZONES_CONFIG non chargée');
         return;
     }
     
@@ -151,16 +151,16 @@ function applyGuestDefaults() {
 
     // Masquer les éléments admin
     //hideAdminElements();
-    
-    if (VERBCONSOLE>0) { console.log('✓ Mode guest appliqué'); }
+
+    Logger.info('✓ Mode guest appliqué');
 }
 
 function applyAdminDefaults() {
-    if (VERBCONSOLE>0) { console.log('👁️ Application mode superuser...'); }
+    Logger.info('👁️ Application mode superuser...');
     let ZONES_CONFIG = getState('data.zonesConfig');
     
     if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
-        console.warn('⚠️ ZONES_CONFIG non chargée');
+        Logger.warn('⚠️ ZONES_CONFIG non chargée');
         return;
     }
     
@@ -191,7 +191,7 @@ function applyAdminDefaults() {
     // Démasquer les éléments d'administration   @DEPRECATED
     showAdminElements();
 
-    if (VERBCONSOLE>0) { console.log('✓ Mode guest appliqué'); }
+    Logger.info('✓ Mode guest appliqué');
 }
 
 function isEditAllowed() {
@@ -204,7 +204,7 @@ function isEditAllowed() {
 
 // Masquer tous les éléments admin
 function hideAdminElements() {
-    if (VERBCONSOLE>0) { console.log('🙈 Masquage des éléments admin en mode guest'); }
+    Logger.info('🙈 Masquage des éléments admin en mode guest');
     
     // 1. Masquer tous les boutons d'import/export/backup
     const headerButtons = document.querySelectorAll('.search-bar button');
@@ -227,7 +227,7 @@ function hideAdminElements() {
     
     // 3. Masquer tous les éléments avec la classe .admin-only
     const adminOnlyElements = document.querySelectorAll('.admin-only');
-    if (VERBCONSOLE>0) { console.log(`   Éléments .admin-only trouvés: ${adminOnlyElements.length}`); }
+    Logger.info(`   Éléments .admin-only trouvés: ${adminOnlyElements.length}`);
     adminOnlyElements.forEach(el => {
         el.style.display = 'none';
     });
@@ -250,12 +250,12 @@ function hideAdminElements() {
         }
     });
 
-    if (VERBCONSOLE>0) { console.log('✓ Éléments admin masqués'); }
+    Logger.info('✓ Éléments admin masqués');
 }
 
 // Réafficher les éléments admin
 function showAdminElements() {
-    if (VERBCONSOLE>0) { console.log('👁️ Affichage des éléments admin'); }
+    Logger.info('👁️ Affichage des éléments admin');
     
     // 1. Réafficher tous les boutons d'import/export/backup
     const headerButtons = document.querySelectorAll('.search-bar button');
@@ -295,9 +295,20 @@ function showAdminElements() {
         }
     });
 
-    if (VERBCONSOLE>0) { console.log('✓ Éléments admin réaffichés'); }
+    Logger.info('✓ Éléments admin réaffichés');
 }
 
+// Fonction pour toggle le container des outils admin
+function toggleAdminTools() {
+    const container = document.getElementById('adminTools');
+    const btn = document.getElementById('btnSettings');
+    
+    if (container && btn) {
+        container.classList.toggle('active');
+        btn.classList.toggle('active');
+    }
+}
+        
 // ============ STATUT SERVEUR ============
 async function checkServerStatus() {
 //Peut rester en fetch() - Vérifie juste la connectivité, pas besoin de retry
@@ -316,7 +327,7 @@ async function checkServerStatus() {
     } catch (err) {
         statusEl.className = 'server-status offline';
         statusEl.innerHTML = '<span class="status-dot"></span> Déconnecté';
-        console.error('Serveur indisponible:', err);
+        Logger.error('Serveur indisponible:', err);
     }
 }
 
@@ -327,4 +338,5 @@ window.applyAdminDefaults = applyAdminDefaults;
 window.isEditAllowed = isEditAllowed;
 window.hideAdminElements = hideAdminElements;
 window.showAdminElements = showAdminElements;
+window.toggleAdminTools = toggleAdminTools;
 window.checkServerStatus = checkServerStatus;

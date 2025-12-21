@@ -15,7 +15,7 @@ async function showModificationStats() {
         renderModificationStats(data);
         
     } catch (err) {
-        console.error('Erreur chargement stats modifications:', err);
+        Logger.error('Erreur chargement stats modifications:', err);
         content.innerHTML = `
             <div style="display: flex; flex-direction: column; align-items: center; padding: 60px;">
                 <div class="spinner"></div>

@@ -24,16 +24,11 @@ function needsRefresh() {
 function detectDuplicates(forceRefresh = false) {
     // Vérifier le cache
     if (!forceRefresh && detectionCache.duplicates && !needsRefresh()) {
-        if (VERBCONSOLE > 1) {
-            console.log('🎯 Cache duplicates utilisé');
-        }
+        Logger.debug('🎯 Cache duplicates utilisé');
         return detectionCache.duplicates;
     }
     
-    if (VERBCONSOLE > 1) {
-        console.log('🔄 Recalcul des duplicates...');
-    }
-
+    Logger.info('🔄 Nouvelle détection des duplicates...');
     const duplicates = new Set();
     const seen = {
         byIPP: {},
@@ -70,7 +65,6 @@ function detectDuplicates(forceRefresh = false) {
         }
     });
     
-    // STRUCTURE IDENTIQUE À L'ORIGINAL
     const result = {
         duplicates: duplicates,
         byIPP: seen.byIPP,
@@ -81,10 +75,7 @@ function detectDuplicates(forceRefresh = false) {
     detectionCache.duplicates = result;
     detectionCache.lockerCount = getState('data.lockers').length;
     detectionCache.lastUpdate = Date.now();
-    
-    if (VERBCONSOLE > 1) {
-        console.log(`🔍 ${duplicates.size} doublon(s) détecté(s)`);
-    }
+    Logger.debug(`🔍 ${duplicates.size} doublon(s) détecté(s)`);
     
     return result;
 }
@@ -94,26 +85,18 @@ function invalidateDetectionCache() {
     detectionCache.duplicates = null;
     detectionCache.homonyms = null;
     detectionCache.lastUpdate = 0;
-    
-    if (VERBCONSOLE > 1) {
-        console.log('🗑️ Cache duplicates/homonymes invalidé');
-    }
+    Logger.debug('🗑️ Cache duplicates/homonymes invalidé');
 }
 
 // Fonction de détection des homonymes
 function detectHomonyms(forceRefresh = false) {
     // Vérifier le cache
     if (!forceRefresh && detectionCache.homonyms && !needsRefresh()) {
-        if (VERBCONSOLE > 1) {
-            console.log('🎯 Cache homonymes utilisé');
-        }
+        Logger.debug('🎯 Cache homonymes utilisé');
         return detectionCache.homonyms;
     }
     
-    if (VERBCONSOLE > 1) {
-        console.log('🔄 Recalcul des homonymes...');
-    }
-    
+    Logger.info('🔄 Nouvelle détection des homonymes...');
     const homonyms = new Set();
     const seen = {
         byFullName: {},
@@ -190,9 +173,7 @@ function detectHomonyms(forceRefresh = false) {
     detectionCache.lockerCount = getState('data.lockers').length;
     detectionCache.lastUpdate = Date.now();
     
-    if (VERBCONSOLE > 1) {
-        console.log(`👥 ${homonyms.size} homonyme(s) détecté(s)`);
-    }
+    Logger.debug(`👥 ${homonyms.size} homonyme(s) détecté(s)`);
     
     return result;
 }

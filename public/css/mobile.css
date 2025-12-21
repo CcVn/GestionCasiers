@@ -3,6 +3,10 @@
         padding: 10px;
     }
 
+    .no-mobile {
+        display: none; /* Affiché uniquement sur PC */
+    }
+
     .mobile-only {
         display: block; /* Affiché uniquement sur mobile */
     }

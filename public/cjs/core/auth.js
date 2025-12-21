@@ -28,7 +28,7 @@ async function setupLoginPage() {
                 userNameInput.value = data.ip;
             }
         })
-        .catch(err => console.warn('Impossible de charger l\'IP:', err));
+        .catch(err => Logger.warn('Impossible de charger l\'IP:', err));
  
     if (form) {
         form.addEventListener('submit', handleLogin);
@@ -41,7 +41,7 @@ function handleLogin(e) {
     e.preventDefault();
     // Vérifier que le token CSRF est chargé
     if (!getState('auth.csrfToken')) {
-        console.error('❌ Token CSRF non disponible');
+        Logger.error('❌ Token CSRF non disponible');
         alert('Erreur de sécurité. Veuillez recharger la page.');
         return;
     }
@@ -95,8 +95,8 @@ function handleLogin(e) {
 
         setState('ui.anonymizeEnabled', data.anonymize || false);
         applyDarkMode(data.darkMode || 'system');
-        if (VERBCONSOLE>0) { console.log('Anonymisation activée:', getState('ui.anonymizeEnabled') );}
-        if (VERBCONSOLE>0) { console.log('Utilisateur:', getState('auth.userName') ); }
+        Logger.info('Anonymisation activée:', getState('ui.anonymizeEnabled') );
+        Logger.info('Utilisateur:', getState('auth.userName') );
         
         showLoginPage(false);
         updateAuthStatus();
@@ -111,7 +111,7 @@ function handleLogin(e) {
         }
         document.getElementById('loginPassword').value = '';
         document.getElementById('userName').value = '';
-        console.error('Erreur login:', err);
+        Logger.error('Erreur login:', err);
     })
     .finally(() => {
         submitBtn.disabled = false;
@@ -124,7 +124,7 @@ function handleLogin(e) {
 function loginAsGuest() {
     // Vérifier que le token CSRF est chargé
     if (!getState('auth.csrfToken')) {
-        console.error('❌ Token CSRF non disponible');
+        Logger.error('❌ Token CSRF non disponible');
         alert('Erreur de sécurité. Veuillez recharger la page.');
         return;
     }
@@ -158,7 +158,7 @@ function loginAsGuest() {
         setState('auth.isGuest', true);
         setState('ui.anonymizeEnabled', data.anonymize || false);
         applyDarkMode(data.darkMode || 'system');
-        if (VERBCONSOLE>0) { console.log('Anonymisation activée:', getState('ui.anonymizeEnabled') ); }
+        Logger.info('Anonymisation activée:', getState('ui.anonymizeEnabled') );
 
         //hideAdminElements();
         showLoginPage(false);
@@ -167,7 +167,7 @@ function loginAsGuest() {
         setupApp();
     })
     .catch(err => {
-        console.error('Erreur login guest:', err);
+        Logger.error('Erreur login guest:', err);
         alert('Erreur de connexion');
     })
     .finally(() => {
@@ -180,10 +180,10 @@ function loginAsGuest() {
 // Utilisation : URL à mettre dans le QR code : http://adresseIP:5000/?guest=true
 // Ne pas implémenter fetchJSON : Gestion spécifique des erreurs de connexion
 function loginAsGuestAuto() {
-    if (VERBCONSOLE>0) { console.log('Connexion automatique en mode guest...'); }
+    Logger.info('Connexion automatique en mode guest...');
     // Vérifier que le token CSRF est chargé
     if (!getState('auth.csrfToken')) {
-        console.error('❌ Token CSRF non disponible');
+        Logger.error('❌ Token CSRF non disponible');
         alert('Erreur de sécurité. Veuillez recharger la page.');
         return;
     }
@@ -211,7 +211,7 @@ function loginAsGuestAuto() {
         setState('auth.isGuest', true);
         setState('ui.anonymizeEnabled', data.anonymize || false);
         applyDarkMode(data.darkMode || 'system');
-        if (VERBCONSOLE>0) { console.log('Anonymisation activée:', getState('ui.anonymizeEnabled') ); }
+        Logger.info('Anonymisation activée:', getState('ui.anonymizeEnabled') );
 
         //hideAdminElements();
         showLoginPage(false);
@@ -220,7 +220,7 @@ function loginAsGuestAuto() {
         setupApp();
     })
     .catch(err => {
-        console.error('Erreur login guest auto:', err);
+        Logger.error('Erreur login guest auto:', err);
         // En cas d'erreur, afficher la page de login normale
         setupLoginPage();
         alert('Erreur de connexion automatique');
@@ -248,7 +248,7 @@ async function logout() {
             'Content-Type': 'application/json',
             'X-CSRF-Token': getState('auth.csrfToken')  
         }
-    }).catch(err => console.error('Erreur logout:', err));
+    }).catch(err => Logger.error('Erreur logout:', err));
     
     // Réinitialisation des filtres avec zones dynamiques
     let ZONES_CONFIG = getState('data.zonesConfig');
@@ -330,9 +330,9 @@ async function loadCsrfToken() {
         });
         
         setState('auth.csrfToken', data.csrfToken);
-        if (VERBCONSOLE>0) { console.log('✓ Token CSRF chargé'); }
+        Logger.info('✓ Token CSRF chargé');
     } catch (err) {
-        console.error('❌ Erreur chargement token CSRF:', err);
+        Logger.error('❌ Erreur chargement token CSRF:', err);
         setState('auth.csrfToken', null);
     }
 }
@@ -346,7 +346,7 @@ async function checkSessionExpiration() {
 
     // Avertir si moins de 10 minutes restantes
     if (data.expiresInMinutes < 10 && data.expiresInMinutes > 0) {
-        console.warn(`⏰ Session expire dans ${data.expiresInMinutes} minutes`);
+        Logger.warn(`⏰ Session expire dans ${data.expiresInMinutes} minutes`);
 
         // Afficher une notification (optionnel)
         if (data.expiresInMinutes === 5) {
@@ -357,7 +357,7 @@ async function checkSessionExpiration() {
         }
     }
     } catch (err) {
-    console.error('Erreur vérification expiration:', err);
+    Logger.error('Erreur vérification expiration:', err);
     }
 }
 

@@ -209,7 +209,7 @@ async function handleLockersFileSelected(e) {
         await performLockersImport(text, file.name);
         
     } catch (err) {
-        console.error('Erreur lecture fichier:', err);
+        Logger.error('Erreur lecture fichier:', err);
         alert('❌ Erreur lecture fichier : ' + err.message);
     }
 }
@@ -513,7 +513,7 @@ async function performLockersImport(content, filename) {
         } else {
             alert('❌ Erreur lors de l\'import casiers : ' + err.message);
         }
-        console.error('Erreur lors de l\'import casiers :', err);
+        Logger.error('Erreur lors de l\'import casiers :', err);
     } finally {
         if (importBtn) {
             importBtn.disabled = false;
@@ -565,7 +565,7 @@ async function clearLockersDatabase() {
         closeLockersImportOptions();  // Fermer le modal
         
     } catch (err) {
-        console.error('Erreur libération casiers:', err);
+        Logger.error('Erreur libération casiers:', err);
         alert('❌ Erreur : ' + err.message);
     }
 }

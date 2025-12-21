@@ -116,7 +116,7 @@ function generateContentSections() {
                             <option value="marked" class="admin-only">🔖 Marqués</option>
                         </select>
                     </div>
-                    <div>
+                    <div class="hide-mobile">
                         <label for="Tri" style="margin: 0px; font-size: 11px;">Trier</label>
                         <select id="Tri" onchange="sortTable('${zone.name}', this.value)">
                             <option value="number">par numéro</option>
@@ -516,13 +516,13 @@ function generateContentSections() {
 function updateCounters() {
     DATA = getState('data.lockers');
     if (!DATA || DATA.length === 0) {
-        if (VERBCONSOLE>0) { console.log('⚠️ Pas de données pour les compteurs'); }
+        Logger.info('⚠️ Pas de données pour les compteurs');
         return;
     }
     
     let ZONES_CONFIG = getState('data.zonesConfig');
     if (!ZONES_CONFIG || ZONES_CONFIG.length === 0) {
-        if (VERBCONSOLE>0) { console.log('⚠️ ZONES_CONFIG non chargée'); }
+        Logger.info('⚠️ ZONES_CONFIG non chargée');
         return;
     }
     
@@ -563,11 +563,11 @@ function updateCounters() {
 // @TODO DEPRECATED? plus utilisée pour l'instant?
 /*function updateImportExportButtons() {
     const importExportButtons = document.querySelectorAll('.search-bar button');
-    if (VERBCONSOLE>0) { console.log('Mise à jour des boutons header, isGuest:', getState('auth.isGuest')); }
+    Logger.debug('Mise à jour des boutons header, isGuest:', getState('auth.isGuest'));
     
     importExportButtons.forEach(btn => {
         const text = btn.textContent.toLowerCase();
-        if (VERBCONSOLE>0) { console.log('Bouton:', text); }
+        Logger.debug('Bouton:', text);
         
         if (text.includes('import') || text.includes('backup')|| 
             text.includes('json') || text.includes('csv') ) {
@@ -576,7 +576,7 @@ function updateCounters() {
                 btn.style.opacity = '0.4';
                 btn.style.cursor = 'not-allowed';
                 btn.style.pointerEvents = 'none';
-                if (VERBCONSOLE>0) { console.log('Bouton désactivé:', text); }
+                Logger.debug('Bouton désactivé:', text);
                 //btn.style.display = 'none';
             } else {
                 //btn.style.display = '';
@@ -584,13 +584,13 @@ function updateCounters() {
                 btn.style.opacity = '1';
                 btn.style.cursor = 'pointer';
                 btn.style.pointerEvents = 'auto';
-                if (VERBCONSOLE>0) { console.log('Bouton activé:', text); }
+                Logger.debug('Bouton activé:', text);
             }
         }
     });
     
     const newLockerButtons = document.querySelectorAll('.controls .btn-primary');
-    if (VERBCONSOLE>0) { console.log('Mise à jour des boutons "Attribuer" et "Imprimés", trouvés:', newLockerButtons.length); }
+    Logger.debug('Mise à jour des boutons "Attribuer" et "Imprimés", trouvés:', newLockerButtons.length);
     
     newLockerButtons.forEach(btn => {
         const text = btn.textContent.toLowerCase();
@@ -600,7 +600,7 @@ function updateCounters() {
                 btn.style.opacity = '0.4';
                 btn.style.cursor = 'not-allowed';
                 btn.style.pointerEvents = 'none';
-                if (VERBCONSOLE>0) { console.log('Boutons "Attribuer & Imprimer" désactivé'); }
+                Logger.debug('Boutons "Attribuer & Imprimer" désactivé');
                 //btn.style.display = 'none';
             } else {
                 //btn.style.display = '';
@@ -608,7 +608,7 @@ function updateCounters() {
                 btn.style.opacity = '1';
                 btn.style.cursor = 'pointer';
                 btn.style.pointerEvents = 'auto';
-                console.log('Boutons "Attribuer & Imprimer" activé');
+                Logger.debug('Boutons "Attribuer & Imprimer" activé');
             }
         }
     });

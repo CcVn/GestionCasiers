@@ -5,14 +5,8 @@
 
 // ============ VARIABLES GLOBALES RÉELLES (non migrées vers state) ============
 // Ces variables restent globales car elles sont des constantes ou peu critiques
-const API_URL = window.location.hostname === 'localhost' 
-  ? 'http://localhost:5000/api' 
-  : '/api';
-
-let VERBCONSOLE = 0; // 0=rien, 1=logs importants, 2=tous les logs
-
+const API_URL = getState('config.api.baseURL');
 window.API_URL = API_URL;
-window.VERBCONSOLE = VERBCONSOLE;
 
 // ============ COMPATIBILITÉ : VARIABLES GLOBALES → STATE ============
 // Ces getters/setters permettent au code existant de continuer à fonctionner
@@ -28,10 +22,17 @@ window.VERBCONSOLE = VERBCONSOLE;
 // ============ INITIALISATION AU CHARGEMENT DE LA PAGE ============
 
 document.addEventListener('DOMContentLoaded', async function() {
-  if (VERBCONSOLE > 0) {
-    console.log('🚀 Initialisation de l\'application...');
-  }
+  Logger.info('🚀 Initialisation de l\'application...');
   
+  // Charger le token CSRF en premier
+  try {
+        await loadCsrfToken();
+  } catch (err) {
+        Logger.error('❌ Impossible de charger le token CSRF:', err);
+        alert('Erreur de sécurité. Veuillez recharger la page.');
+        return; // Arrêter l'init si pas de token
+  }
+
   // Détecter si mode mobile
   detectMobile();
   
@@ -41,19 +42,14 @@ document.addEventListener('DOMContentLoaded', async function() {
   // Vérifier si login automatique en guest (via URL ?guest=true)
   const urlParams = new URLSearchParams(window.location.search);
   if (urlParams.get('guest') === 'true') {
-    if (VERBCONSOLE > 0) {
-      console.log('🔓 Connexion automatique en mode guest (URL)');
-    }
+    Logger.info('🔓 Connexion automatique en mode guest (URL)');
     loginAsGuestAuto();
   } else {
-    // Afficher la page de login
-    showLoginPage(true);
+    showLoginPage(true); // Afficher la page de login
     setupLoginPage();
   }
   
-  if (VERBCONSOLE > 0) {
-    console.log('✅ Application initialisée');
-  }
+  Logger.info('✅ Application initialisée');
 });
 
 // ============ GESTION DES DONNÉES ============
@@ -86,17 +82,13 @@ async function loadZonesConfig() {
         .map(name => sanitizeName(name))
         .map(z => `'${z}'`)
         .join(', ');
-    if (VERBCONSOLE>0) {
-        console.log(zonesList);
-    }
 
     setState('data.zonesConfig', data.zones);
-    
-    if (VERBCONSOLE > 0) {
-      console.log('📋 Configuration zones chargée:', data.zones.length, 'zone(s)');
-    }
+    Logger.info('📋 Configuration zones chargée:', data.zones.length, 'zone(s)');
+    Logger.debug(zonesList);
+
   } catch (err) {
-    console.error('✖ Erreur chargement zones:', err);
+    Logger.error('✖ Erreur chargement zones:', err);
     throw err;
   }
 }
@@ -109,15 +101,12 @@ async function loadData() {
     });
     
     setState('data.lockers', data);
-    
     renderAllTables();
     updateCounters();
+    Logger.debug('✓ Données chargées:', data.length, 'casier(s)');
     
-    if (VERBCONSOLE > 1) {
-      console.log('✓ Données chargées:', data.length, 'casier(s)');
-    }
   } catch (err) {
-    console.error('✖ Erreur chargement données:', err);
+    Logger.error('✖ Erreur chargement données:', err);
     showStatus('Erreur de chargement des données', 'error');
   }
 }
@@ -190,9 +179,9 @@ watch('data.lockers', () => {
 //});
 
 // Logger les changements en mode debug
-if (VERBCONSOLE > 1) {
+if (getState('config.verbose') > 1) {
   watch('*', (value, oldValue, path) => {
-    console.log(`🔄 [${path}]`, oldValue, '→', value);
+    Logger.debug(`🔄 [${path}]`, oldValue, '→', value);
   });
 }
 
@@ -207,6 +196,4 @@ window.updateCounters = updateCounters;
 window.getState = getState;
 window.setState = setState;
 
-if (VERBCONSOLE > 1) {
-  console.log('📦 State management activé - utilisez getState() et setState() pour le debug');
-}
+Logger.debug('📦 State management activé - utilisez getState() et setState() pour le debug');

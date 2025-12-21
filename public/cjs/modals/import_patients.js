@@ -73,7 +73,7 @@ async function importClients() {
         document.getElementById('importOptionsModal').classList.add('active');
         
     } catch (err) {
-        console.error('Erreur chargement formats:', err);
+        Logger.error('Erreur chargement formats:', err);
         alert('Erreur lors du chargement des formats d\'import');
     }
 }
@@ -98,7 +98,7 @@ function isUTF8Valid(csvFileName = 'data.csv') {
     console.log("Décodage UTF-8 valide");
     return 1;
   } catch {
-    console.error("Le fichier contient des octets invalides pour l'UTF-8");
+    Logger.error("Le fichier contient des octets invalides pour l'UTF-8");
     return 0;
   }
 }
@@ -133,12 +133,10 @@ async function handleClientFileSelected(e) {
     }
     
     try {
-        if (VERBCONSOLE > 0) {
-            console.log('📂 Lecture du fichier patients...');
-            //console.log('Format sélectionné:', selectedImportFormat);
-            //console.log('Mode sélectionné:', selectedImportMode);
-            //console.log('Séparateur sélectionné:', selectedImportSeparator);
-        }
+        Logger.info('📂 Lecture du fichier patients...');
+        Logger.debug('Format sélectionné:', selectedImportFormat);
+        Logger.debug('Mode sélectionné:', selectedImportMode);
+        Logger.debug('Séparateur sélectionné:', selectedImportSeparator);
         
         const text = await file.text();
         
@@ -213,7 +211,7 @@ async function handleClientFileSelected(e) {
         } else {
             alert('❌ Erreur lors de l\'import patients :\n\n' + err.message);
         }
-       console.error('Erreur import patients:', err);
+       Logger.error('Erreur import patients:', err);
  
     } finally {
         if (importBtn) {
@@ -225,25 +223,26 @@ async function handleClientFileSelected(e) {
 }
 
 // --- Vider la base patients
-async function clearClientsDatabase() {
+async function clearClientsDatabase(doubleConf = false) {
+    // Confirmation
     const confirmFirst = confirm(
         '⚠️ ATTENTION - SUPPRESSION DÉFINITIVE\n\n' +
         'Vous allez supprimer TOUS les patients de la base de données.\n\n' +
         'Cette action est IRRÉVERSIBLE.\n\n' +
         'Voulez-vous continuer ?'
     );
-    
     if (!confirmFirst) return;
     
-/*    // Double confirmation
-    const confirmSecond = confirm(
-        '⚠️ DERNIÈRE CONFIRMATION\n\n' +
-        'Êtes-vous ABSOLUMENT CERTAIN de vouloir vider la base patients ?\n\n' +
-        'Tous les patients seront supprimés définitivement.\n\n' +
-        'Tapez OK pour confirmer.'
-    );
-    
-    if (!confirmSecond) return;*/
+    if (doubleConf) {
+        // Double confirmation
+        const confirmSecond = confirm(
+            '⚠️ DERNIÈRE CONFIRMATION\n\n' +
+            'Êtes-vous ABSOLUMENT CERTAIN de vouloir vider la base patients ?\n\n' +
+            'Tous les patients seront supprimés définitivement.\n\n' +
+            'Tapez OK pour confirmer.'
+        );
+        if (!confirmSecond) return;
+    }
     
     try {
         const data = await fetchJSON(`${API_URL}/clients/clear`, {
@@ -255,14 +254,11 @@ async function clearClientsDatabase() {
         });
         
         alert(`✓ Base patients vidée avec succès\n\n${data.deleted} client(s) supprimé(s)`);
-        
         closeImportOptions(); // Fermer le modal
-
-        // Mettre à jour le statut immédiatement
-        await updateImportStatus();
+        await updateImportStatus();  // Mettre à jour le statut immédiatement
         
     } catch (err) {
-        console.error('Erreur suppression clients:', err);
+        Logger.error('Erreur suppression clients:', err);
         throw new Error(err.message);
         alert('❌ Erreur : ' + err.message);
     }
@@ -297,7 +293,7 @@ async function searchClient() {
         }
     } catch (err) {
         showStatus('Erreur lors de la recherche: ' + err.message, 'error');
-        console.error('Erreur recherche client:', err);
+        Logger.error('Erreur recherche client:', err);
     }
 }
 
@@ -312,7 +308,7 @@ async function updateImportStatus() {
         const statusEl = document.getElementById('importStatus');
         if (!statusEl) return;
         
-        // CAS 1 : Base vide ou effacée
+        //-- CAS 1 : Base vide ou effacée
         if (data.isEmpty) {
             if (data.wasCleared) {
                 statusEl.innerHTML = `🗑️ Base patients vidée`;
@@ -326,7 +322,7 @@ async function updateImportStatus() {
             return;
         }
         
-        // CAS 2 : Base avec données
+        //-- CAS 2 : Base avec données
         if (!data.hasImport) {
             statusEl.innerHTML = '⚠️ Aucun import patient';
             statusEl.style.color = '#f59e0b';
@@ -334,7 +330,7 @@ async function updateImportStatus() {
             return;
         }
         
-        // CAS 3 : Import récent existant
+        //-- CAS 3 : Import récent existant
         const importDate = new Date(data.lastImportDate);
         const daysSince = data.daysSinceImport;
         const hoursSince = data.hoursSinceImport;
@@ -374,7 +370,7 @@ async function updateImportStatus() {
         statusEl.title = title;
         
     } catch (err) {
-        console.error('Erreur chargement statut import:', err);
+        Logger.error('Erreur chargement statut import:', err);
         const statusEl = document.getElementById('importStatus');
         if (statusEl) {
             statusEl.innerHTML = '⚠️ Erreur statut';

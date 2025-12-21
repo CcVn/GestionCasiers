@@ -43,9 +43,9 @@
                 <div>
                     <h1>Casiers PUI zone départ</h1>
                     <div style="display: flex; gap: 20px; align-items: center;">
-                        <div id="authStatus" style="font-size: 16px; color: #666; margin-top: 5px;"></div>
+                        <div id="authStatus" class="admin-only" style="font-size: 16px; color: #666; margin-top: 5px;"></div>
                         <div class="server-status2 admin-only" id="importStatus" style="font-size: 14px; color: #666; margin-top: 5px;"><span class="status-dot"></span></div>
-                        <div style="display: inline-flex;" class="server-status2" id="anonymizationStatus" style="font-size: 14px; margin-top: 5px;">
+                        <div style="display: none;" class="server-status2" id="anonymizationStatus" style="font-size: 14px; margin-top: 5px;">
                             <span class="status-dot"></span><span class="anon-icon">🎭</span>
                         </div>
                     </div>
@@ -852,6 +852,7 @@
 
     <script src="cjs/core/state.js"></script>
     <script src="cjs/ui/mobile.js"></script>
+    <script src="cjs/utils/logger.js"></script>
     <script src="app.js"></script>
     <script src="cjs/init_page.js"></script>
     <script src="cjs/core/auth.js"></script>
@@ -878,7 +879,7 @@
     <script src="cjs/ui/accessibility.js"></script>
     <script src="cjs/utils/validation.js"></script>
     <script src="cjs/dropdowns.js"></script>
-    <script>
+<!--     <script>
         // Fonction pour toggle le container des outils admin
         function toggleAdminTools() {
             const container = document.getElementById('adminTools');
@@ -889,6 +890,6 @@
                 btn.classList.toggle('active');
             }
         }
-    </script>
+    </script> -->
 </body>
 </html>

@@ -12,7 +12,7 @@ async function fetchWithRetry(url, options = {}, retryConfig = {}) {
         retryDelay = 1000,     // Délai initial (ms)
         retryOn = [500, 502, 503, 504, 408, 429],  // Codes HTTP à retry
         timeout = 30000,       // Timeout par requête (30s)
-        logRequests = VERBCONSOLE > 0,  // Logger les requêtes
+        logRequests = getState('config.verbose') > 0,  // Logger les requêtes
         logErrors = true       // Logger les erreurs
     } = retryConfig;
     
@@ -21,7 +21,7 @@ async function fetchWithRetry(url, options = {}, retryConfig = {}) {
     
     // Log début requête
     if (logRequests) {
-        console.log(`🌐 ${method} ${url.replace(API_URL, '')}`);
+        Logger.info(`🌐 ${method} ${url.replace(API_URL, '')}`);
     }
     
     for (let attempt = 0; attempt < retries; attempt++) {
@@ -62,8 +62,8 @@ async function fetchWithRetry(url, options = {}, retryConfig = {}) {
                     const delay = retryDelay * Math.pow(2, attempt); // Exponential backoff
                     
                     if (logErrors) {
-                        console.warn(`⚠️ ${method} ${url.replace(API_URL, '')} - HTTP ${res.status} (tentative ${attempt + 1}/${retries})`);
-                        console.warn(`   ⏳ Nouvelle tentative dans ${delay}ms...`);
+                        Logger.warn(`⚠️ ${method} ${url.replace(API_URL, '')} - HTTP ${res.status} (tentative ${attempt + 1}/${retries})`);
+                        Logger.warn(`   ⏳ Nouvelle tentative dans ${delay}ms...`);
                     }
                     
                     await new Promise(resolve => setTimeout(resolve, delay));
@@ -81,9 +81,9 @@ async function fetchWithRetry(url, options = {}, retryConfig = {}) {
             // Succès
             const duration = Date.now() - startTime;
             if (logRequests && attempt > 0) {
-                console.log(`✓ ${method} ${url.replace(API_URL, '')} - ${res.status} (${duration}ms, ${attempt + 1} tentative${attempt > 0 ? 's' : ''})`);
+                Logger.info(`✓ ${method} ${url.replace(API_URL, '')} - ${res.status} (${duration}ms, ${attempt + 1} tentative${attempt > 0 ? 's' : ''})`);
             } else if (logRequests) {
-                console.log(`✓ ${method} ${url.replace(API_URL, '')} - ${res.status} (${duration}ms)`);
+                Logger.info(`✓ ${method} ${url.replace(API_URL, '')} - ${res.status} (${duration}ms)`);
             }
             
             return res;
@@ -95,7 +95,7 @@ async function fetchWithRetry(url, options = {}, retryConfig = {}) {
             // Gérer les différents types d'erreurs
             if (err.name === 'AbortError') {
                 if (logErrors) {
-                    console.error(`⏱️ ${method} ${url.replace(API_URL, '')} - Timeout après ${timeout}ms (tentative ${attempt + 1}/${retries})`);
+                    Logger.error(`⏱️ ${method} ${url.replace(API_URL, '')} - Timeout après ${timeout}ms (tentative ${attempt + 1}/${retries})`);
                 }
                 
                 if (!isLastAttempt) {
@@ -111,13 +111,13 @@ async function fetchWithRetry(url, options = {}, retryConfig = {}) {
             } else if (err.message.includes('Failed to fetch') || err.message.includes('NetworkError')) {
                 // Erreur réseau
                 if (logErrors) {
-                    console.error(`🔌 ${method} ${url.replace(API_URL, '')} - Erreur réseau (tentative ${attempt + 1}/${retries})`);
+                    Logger.error(`🔌 ${method} ${url.replace(API_URL, '')} - Erreur réseau (tentative ${attempt + 1}/${retries})`);
                 }
                 
                 if (!isLastAttempt) {
                     const delay = retryDelay * Math.pow(2, attempt);
                     if (logErrors) {
-                        console.warn(`   ⏳ Nouvelle tentative dans ${delay}ms...`);
+                        Logger.warn(`   ⏳ Nouvelle tentative dans ${delay}ms...`);
                     }
                     await new Promise(resolve => setTimeout(resolve, delay));
                     continue; // Retry
@@ -130,7 +130,7 @@ async function fetchWithRetry(url, options = {}, retryConfig = {}) {
             } else {
                 // Autre erreur (ne pas retry)
                 if (logErrors) {
-                    console.error(`❌ ${method} ${url.replace(API_URL, '')} - ${err.message} (${duration}ms)`);
+                    Logger.error(`❌ ${method} ${url.replace(API_URL, '')} - ${err.message} (${duration}ms)`);
                 }
                 throw err;
             }
@@ -153,9 +153,13 @@ class APIError extends Error {
 
 // --- Helper pour les requêtes JSON (parse automatique)
 async function fetchJSON(url, options = {}, retryConfig = {}) {
+  const startTime = performance.now();
+
   try {
     const res = await fetchWithRetry(url, options);
-    
+    const duration = performance.now() - startTime;
+    Logger.api(options.method || 'GET', url, res.status, duration);
+
     if (!res.ok) {
       const errorData = await res.json().catch(() => ({}));
       
@@ -176,12 +180,11 @@ async function fetchJSON(url, options = {}, retryConfig = {}) {
         errorData
       );
     }
-    
     return res.json();
     
   } catch (err) {
     // Logger avec contexte
-    console.error(`[API] ${options.method || 'GET'} ${url}`, {
+    Logger.error(`[API] ${options.method || 'GET'} ${url}`, {
       error: err.message,
       status: err.status,
       retryable: err.isRetryable

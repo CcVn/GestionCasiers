@@ -115,7 +115,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 closeHospitalisationModal();  // Fermer le modal
                 
             } catch (err) {
-                console.error('Erreur modification hospitalisation:', err);
+                Logger.error('Erreur modification hospitalisation:', err);
                 statusEl.className = 'status-message status-error';
                 statusEl.textContent = '✗ Erreur : ' + err.message;
             } finally {

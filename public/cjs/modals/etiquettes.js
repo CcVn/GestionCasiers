@@ -166,13 +166,12 @@ function openLabelPrintWindow() {
         }
     });
     
-    if (VERBCONSOLE > 0) {
-        console.log(`🏷️ Impression d'étiquettes:`);
-        console.log(`   - Casiers uniques: ${lockers.length}`);
-        console.log(`   - Répétitions: ${repetition}`);
-        console.log(`   - Total étiquettes: ${duplicatedLockers.length}`);
-        console.log(`   - Pages nécessaires: ${pagesNeeded}`);
-    }
+    Logger.group(`🏷️ Impression d'étiquettes:`);
+    Logger.info(`   - Casiers uniques: ${lockers.length}`);
+    Logger.info(`   - Répétitions: ${repetition}`);
+    Logger.info(`   - Total étiquettes: ${duplicatedLockers.length}`);
+    Logger.info(`   - Pages nécessaires: ${pagesNeeded}`);
+    Logger.groupEnd();
     
     // Créer une nouvelle fenêtre pour l'impression
     const printWindow = window.open('', '_blank', 'width=800,height=600');
@@ -194,12 +193,11 @@ function openLabelPrintWindow() {
 // Générer la page d'étiquettes au format HTML
 function generateLabelHTML(lockers, format, anonymize) {
 
-    if (VERBCONSOLE>1) {
-        console.log('🏷️ generateLabelHTML appelée avec:');
-        console.log('  - Nombre de casiers:', lockers.length);
-        console.log('  - Anonymisation:', anonymize);
-        console.log('  - ui.anonymizeEnabled (global):', getState('ui.anonymizeEnabled') );
-    }
+    Logger.group('🏷️ generateLabelHTML appelée avec:');
+    Logger.info('  - Nombre de casiers:', lockers.length);
+    Logger.info('  - Anonymisation:', anonymize);
+    Logger.info('  - ui.anonymizeEnabled (global):', getState('ui.anonymizeEnabled') );
+    Logger.groupEnd();
 
     const [cols, rows] = format === '5x13' ? [5, 13] : [3, 9];
     const perPage = cols * rows;
@@ -468,12 +466,11 @@ function confirmPrintSingleLabel() {
     const count = format === '3x9' ? 27 : 65;
 
     // Debug
-    if (VERBCONSOLE > 0) {
-        console.log('🏷️ Impression étiquette unique:');
-        console.log('  - Casier:', CURRENT_LOCKER_FOR_PRINT.number);
-        console.log('  - Anonymisation:', anonymize);
-        console.log('  - Format:', format);
-    }
+    Logger.group('🏷️ Impression étiquette unique:');
+    Logger.info('  - Casier:', CURRENT_LOCKER_FOR_PRINT.number);
+    Logger.info('  - Anonymisation:', anonymize);
+    Logger.info('  - Format:', format);
+    Logger.groupEnd();
 
     // Créer un tableau avec le même casier répété
     const lockers = Array(count).fill(CURRENT_LOCKER_FOR_PRINT);

@@ -16,7 +16,7 @@ async function showClientsStats() {
         renderClientsStats(data);
         
     } catch (err) {
-        console.error('Erreur chargement stats patients:', err);
+        Logger.error('Erreur chargement stats patients:', err);
         content.innerHTML = `
             <div style="display: flex; flex-direction: column; align-items: center; padding: 60px;">
                 <div class="spinner"></div>

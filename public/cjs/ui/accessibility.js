@@ -100,7 +100,7 @@ function makeDropdownAccessible(buttonEl, menuEl) {
   items.forEach((item, index) => {
     // Ne pas ajouter de listeners sur les items avec sous-menu (ils seront gérés par makeSubmenuAccessible)
     if (item.classList.contains('has-submenu')) {
-      if (VERBCONSOLE > 1) { console.log('⏭️ Item ignoré (a un sous-menu):', item.textContent.trim()); }
+      Logger.debug('⏭️ Item ignoré (a un sous-menu):', item.textContent.trim());
       return; // SKIP cet item
     }
     
@@ -277,10 +277,7 @@ function makeSubmenuAccessible(parentItem, submenu) {
  */
 function initDropdownAccessibility() {
   const containers = document.querySelectorAll('.menu-dot');
-  
-  if (VERBCONSOLE > 1) {
-    console.log(`♿ Initialisation accessibilité : ${containers.length} dropdown(s)`);
-  }
+  Logger.debug(`♿ Initialisation accessibilité : ${containers.length} dropdown(s)`);
   
   containers.forEach((container, i) => {
     const button = container.querySelector('button[onclick*="toggleDropdown"]');
@@ -297,41 +294,13 @@ function initDropdownAccessibility() {
         
         if (parentButton && submenu) {
           makeSubmenuAccessible(parentButton, submenu);
-
-/*          if (VERBCONSOLE > 1) {
-            // LOGS DEBUGGAGE:
-            const submenus = menu.querySelectorAll('.dropdown-submenu');
-            console.log(`  Dropdown ${i+1}: ${submenus.length} sous-menu(x)`);
-            
-            submenus.forEach((submenuContainer, j) => {
-              const parentButton = submenuContainer.querySelector('.has-submenu');
-              const submenu = submenuContainer.querySelector('.dropdown-submenu-content');
-              
-              console.log(`    Sous-menu ${j+1}:`, {
-                parentButton: !!parentButton,
-                submenu: !!submenu
-              });
-              
-              if (parentButton && submenu) {
-                makeSubmenuAccessible(parentButton, submenu);
-                console.log(`    ✓ Sous-menu ${j+1} initialisé`);
-              } else {
-                console.warn(`    ✖ Sous-menu ${j+1} introuvable!`);
-              }
-            });
-          }*/
-          
-          if (VERBCONSOLE > 1) {
-            console.log('  ↳ Sous-menu initialisé');
-          }
+          Logger.debug('  ↳ Sous-menu initialisé');
         }
       });
     }
   });
   
-  if (VERBCONSOLE > 0) {
-    console.log('✓ Accessibilité dropdowns + sous-menus initialisée');
-  }
+  Logger.info('✓ Accessibilité dropdowns + sous-menus initialisée');
 }
 
 // Faire disparaître le menu si on clique en dehors

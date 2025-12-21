@@ -75,7 +75,7 @@ async function toggleMarkSearchResults() {
         }
         
     } catch (err) {
-        console.error('Erreur toggle marquage:', err);
+        Logger.error('Erreur toggle marquage:', err);
         showStatus('❌ Erreur : ' + err.message, 'error');
     } finally {
         if (btn) {
@@ -132,7 +132,7 @@ async function clearAllMarks() {
         loadData();
         
     } catch (err) {
-        console.error('Erreur suppression marques:', err);
+        Logger.error('Erreur suppression marques:', err);
         alert('❌ Erreur : ' + err.message);
     } finally {
         // RESET STATE

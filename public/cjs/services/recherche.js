@@ -20,7 +20,7 @@ function searchLockers(query) {
     
     setState('ui.searchResults', allResults);  // stocker les résultats
 
-    if (VERBCONSOLE>0) { console.log(`🔍 Recherche "${query}" : ${allResults.length} résultat(s)`); }
+    Logger.info(`🔍 Recherche "${query}" : ${allResults.length} résultat(s)`);
     
     // Afficher les boutons de marquage si résultats et mode admin
     if (getState('auth.isAuthenticated') && allResults.length > 0) {

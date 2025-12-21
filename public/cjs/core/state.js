@@ -61,13 +61,30 @@ const AppState = {
 };
 
 /*const AppConfig = {
-  get API_URL() {
-    return window.location.hostname === 'localhost' 
+  api: {
+    baseURL: window.location.hostname === 'localhost' 
       ? 'http://localhost:5000/api' 
-      : '/api';
+      : '/api',
+    timeout: 30000,
+    retries: 3
+  }, 
+  ui: {
+    debounceDelay: 400,
+    animationDuration: 500,
+    lockRenewInterval: 2 * 60 * 1000
   },
-  get VERBCONSOLE() {
-    return 0;
+  display: {
+    anonymization: {
+      maxAnonNameLength: 3,
+      maxAnonFirstNameLength: 2,
+      maxNameLength: 20,
+      maxFirstNameLength: 15
+    }
+  },
+  debug: {
+    level: parseInt(localStorage.getItem('debug_level') || '0'),
+    logAPI: true,
+    logState: false
   }
 };*/
 
@@ -114,7 +131,7 @@ function notifyStateChange(path, newValue, oldValue) {
       try {
         callback(newValue, oldValue, path);
       } catch (err) {
-        console.error(`Erreur dans watcher pour "${path}":`, err);
+        Logger.error(`Erreur dans watcher pour "${path}":`, err);
       }
     });
   }
@@ -131,7 +148,7 @@ function notifyStateChange(path, newValue, oldValue) {
         try {
           callback(parentValue, undefined, parentPath);
         } catch (err) {
-          console.error(`Erreur dans watcher parent pour "${parentPath}":`, err);
+          Logger.error(`Erreur dans watcher parent pour "${parentPath}":`, err);
         }
       });
     }
@@ -144,7 +161,7 @@ function notifyStateChange(path, newValue, oldValue) {
       try {
         callback(newValue, oldValue, path);
       } catch (err) {
-        console.error('Erreur dans watcher global:', err);
+        Logger.error('Erreur dans watcher global:', err);
       }
     });
   }
@@ -172,7 +189,7 @@ function getState(path) {
  */
 function setState(path, value) {
   if (!path) {
-    console.error('setState: path requis');
+    Logger.error('setState: path requis');
     return;
   }
   
@@ -242,8 +259,8 @@ function resetState(path) {
  * Afficher l'état complet dans la console
  */
 function debugState() {
-  console.log('📦 État de l\'application:', AppState);
-  console.log('👁️ Watchers actifs:', Array.from(stateWatchers.keys()));
+  Logger.info('📦 État de l\'application:', AppState);
+  Logger.info('👁️ Watchers actifs:', Array.from(stateWatchers.keys()));
 }
 
 /**
@@ -252,24 +269,13 @@ function debugState() {
 function debugWatchers(path) {
   const watchers = stateWatchers.get(path);
   if (watchers) {
-    console.log(`👁️ ${watchers.size} watcher(s) pour "${path}"`);
+    Logger.info(`👁️ ${watchers.size} watcher(s) pour "${path}"`);
   } else {
-    console.log(`👁️ Aucun watcher pour "${path}"`);
+    Logger.info(`👁️ Aucun watcher pour "${path}"`);
   }
 }
 
 // ============ EXPORTS ============
-
-/*export {
-  AppState,
-  getState,
-  setState,
-  resetState,
-  watch,
-  notifyStateChange,
-  debugState,
-  debugWatchers
-};*/
 
 // Rendre les fonctions globales
 window.AppState = AppState;
@@ -283,4 +289,18 @@ window.notifyStateChange = notifyStateChange;
 window.debugState = debugState;
 window.debugWatchers = debugWatchers;
 
+
+// Export pour modules (si migration ES6 future)
+if (typeof module !== 'undefined' && module.exports) {
+/*  module.export {
+    AppState,
+    getState,
+    setState,
+    resetState,
+    watch,
+    notifyStateChange,
+    debugState,
+    debugWatchers
+  };*/
+}
 

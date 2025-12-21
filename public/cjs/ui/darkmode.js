@@ -2,7 +2,7 @@
 
 function applyDarkMode(setting) {
     let DARK_MODE_SETTING = setting || 'system';
-    if (VERBCONSOLE>1) { console.log('Application du mode sombre:', DARK_MODE_SETTING); }
+    Logger.debug('Application du mode sombre:', DARK_MODE_SETTING);
     
     if (DARK_MODE_SETTING === 'active') {
         document.body.classList.add('dark-mode');
@@ -50,7 +50,7 @@ function safeLocalStorage(key, value) {
     return true;
   } catch (e) {
     if (e.name === 'QuotaExceededError') {
-      console.warn('LocalStorage quota exceeded');
+      Logger.warn('LocalStorage quota exceeded');
       // Fallback: cookies ou sessionStorage
     }
     return false;
@@ -58,7 +58,7 @@ function safeLocalStorage(key, value) {
 }
 
 function setDarkMode(mode) {
-    if (VERBCONSOLE>0) { console.log('🌓 Changement mode:', mode); }
+    Logger.info('🌓 Changement mode:', mode);
     
     // Sauvegarder la préférence localement
     safeLocalStorage('darkMode', mode);

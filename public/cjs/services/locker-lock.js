@@ -55,7 +55,7 @@ async function releaseLockerLock(lockerNumber) {
         });
         
     } catch (err) {
-        console.error('Erreur libération lock:', err);
+        Logger.error('Erreur libération lock:', err);
     }
 }
 
@@ -81,7 +81,7 @@ function startLockHeartbeat(lockerNumber) {
             console.log(`🔄 Lock renouvelé pour ${lockerNumber}`);
             
         } catch (err) {
-            console.error('Erreur renouvellement lock:', err);
+            Logger.error('Erreur renouvellement lock:', err);
             
             // Si le renouvellement échoue, arrêter le heartbeat
             stopLockHeartbeat(lockerNumber);

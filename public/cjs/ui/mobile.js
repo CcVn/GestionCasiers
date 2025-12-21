@@ -2,7 +2,7 @@
 
 function detectMobile() {
     let IS_MOBILE = window.innerWidth <= 768;
-    if (VERBCONSOLE>0) { console.log('Mode mobile:', IS_MOBILE); }
+    Logger.info('Mode mobile:', IS_MOBILE);
     setState('ui.isMobile', IS_MOBILE);
     return IS_MOBILE;
 }

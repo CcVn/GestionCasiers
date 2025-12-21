@@ -14,7 +14,7 @@ function searchLockers(query) {
 
     // Recherche globale pour tous les résultats
     const allResults = getState('data.lockers').filter(l => {
-        const searchText = (l.name + ' ' + l.firstName + ' ' + l.code + ' ' + l.comment).toLowerCase();
+        const searchText = (l.name + ' ' + l.firstName + ' ' + l.code + ' ' + l.comment + ' ' + l.birthDate).toLowerCase();
         return searchText.includes(searchTerm);
     });
     

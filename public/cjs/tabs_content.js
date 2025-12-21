@@ -91,7 +91,7 @@ function generateContentSections() {
         const lastNumber = `${zone.prefix}${String(zone.count).padStart(2, '0')}`;
         
         section.innerHTML = `
-            <div class="section-header">
+            <div class="section-header hide-mobile">
                 <h2 style="font-size: 18px; font-weight: 600;">
                     Zone ${zone.name} (${firstNumber} à ${lastNumber})
                     <span class="zone-counter admin-only" id="counter-${zone.name}">0/${zone.count}</span>

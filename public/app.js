@@ -111,50 +111,6 @@ async function loadData() {
   }
 }
 
-// ============ UTILITAIRES UI ============
-
-function formatDate(dateStr) {
-  if (!dateStr) return '';
-  
-  try {
-    const date = new Date(dateStr);
-    return date.toLocaleDateString('fr-FR', {
-      day: '2-digit',
-      month: '2-digit',
-      year: 'numeric'
-    });
-  } catch (err) {
-    return dateStr;
-  }
-}
-
-function updateCounters() {
-  const zonesConfig = getState('data.zonesConfig');
-  const lockers = getState('data.lockers');
-  
-  if (!zonesConfig || !lockers) return;
-  
-  zonesConfig.forEach(zone => {
-    const counter = document.getElementById(`counter-${zone.name}`);
-    if (!counter) return;
-    
-    const occupied = lockers.filter(l => l.zone === zone.name && l.occupied).length;
-    const total = zone.count;
-    const percentage = Math.round((occupied / total) * 100);
-    
-    counter.textContent = `${occupied}/${total}`;
-    
-    // Couleur selon occupation
-    if (occupied >= total) {
-      counter.style.background = '#ef4444'; // Rouge : plein
-    } else if (percentage >= 80) {
-      counter.style.background = '#f59e0b'; // Orange : ≥80%
-    } else {
-      counter.style.background = '#10b981'; // Vert : <80%
-    }
-  });
-}
-
 // ============ WATCHERS AUTOMATIQUES ============
 
 // Re-render quand les données changent
@@ -189,8 +145,6 @@ if (getState('config.verbose') > 1) {
 
 window.loadZonesConfig = loadZonesConfig;
 window.loadData = loadData;
-window.formatDate = formatDate;
-window.updateCounters = updateCounters;
 
 // Exposer getState et setState pour le debug
 window.getState = getState;

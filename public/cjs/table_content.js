@@ -172,19 +172,28 @@ const RenderScheduler = {
     const fullName = `${locker.name}|${locker.firstName}`.toUpperCase();
     
     let otherLockers = [];
-    
+
+    // Vérifier si anonymisation active
+    const shouldAnonymize = getState('ui.anonymizeEnabled');
+
     // Chercher par nom seul
     if (homonymInfo.byLastName[lastName]) {
       otherLockers = homonymInfo.byLastName[lastName]
         .filter(l => l.number !== locker.number)
-        .map(l => `${l.number} (${l.firstName})`);
+        .map(l => {
+          // Anonymiser le prénom si nécessaire
+          const displayFirstName = shouldAnonymize 
+            ? anonymizeFirstName(l.firstName) 
+            : l.firstName;
+          return `${l.number} (${displayFirstName})`;
+        });
     }
     
     // Ou par nom+prénom avec IPP différent
     if (otherLockers.length === 0 && homonymInfo.byFullName[fullName]) {
       otherLockers = homonymInfo.byFullName[fullName]
         .filter(l => l.number !== locker.number)
-        .map(l => `${l.number} (IPP: ${l.ipp})`);
+        .map(l => `${l.number} (IPP: ${l.ipp})`);  // pas 
     }
     
     return otherLockers.length > 0 

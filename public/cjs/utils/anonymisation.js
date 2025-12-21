@@ -6,36 +6,91 @@ function toPascalCase(str) {
   return str.charAt(0).toUpperCase() + str.slice(1).toLowerCase();
 }
 
+// Fonction pour remplacer un caractère aléatoire par une étoile
+function remplacerAleatoire(partie, nbEtoiles) {
+    let result = partie.split('');
+    for (let i = 0; i < nbEtoiles; i++) {
+        let index;
+        do {
+            index = Math.floor(Math.random() * result.length);
+        } while (result[index] === '*');
+        result[index] = '*';
+    }
+    return result.join('');
+}
+
 // Anonymisation du nom de famille
-function anonymizeName(name, forceAnonymize = false, crypto = false) {
+function anonymizeName(name, forceAnonymize = false) {
     if (!name) return '';
     const maxAnonNameL = getState('display.anonymization.maxAnonNameLength');
     const maxNameL = getState('display.anonymization.maxNameLength');
+    const forceAnon = getState('ui.anonymizeForce');
     const shouldAnonymize = forceAnonymize || getState('ui.anonymizeEnabled');
     const maxLength = shouldAnonymize ? (maxAnonNameL || 3) : (maxNameL || 20);
 
-    if (crypto) {
-        const hash = crypto.createHash('md5').update(name).digest('hex');
-        return `${name.charAt(0)}***${hash.substring(0, maxLength)}`; // "D***a4f"
+    const masque = name.substring(0, maxLength).toUpperCase();
+    if (forceAnon>1) {
+        return remplacerAleatoire(masque, masque.length/2);
+        //const hash = crypto.createHash('md5').update(masque).digest('hex');
+        //return `${name.charAt(0)}***${hash.substring(0, maxLength)}`; // "D***a4f"
     } else {
-        return name.substring(0, maxLength).toUpperCase();
+        return masque;
     }
 }
 
 // Anonymisation du prénom
-function anonymizeFirstName(firstName, forceAnonymize = false, crypto = false) {
-    if (!firstName) return firstName;
+function anonymizeFirstName(firstName, forceAnonymize = false) {
+    if (!firstName) return '';
     const maxAnonFirstL = getState('display.anonymization.maxAnonFirstNameLength');
     const maxFirstNameL = getState('display.anonymization.maxFirstNameLength');
+    const forceAnon = getState('ui.anonymizeForce');
     const shouldAnonymize = forceAnonymize || getState('ui.anonymizeEnabled');
     const maxLength = shouldAnonymize ? (maxAnonFirstL || 2) : (maxFirstNameL || 15);
 
-    if (crypto) {
-        const hash = crypto.createHash('md5').update(firstName).digest('hex');
-        return `${firstName.charAt(0)}***${hash.substring(0, maxLength)}`;
+    const masque = toPascalCase(firstName.substring(0, maxLength));
+    if (forceAnon>1) {
+        return remplacerAleatoire(masque, masque.length/2);
+        //const hash = crypto.createHash('md5').update(masque).digest('hex');
+        //return `${firstName.charAt(0)}***${hash.substring(0, maxLength)}`;
     } else {
-        return toPascalCase(firstName.substring(0, maxLength));
+        return masque;
     }
+}
+
+// Masquage partiel de la date
+function maskDate(date, forceAnonymize = false) {
+    const shouldAnonymize = forceAnonymize || getState('ui.anonymizeEnabled');
+    if (!date || !shouldAnonymize) return date;
+
+    if (date.length !== 10) { return "Format de date invalide"; }
+    const parties = date.split('/');
+    if (parties.length !== 3) { return "Format de date invalide"; }
+
+    const jour = remplacerAleatoire(parties[0], 1); // 1 étoile dans le jour
+    const mois = remplacerAleatoire(parties[1], 1); // 1 étoile dans le mois
+    const annee = remplacerAleatoire(parties[2], 2); // 2 étoiles dans l'année
+    const dateMasquee = `${jour}/${mois}/${annee}`;
+    //Logger.info('Date masquée',dateMasquee);
+    return dateMasquee;
+}
+
+// Format de date + 
+function formatDate(dateStr, forceAnonymize = false) {
+  if (!dateStr) return dateStr;
+  
+  try {
+    const date = new Date(dateStr);
+    let formDate = date.toLocaleDateString('fr-FR', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric'
+    });
+    return maskDate(formDate, forceAnonymize);
+    //return formDate;
+
+  } catch (err) {
+    return dateStr;
+  }
 }
 
 // ================ MODAL CONFIG ANONYMISATION ================
@@ -183,6 +238,8 @@ window.toPascalCase = toPascalCase;
 window.showAnonymizationConfig = showAnonymizationConfig;
 window.closeAnonymizationConfig = closeAnonymizationConfig;
 window.updateAnonymizationStatus = updateAnonymizationStatus;
+window.maskDate = maskDate;
+window.formatDate = formatDate;
 
 // Export pour modules (si migration ES6 future)
 if (typeof module !== 'undefined' && module.exports) {

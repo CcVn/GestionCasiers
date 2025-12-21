@@ -20,6 +20,7 @@ const AppState = {
     searchResults: [],
     searchResultsMarked: false,
     anonymizeEnabled: false,
+    anonymizeForce: 1, 
     darkMode: 'system',
     isMobile: false,
     currentLockerForHosp: null,
